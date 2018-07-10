@@ -1,0 +1,8 @@
+{
+	"exchange": "huobi",
+	"accessKey": "",
+	"secretKey": "",
+	"symbols": ["bchbtc","ethbtc","ltcbtc","btcusdt"],
+	"proxyHost": "127.0.0.1",
+	"proxyPort": 1080
+}

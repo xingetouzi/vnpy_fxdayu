@@ -1,0 +1,8 @@
+[
+    {
+        "name": "TEST",
+        "className": "TestStrategy",
+        "vtSymbol": "eth_this_week.OKEX,eth_next_week.OKEX"
+    }
+
+]

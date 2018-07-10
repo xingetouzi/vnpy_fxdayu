@@ -1,0 +1,5 @@
+pymongo 
+websocket-client
+qdarkstyle
+SortedContainers
+snappy

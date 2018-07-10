@@ -1,0 +1,62 @@
+[
+    {
+        "name": "RB.01-05",
+
+        "activeLeg":
+            {
+                "vtSymbol": "rb1801",
+                "ratio": 1,
+                "multiplier": 1.0,
+                "payup": 2
+            },
+
+        "passiveLegs": [
+            {
+                "vtSymbol": "rb1805",
+                "ratio": -1,
+                "multiplier": -1.0,
+                "payup": 2
+            }
+        ]
+    },
+    {
+        "name": "HC.01-05",
+
+        "activeLeg":
+            {
+                "vtSymbol": "hc1801",
+                "ratio": 1,
+                "multiplier": 1.0,
+                "payup": 2
+            },
+
+        "passiveLegs": [
+            {
+                "vtSymbol": "hc1805",
+                "ratio": -1,
+                "multiplier": -1.0,
+                "payup": 2
+            }
+        ]
+    },
+    {
+        "name": "i.01-05",
+
+        "activeLeg":
+            {
+                "vtSymbol": "i1801",
+                "ratio": 1,
+                "multiplier": 1.0,
+                "payup": 2
+            },
+
+        "passiveLegs": [
+            {
+                "vtSymbol": "i1805",
+                "ratio": -1,
+                "multiplier": -1.0,
+                "payup": 2
+            }
+        ]
+    }
+]
