@@ -5,7 +5,7 @@
     基于官方版VNPY修改的适用于Python 3 开发环境的开源量化交易程序开发框架，当前用于数字货币的策略研究和实盘交易。
     已经可以使用的数字货币交易所有 OKEX， 火币HUOBI，币安BINANCE，其他交易所功能陆续开通中。
     项目增加了多策略和多品种持仓、订单的存储和查询，优化回撤引擎，帮助用户更好地制定策略。
-详细说明请查阅：[VNPY_FXDAYU说明文档](http://gitlab.fxdayu.com:8888/ukamoy/vnpy_cryptocurrency/wikis/%E9%A6%96%E9%A1%B5)
+详细说明请查阅：[VNPY_FXDAYU说明文档](https://github.com/xingetouzi/vnpy_fxdayu/wiki)
 ## 项目安装（WINDOWS）：
 
     1、此版本VNPY基于python3开发，建议安装ANACONDA3_5.0.0以上版本
