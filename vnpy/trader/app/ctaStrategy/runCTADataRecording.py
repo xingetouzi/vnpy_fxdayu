@@ -35,7 +35,7 @@ def runChildProcess():
     le.info('注册日志事件监听')
 
     me.connect('OKEX')
-    le.info('连接CTP接口')
+    le.info('连接OKEX接口')
     
     while True:
         sleep(1)

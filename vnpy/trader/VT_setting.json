@@ -1,6 +1,6 @@
 {
-	"fontFamily": "微软雅黑",
-	"fontSize": 9,
+	"fontFamily": "SimHei",
+	"fontSize": 10,
 
 	"mongoHost": "localhost",
 	"mongoPort": 27017,

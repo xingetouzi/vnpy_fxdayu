@@ -36,7 +36,7 @@ class MainWindow(QtWidgets.QMainWindow):
     #----------------------------------------------------------------------
     def initUi(self):
         """初始化界面"""
-        self.setWindowTitle('VnTrader')
+        self.setWindowTitle('VNPY_FXDAYU_VnTrader')
         self.initCentral()
         self.initMenu()
         self.initStatusBar()
@@ -47,17 +47,17 @@ class MainWindow(QtWidgets.QMainWindow):
         widgetMarketM, dockMarketM = self.createDock(MarketMonitor, vtText.MARKET_DATA, QtCore.Qt.RightDockWidgetArea)
         widgetLogM, dockLogM = self.createDock(LogMonitor, vtText.LOG, QtCore.Qt.BottomDockWidgetArea)
         widgetErrorM, dockErrorM = self.createDock(ErrorMonitor, vtText.ERROR, QtCore.Qt.BottomDockWidgetArea)
-        widgetTradeM, dockTradeM = self.createDock(TradeMonitor, vtText.TRADE, QtCore.Qt.BottomDockWidgetArea)
+        widgetTradeM, dockTradeM = self.createDock(TradeMonitor, vtText.TRADE, QtCore.Qt.RightDockWidgetArea)
         widgetOrderM, dockOrderM = self.createDock(OrderMonitor, vtText.ORDER, QtCore.Qt.RightDockWidgetArea)
-        widgetWorkingOrderM, dockWorkingOrderM = self.createDock(WorkingOrderMonitor, vtText.WORKING_ORDER, QtCore.Qt.BottomDockWidgetArea)
-        widgetPositionM, dockPositionM = self.createDock(PositionMonitor, vtText.POSITION, QtCore.Qt.BottomDockWidgetArea)
+        widgetWorkingOrderM, dockWorkingOrderM = self.createDock(WorkingOrderMonitor, vtText.WORKING_ORDER, QtCore.Qt.RightDockWidgetArea)
+        widgetPositionM, dockPositionM = self.createDock(PositionMonitor, vtText.POSITION, QtCore.Qt.RightDockWidgetArea)
         widgetAccountM, dockAccountM = self.createDock(AccountMonitor, vtText.ACCOUNT, QtCore.Qt.BottomDockWidgetArea)
         widgetTradingW, dockTradingW = self.createDock(TradingWidget, vtText.TRADING, QtCore.Qt.LeftDockWidgetArea)
     
         self.tabifyDockWidget(dockAccountM, dockErrorM)
-        self.tabifyDockWidget(dockAccountM, dockLogM)
+        self.tabifyDockWidget(dockErrorM, dockLogM)
         self.tabifyDockWidget(dockPositionM, dockTradeM)
-        self.tabifyDockWidget(dockPositionM, dockWorkingOrderM)
+        self.tabifyDockWidget(dockTradeM, dockWorkingOrderM)
     
         dockAccountM.raise_()
         dockPositionM.raise_()
@@ -167,7 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
         if not displayName:
             displayName = gatewayName
-        
+        print(vtText.CONNECT , displayName)
         actionName = vtText.CONNECT + displayName
         connectAction = self.createAction(actionName, connect, 
                                           loadIconPath('connect.ico'))

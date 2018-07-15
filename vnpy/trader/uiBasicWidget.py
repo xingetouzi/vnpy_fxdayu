@@ -270,6 +270,7 @@ class BasicMonitor(QtWidgets.QTableWidget):
         # 设置列表头
         labels = [d['chinese'] for d in list(self.headerDict.values())]
         self.setHorizontalHeaderLabels(labels)
+        self.horizontalHeader().setDefaultSectionSize(100)    # 设置固定列宽
         
         # 关闭左边的垂直表头
         self.verticalHeader().setVisible(False)
@@ -431,9 +432,10 @@ class MarketMonitor(BasicMonitor):
         d['symbol'] = {'chinese':vtText.CONTRACT_SYMBOL, 'cellType':BasicCell}
         # d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
         d['lastPrice'] = {'chinese':vtText.LAST_PRICE, 'cellType':BasicCell}
+        d['lastVolume'] = {'chinese':vtText.LAST_VOLUME, 'cellType':BasicCell}
         # d['preClosePrice'] = {'chinese':vtText.PRE_CLOSE_PRICE, 'cellType':BasicCell}
         d['volume'] = {'chinese':vtText.VOLUME, 'cellType':BasicCell}
-        d['openInterest'] = {'chinese':vtText.OPEN_INTEREST, 'cellType':BasicCell}
+        # d['openInterest'] = {'chinese':vtText.OPEN_INTEREST, 'cellType':BasicCell}
         # d['openPrice'] = {'chinese':vtText.OPEN_PRICE, 'cellType':BasicCell}
         d['highPrice'] = {'chinese':vtText.HIGH_PRICE, 'cellType':BasicCell}
         d['lowPrice'] = {'chinese':vtText.LOW_PRICE, 'cellType':BasicCell}
@@ -557,10 +559,12 @@ class OrderMonitor(BasicMonitor):
         d['price'] = {'chinese':vtText.PRICE, 'cellType':BasicCell}
         d['totalVolume'] = {'chinese':vtText.ORDER_VOLUME, 'cellType':BasicCell}
         d['tradedVolume'] = {'chinese':vtText.TRADED_VOLUME, 'cellType':BasicCell}
-        d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
-        d['cancelTime'] = {'chinese':vtText.CANCEL_TIME, 'cellType':BasicCell}
-        d['frontID'] = {'chinese':vtText.FRONT_ID, 'cellType':BasicCell}         # 考虑到在vn.trader中，ctpGateway的报单号应该是始终递增的，因此这里可以忽略
+        d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}
+        d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
+        d['bystrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}        
+        # d['cancelTime'] = {'chinese':vtText.CANCEL_TIME, 'cellType':BasicCell}
+        # d['frontID'] = {'chinese':vtText.FRONT_ID, 'cellType':BasicCell}         # 考虑到在vn.trader中，ctpGateway的报单号应该是始终递增的，因此这里可以忽略
         #d['sessionID'] = {'chinese':vtText.SESSION_ID, 'cellType':BasicCell}
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         self.setHeaderDict(d)
@@ -634,7 +638,7 @@ class AccountMonitor(BasicMonitor):
         super(AccountMonitor, self).__init__(mainEngine, eventEngine, parent)
         
         d = OrderedDict()
-        d['coinsymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
+        d['coinSymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
         # d['accountID'] = {'chinese':vtText.ACCOUNT_ID, 'cellType':BasicCell}
         # d['preBalance'] = {'chinese':vtText.PRE_BALANCE, 'cellType':BasicCell}
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':BasicCell}
@@ -646,8 +650,10 @@ class AccountMonitor(BasicMonitor):
         d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':BasicCell}
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         self.setHeaderDict(d)
-        
-        self.setDataKey('vtAccountID')
+        if not d['coinSymbol']:
+            self.setDataKey('vtAccountID')
+        else:
+            self.setDataKey('coinSymbol')
         self.setEventType(EVENT_ACCOUNT)
         self.setFont(BASIC_FONT)
         self.initTable()
@@ -663,9 +669,7 @@ class TradingWidget(QtWidgets.QFrame):
                      DIRECTION_SHORT]
 
     offsetList = [OFFSET_OPEN,
-                  OFFSET_CLOSE,
-                  OFFSET_CLOSEYESTERDAY,
-                  OFFSET_CLOSETODAY]
+                  OFFSET_CLOSE]
     
     priceTypeList = [PRICETYPE_LIMITPRICE,
                      PRICETYPE_MARKETPRICE,
@@ -675,26 +679,10 @@ class TradingWidget(QtWidgets.QFrame):
     exchangeList = [EXCHANGE_NONE,
                     EXCHANGE_OKEX,
                     EXCHANGE_HUOBI,
-                    EXCHANGE_CFFEX,
-                    EXCHANGE_SHFE,
-                    EXCHANGE_DCE,
-                    EXCHANGE_CZCE,
-                    EXCHANGE_SSE,
-                    EXCHANGE_SZSE,
-                    EXCHANGE_SGE,
-                    EXCHANGE_HKEX,
-                    EXCHANGE_HKFE,
-                    EXCHANGE_SMART,
-                    EXCHANGE_ICE,
-                    EXCHANGE_CME,
-                    EXCHANGE_NYMEX,
-                    EXCHANGE_LME,
-                    EXCHANGE_GLOBEX,
-                    EXCHANGE_IDEALPRO]
+                    EXCHANGE_BINANCE]
     
     currencyList = [CURRENCY_NONE,
                     CURRENCY_CNY,
-                    CURRENCY_HKD,
                     CURRENCY_USD]
     
     productClassList = [PRODUCT_NONE,
@@ -703,6 +691,7 @@ class TradingWidget(QtWidgets.QFrame):
                         PRODUCT_OPTION,
                         PRODUCT_FOREX,
                         PRODUCT_SPOT]
+    
     
     gatewayList = ['']
 
@@ -1055,12 +1044,14 @@ class TradingWidget(QtWidgets.QFrame):
         req.vtSymbol = contract.vtSymbol
         req.price = self.spinPrice.value()
         req.volume = self.spinVolume.value()
-        req.contractType = symbol[3:]
+        if exchange == 'OKEX':
+            req.contractType = symbol[4:]
         req.direction = str(self.comboDirection.currentText())
         req.priceType = str(self.comboPriceType.currentText())
         req.offset = str(self.comboOffset.currentText())
         req.currency = currency
         req.productClass = productClass
+        req.bystrategy = 'MANUAL'
         
         self.mainEngine.sendOrder(req, gatewayName)
             
@@ -1075,6 +1066,7 @@ class TradingWidget(QtWidgets.QFrame):
             req.frontID = order.frontID
             req.sessionID = order.sessionID
             req.orderID = order.orderID
+            req.contractType = order.contractType
             self.mainEngine.cancelOrder(req, order.gatewayName)
             
     #----------------------------------------------------------------------
@@ -1320,7 +1312,7 @@ class SettingEditor(QtWidgets.QWidget):
             
             for line in f:
                 line = line.replace('\n', '')   # 移除换行符号
-                line = line.decode('UTF-8')
+                # line = line.decode('UTF-8')   # python3 不支持
                 self.editSetting.append(line)
     
     #----------------------------------------------------------------------
@@ -1333,7 +1325,7 @@ class SettingEditor(QtWidgets.QWidget):
         
         with open(filePath, 'w') as f:
             content = self.editSetting.toPlainText()
-            content = content.encode('UTF-8')
+            # content = content.encode('UTF-8')
             f.write(content)
         
     #----------------------------------------------------------------------

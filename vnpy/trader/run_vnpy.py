@@ -24,7 +24,8 @@ from vnpy.trader.app import (riskManager,
                             # spreadTrading,
                             # optionMaster,
                             # jaqsService,
-                            rpcService)
+                            # rpcService
+                            )
 
 
 #----------------------------------------------------------------------

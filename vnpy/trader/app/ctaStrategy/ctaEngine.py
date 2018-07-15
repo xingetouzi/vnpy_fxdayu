@@ -93,15 +93,14 @@ class CtaEngine(object):
         self.registerEvent()
 
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, matchPrice, isFuture, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
         """发单"""
         
         contract = self.mainEngine.getContract(vtSymbol)
         req = VtOrderReq()
         
         req.symbol = contract.symbol
-        if isFuture:
-            req.contractType = req.symbol[4:]
+        req.contractType = req.symbol[4:]
         req.exchange = contract.exchange
         req.vtSymbol = contract.vtSymbol
         req.price = self.roundToPriceTick(contract.priceTick, price)
@@ -113,7 +112,13 @@ class CtaEngine(object):
 
         # 设计为CTA引擎发出的委托只允许使用限价单
         # req.priceType = PRICETYPE_LIMITPRICE
-        req.priceType = matchPrice    #OKEX 用number作priceType
+
+        req.priceType = marketPrice    #OKEX 用number作priceType
+
+        if marketPrice:
+            type_shown = PRICETYPE_MARKETPRICE
+        else:
+            type_shown = PRICETYPE_LIMITPRICE
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -141,8 +146,8 @@ class CtaEngine(object):
             self.orderStrategyDict[vtOrderID] = strategy                                 # 保存vtOrderID和策略的映射关系
             self.strategyOrderDict[strategy.name].add(vtOrderID)                         # 添加到策略委托号集合中
             vtOrderIDList.append(vtOrderID)
-        self.writeCtaLog('策略%s发送委托%s，交易品种：%s，%s，%s@%s，是否对手价:%s'
-                         %(strategy.name,vtOrderID, vtSymbol, orderType, volume, price, req.priceType ))
+        self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
+                         %(strategy.name,type_shown,vtOrderID, vtSymbol, orderType, volume, price ))
 
         return vtOrderIDList
 
@@ -161,27 +166,26 @@ class CtaEngine(object):
                 req.vtSymbol = order.vtSymbol
                 req.symbol = order.symbol
 
-                if order.contractType:         # 如果该品种是OKEX期货
-                    req.contractType = order.contractType
+                req.contractType = order.contractType
                 req.exchange = order.exchange
                 req.frontID = order.frontID
                 req.sessionID = order.sessionID
                 req.orderID = order.orderID
                 self.mainEngine.cancelOrder(req, order.gatewayName)
-                self.writeCtaLog('策略:%s 对订单%s，品种%s发送撤单委托'%(order.bystrategy, vtOrderID, order.vtSymbol))
+                self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.bystrategy, vtOrderID, order.vtSymbol))
 
     #----------------------------------------------------------------------
-    def sendStopOrder(self, vtSymbol, orderType, price, volume, matchPrice, isFuture, strategy):
+    def sendStopOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
         """发停止单（本地实现）"""
         self.stopOrderCount += 1
         stopOrderID = STOPORDERPREFIX + str(self.stopOrderCount)
 
         so = StopOrder()
         so.vtSymbol = vtSymbol
-        if isFuture:
-            so.contractType = so.vtSymbol[4:-5]
+        so.contractType = so.vtSymbol[4:-5]
         so.orderType = orderType
         so.price = price
+        so.priceType = marketPrice
         so.volume = volume
         so.strategy = strategy
         so.stopOrderID = stopOrderID
@@ -255,10 +259,7 @@ class CtaEngine(object):
                             price = tick.lowerLimit
 
                         # 发出市价委托
-                        if so.contractType:
-                            self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.matchPrice, 1, so.strategy)
-                        else:
-                            self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.matchPrice, 0, so.strategy)
+                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.marketPrice, so.strategy)
 
                         # 从活动停止单字典中移除该停止单
                         del self.workingStopOrderDict[so.stopOrderID]
@@ -293,7 +294,8 @@ class CtaEngine(object):
             # 逐个推送到策略实例中
             l = self.tickStrategyDict[tick.vtSymbol]
             for strategy in l:
-                self.callStrategyFunc(strategy, strategy.onTick, tick)
+                if strategy.trading:
+                    self.callStrategyFunc(strategy, strategy.onTick, tick)
 
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -325,6 +327,7 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[trade.vtOrderID]
 
             # 计算策略持仓
+            # if trade.exchange == 'OKEX':
             if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
                 posName = trade.vtSymbol.replace(".","_") + "_LONG"
                 strategy.posDict[str(posName)] += trade.volume
@@ -337,28 +340,60 @@ class CtaEngine(object):
             elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
                 posName = trade.vtSymbol.replace(".","_") + "_SHORT"
                 strategy.posDict[str(posName)] += trade.volume
+            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
+                posName = trade.vtSymbol.replace(".","_")
+                strategy.posDict[str(posName)] += trade.volume
+            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
+                posName = trade.vtSymbol.replace(".","_")
+                strategy.posDict[str(posName)] -= trade.volume
+
+
+            # else:
+            #     currency_pairs = trade.vtSymbol.split(".")
+            #     currency_one = currency_pairs[0]
+            #     currency_against = currency_pairs[1]
+            #     posName = trade.vtSymbol.replace(".","_")
+            #     accName_1 = currency_one
+            #     accName_2 = currency_against
+            #     if trade.direction == DIRECTION_LONG:
+            #         strategy.posDict[str(posName)] += trade.volume
+            #         strategy.accountDict[str(accName_1)] += trade.volume * trade.price
+            #         strategy.accountDict[str(accName_2)] -= trade.volume
+            #     else:
+            #         strategy.posDict[str(posName)] += trade.volume
+            #         strategy.accountDict[str(accName_1)] -= trade.volume 
+            #         strategy.accountDict[str(accName_2)] += trade.volume / trade.price
 
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
             # 保存策略持仓到数据库
-            # self.saveSyncData(strategy)
+            self.saveSyncData(strategy)
     #----------------------------------
     def processPositionEvent(self, event):
-        pos = event.dict_['data']
-        if self.strategyDict:
-            for strategy in self.strategyDict.values():
-                if pos.direction == DIRECTION_LONG:
-                    posName = pos.vtSymbol.replace(".","_") + "_LONG"
-                    strategy.posDict[str(posName)] = pos.position
-                    strategy.eveningDict[posName] = pos.position - pos.frozen
-                    strategy.bondDict[posName]=pos.frozen
-                else:
-                    posName2 = pos.vtSymbol.replace(".","_") + "_SHORT"
-                    strategy.posDict[str(posName2)] = pos.position
-                    strategy.eveningDict[posName2] = pos.position - pos.frozen
-                    strategy.bondDict[posName2]=pos.frozen
+        pass
+    #     pos = event.dict_['data']
+    #     if self.strategyDict:
+    #         for strategy in self.strategyDict.values():
 
-            # 保存策略持仓到数据库
-            self.saveSyncData(strategy)  
+    #             if pos.exchange == 'OKEX':
+    #                 if pos.direction == DIRECTION_LONG:
+    #                     posName = pos.vtSymbol.replace(".","_") + "_LONG"
+    #                     strategy.posDict[str(posName)] = pos.position
+    #                     strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+    #                     strategy.bondDict[str(posName)]=pos.frozen
+    #                 else:
+    #                     posName2 = pos.vtSymbol.replace(".","_") + "_SHORT"
+    #                     strategy.posDict[str(posName2)] = pos.position
+    #                     strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+    #                     strategy.bondDict[str(posName2)]=pos.frozen
+
+    #             else:
+    #                 posName = pos.vtSymbol.replace(".","_")
+    #                 strategy.posDict[str(posName)] = pos.position
+    #                 strategy.availableDict[str(posName)] = pos.available
+    #                 strategy.bondDict[str(posName)]=pos.frozen
+
+    #             # 保存策略持仓到数据库
+    #             self.saveSyncData(strategy)  
 
     #------------------------------------------------------
     def registerEvent(self):
@@ -366,7 +401,7 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_TICK, self.processTickEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
-        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
+        # self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
 
 
     #----------------------------------------------------------------------
@@ -427,7 +462,6 @@ class CtaEngine(object):
             vtSymbolset=setting['vtSymbol']
             vtSymbolList=vtSymbolset.split(',')
 
-            print("%s策略交易的期货品种:"%name,vtSymbolList)
         except Exception as e:
             self.writeCtaLog('载入策略出错：%s' %e)
             return
@@ -449,7 +483,7 @@ class CtaEngine(object):
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
             for vtSymbol in vtSymbolList :
-                # vtSymbol = vtSymbol[:-5]
+
                 # 保存Tick映射关系
                 if vtSymbol in self.tickStrategyDict:
                     l = self.tickStrategyDict[vtSymbol]
@@ -479,7 +513,7 @@ class CtaEngine(object):
                 
                 self.mainEngine.subscribe(req, contract.gatewayName)
             else:
-                self.writeCtaLog(u'%s的交易合约%s无法找到' %(strategy.className, vtSymbol))
+                self.writeCtaLog(u'策略%s的交易合约%s无法找到' %(strategy.className, vtSymbol))
 
     #----------------------------------------------------------------------
     def initStrategy(self, name):
@@ -631,7 +665,7 @@ class CtaEngine(object):
             strategy.inited = False
 
             # 发出日志
-            content = '\n'.join(['策略%s触发异常已停止' %strategy.className,
+            content = '\n'.join(['策略%s：触发异常已停止' %strategy.name,
                                 traceback.format_exc()])
             self.writeCtaLog(content)
 
@@ -649,7 +683,7 @@ class CtaEngine(object):
         self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.className,
                                     d, flt, True)
                 
-        content = u'策略%s同步数据保存成功\n当前持仓%s\n可平仓量%s\n保证金%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
+        content = u'策略%s: 同步数据保存成功\n当前持仓%s\n可平仓量%s\n保证金%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
         self.writeCtaLog(content)
 
     #----------------------------------------------------------------------
@@ -661,7 +695,7 @@ class CtaEngine(object):
         syncData = self.mainEngine.dbQuery(POSITION_DB_NAME, strategy.className, flt)
         
         if not syncData:
-            self.writeCtaLog(u'策略%s，当前没有持仓信息'%strategy.className)
+            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.className)
             return
         
         d = syncData[0]
@@ -685,11 +719,11 @@ class CtaEngine(object):
             'totalVolume':order.totalVolume,
             'status':order.status,
             'createTime':order.orderTime,
-            'orderby_strategy':order.bystrategy
+            'orderby':order.bystrategy
             }
 
         self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.className, flt)
-        content = u'策略:%s 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
+        content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
         
     #----------------------------------------------------------------------
@@ -718,6 +752,7 @@ class CtaEngine(object):
                 self.cancelOrder(orderID)
 
     def cancelAllStopOrder(self,name):
+        """撤销所有停止单"""
         s= self.strategyOrderDict[name]
         for orderID in list(s):
             if STOPORDERPREFIX in orderID:
@@ -733,7 +768,6 @@ class CtaEngine(object):
                 return contract.priceTick
             return 0
 
-
     #--------------------------------------------------------------
     def loadHistoryPrice(self, strategy):
         """读取历史数据"""
@@ -741,10 +775,13 @@ class CtaEngine(object):
         pass
 
     def initPosition(self,strategy):
+        # flt = {'name': strategy.className}
+        # self.mainEngine.dbDelete(POSITION_DB_NAME, strategy.className,flt)
+
         for i in range(len(strategy.symbolList)):
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
         
-        for vtSymbol in strategy.symbolList:
-            contract = self.mainEngine.getContract(vtSymbol)
-            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
+        # for vtSymbol in strategy.symbolList:
+        #     contract = self.mainEngine.getContract(vtSymbol)
+        #     self.mainEngine.initPosition(vtSymbol, contract.gatewayName)

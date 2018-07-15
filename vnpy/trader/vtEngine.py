@@ -58,22 +58,41 @@ class MainEngine(object):
     def addGateway(self, gatewayModule):
         """添加底层接口"""
         gatewayName = gatewayModule.gatewayName
+        print(gatewayName)
         
         # 创建接口实例
-        self.gatewayDict[gatewayName] = gatewayModule.gatewayClass(self.eventEngine, 
-                                                                   gatewayName)
-        
-        # 设置接口轮询
-        if gatewayModule.gatewayQryEnabled:
-            self.gatewayDict[gatewayName].setQryEnabled(gatewayModule.gatewayQryEnabled)
-                
-        # 保存接口详细信息
-        d = {
-            'gatewayName': gatewayModule.gatewayName,
-            'gatewayDisplayName': gatewayModule.gatewayDisplayName,
-            'gatewayType': gatewayModule.gatewayType
-        }
-        self.gatewayDetailList.append(d)
+        if type(gatewayName) == list:
+            for i in range(len(gatewayName)):
+                print(gatewayName[i],  gatewayModule.gatewayDisplayName[i])
+                self.gatewayDict[gatewayName[i]] = gatewayModule.gatewayClass(self.eventEngine, 
+                                                                    gatewayName[i])
+            
+                # 设置接口轮询
+                if gatewayModule.gatewayQryEnabled:
+                    self.gatewayDict[gatewayName[i]].setQryEnabled(gatewayModule.gatewayQryEnabled)
+                        
+                # 保存接口详细信息
+                d = {
+                    'gatewayName': gatewayModule.gatewayName[i],
+                    'gatewayDisplayName': gatewayModule.gatewayDisplayName[i],
+                    'gatewayType': gatewayModule.gatewayType
+                }
+                self.gatewayDetailList.append(d)
+        else:
+            self.gatewayDict[gatewayName] = gatewayModule.gatewayClass(self.eventEngine, 
+                                                                    gatewayName)
+            
+            # 设置接口轮询
+            if gatewayModule.gatewayQryEnabled:
+                self.gatewayDict[gatewayName].setQryEnabled(gatewayModule.gatewayQryEnabled)
+                    
+            # 保存接口详细信息
+            d = {
+                'gatewayName': gatewayModule.gatewayName,
+                'gatewayDisplayName': gatewayModule.gatewayDisplayName,
+                'gatewayType': gatewayModule.gatewayType
+            }
+            self.gatewayDetailList.append(d)
         
     #----------------------------------------------------------------------
     def addApp(self, appModule):
@@ -261,7 +280,17 @@ class MainEngine(object):
             collection.replace_one(flt, d, upsert)
         else:
             self.writeLog(text.DATA_UPDATE_FAILED)        
-            
+    #----------------------------------------------------------------------
+    def dbDelete(self, dbName, collectionName, flt):
+        """从数据库中删除数据，flt是过滤条件"""
+        if self.dbClient:
+            db = self.dbClient[dbName]
+            collection = db[collectionName]
+            collection.delete_one(flt)
+            print("c=============shanchu================")
+        else:
+            self.writeLog(text.DATA_DELETE_FAILED)     
+
     #----------------------------------------------------------------------
     def dbLogging(self, event):
         """向MongoDB中插入日志"""
@@ -373,6 +402,12 @@ class DataEngine(object):
         """Constructor"""
         self.eventEngine = eventEngine
         
+        self.tradeDict = {}
+        self.accountDict = {}
+        self.positionDict= {}
+        self.logList = []
+        self.errorList = []
+        self.tickDict = {}
         # 保存合约详细信息的字典
         self.contractDict = {}
         
@@ -395,11 +430,21 @@ class DataEngine(object):
     #----------------------------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
+        self.eventEngine.register(EVENT_TICK, self.processTickEvent)
         self.eventEngine.register(EVENT_CONTRACT, self.processContractEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
+        self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
+        self.eventEngine.register(EVENT_LOG, self.processLogEvent)
+        self.eventEngine.register(EVENT_ERROR, self.processErrorEvent)
     
+    #----------------------------------------------------------------------
+    def processTickEvent(self, event):
+        """处理行情事件"""
+        tick = event.dict_['data']
+        self.tickDict[tick.vtSymbol] = tick    
+
     #----------------------------------------------------------------------
     def processContractEvent(self, event):
         """处理合约事件"""
@@ -429,6 +474,7 @@ class DataEngine(object):
         """处理成交事件"""
         trade = event.dict_['data']
     
+        self.tradeDict[trade.vtTradeID] = trade    
         # 更新到持仓细节中
         detail = self.getPositionDetail(trade.vtSymbol)
         detail.updateTrade(trade)        
@@ -437,11 +483,31 @@ class DataEngine(object):
     def processPositionEvent(self, event):
         """处理持仓事件"""
         pos = event.dict_['data']
-    
+        self.positionDict[pos.vtPositionName] = pos
+
         # 更新到持仓细节中
         detail = self.getPositionDetail(pos.vtSymbol)
         detail.updatePosition(pos)                
-        
+    
+    #----------------------------------------------------------------------
+    def processAccountEvent(self, event):
+        """处理账户事件"""
+        account = event.dict_['data']
+        if account.vtAccountID:
+            self.accountDict[account.vtAccountID] = account
+        else:
+            self.accountDict[account.coinSymbol] = account
+    #----------------------------------------------------------------------
+    def processLogEvent(self, event):
+        """处理日志事件"""
+        log = event.dict_['data']
+        self.logList.append(log)
+    
+    #----------------------------------------------------------------------
+    def processErrorEvent(self, event):
+        """处理错误事件"""
+        error = event.dict_['data']
+        self.errorList.append(error)
     #----------------------------------------------------------------------
     def getContract(self, vtSymbol):
         """查询合约对象"""

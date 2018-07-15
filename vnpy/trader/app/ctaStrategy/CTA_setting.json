@@ -2,7 +2,11 @@
     {
         "name": "TEST",
         "className": "TestStrategy",
-        "vtSymbol": "eth_this_week.OKEX,eth_next_week.OKEX"
+        "vtSymbol": "eth_this_week.OKEX,eth_quarter.OKEX"
+    },
+    {
+        "name": "BBBB",
+        "className": "BBBBStrategy",
+        "vtSymbol": "bch_this_week.OKEX,bch_quarter.OKEX"
     }
-
 ]

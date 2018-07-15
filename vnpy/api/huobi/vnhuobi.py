@@ -16,6 +16,11 @@ from multiprocessing.dummy import Pool
 from queue import Empty, Queue
 from threading import Thread
 from time import sleep
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
 import requests
 
@@ -26,6 +31,10 @@ TIMEOUT = 10
 HUOBI_API_HOST = "api.huobi.pro"
 HADAX_API_HOST = "api.hadax.com"
 LANG = 'zh-CN'
+try:
+    PRIVATE_KEY =open("","rb").read() # 添加huobi private key
+except:
+    PRIVATE_KEY =""
 
 DEFAULT_GET_HEADERS = {
     "Content-type": "application/x-www-form-urlencoded",
@@ -55,10 +64,44 @@ def createSign(params, method, host, path, secretKey):
     secretKey = secretKey.encode(encoding='UTF8')
 
     digest = hmac.new(secretKey, payload, digestmod=hashlib.sha256).digest()
-
+    #     print(digest)
     signature = base64.b64encode(digest)
     signature = signature.decode()
+    #     print(signature)
     return signature
+
+
+def bit_to_bytes(a):
+    return (a + 7) // 8
+
+
+def createPrivateSignature(signature):
+    data = signature.encode(encoding="UTF8")
+    print(data)
+    # Read the pri_key_file
+    digest = hashes.Hash(hashes.SHA256(), default_backend())
+
+    digest.update(data)
+    if not PRIVATE_KEY:
+        print("Please attach your huobi private key")
+        return
+    skey = load_pem_private_key(PRIVATE_KEY, password=None, backend=default_backend())
+
+    sig_data = skey.sign(data, ec.ECDSA(hashes.SHA256()))
+    sig_r, sig_s = decode_dss_signature(sig_data)
+
+    sig_bytes = b''
+
+    key_size_in_bytes = bit_to_bytes(skey.public_key().key_size)
+    sig_r_bytes = sig_r.to_bytes(key_size_in_bytes, "big")
+    sig_bytes += sig_r_bytes
+    # print("ECDSA signature R: {:s}".format(sig_r_bytes.hex()))
+    sig_s_bytes = sig_s.to_bytes(key_size_in_bytes, "big")
+    sig_bytes += sig_s_bytes
+    # print("ECDSA signature S: {:s}".format(sig_s_bytes.hex()))
+    # print("ECDSA signautre: {:s}".format(sig_bytes.hex()))
+    # print("ECDSA signautre: " + str(base64.b64encode(sig_bytes).decode()))
+    return base64.b64encode(sig_bytes).decode()
 
 
 ########################################################################
@@ -75,7 +118,7 @@ class TradeApi(object):
         """Constructor"""
         self.accessKey = ''
         self.secretKey = ''
-
+        self.privateKey = ''
         self.mode = self.ASYNC_MODE
         self.active = False  # API工作状态
         self.reqid = 0  # 请求编号
@@ -124,6 +167,8 @@ class TradeApi(object):
 
         try:
             response = requests.get(url, postdata, headers=headers, timeout=TIMEOUT)
+            # print("httpGet")
+            # print(response.text)
             if response.status_code == 200:
                 return True, response.json()
             else:
@@ -139,6 +184,7 @@ class TradeApi(object):
 
         try:
             response = requests.post(url, postdata, headers=headers, timeout=TIMEOUT)
+            # print("httpPost")
             if response.status_code == 200:
                 return True, response.json()
             else:
@@ -163,10 +209,11 @@ class TradeApi(object):
     def apiGet(self, path, params):
         """API GET"""
         method = 'GET'
+        # print("apiGet")
 
         params.update(self.generateSignParams())
         params['Signature'] = createSign(params, method, self.hostname, path, self.secretKey)
-
+        params['PrivateSignature'] = createPrivateSignature(params["Signature"])
         url = self.hosturl + path
 
         return self.httpGet(url, params)
@@ -177,8 +224,8 @@ class TradeApi(object):
         method = 'POST'
 
         signParams = self.generateSignParams()
-        signParams['Signature'] = createSign(signParams, method, self.hostname, path, self.secretKey)
-
+        params['Signature'] = createSign(signParams, method, self.hostname, path, self.secretKey)
+        params['PrivateSignature'] = createPrivateSignature(params['Signature'])
         url = self.hosturl + path + '?' + urllib.parse.urlencode(signParams)
 
         return self.httpPost(url, params)
@@ -188,12 +235,14 @@ class TradeApi(object):
         """添加请求"""
         # 异步模式
         if self.mode == self.ASYNC_MODE:
+            # print("异步模式启动")
             self.reqid += 1
             req = (path, params, func, callback, self.reqid)
             self.queue.put(req)
             return self.reqid
         # 同步模式
         else:
+            # print("同步模式启动")
             return func(path, params)
 
     # ----------------------------------------------------------------------
@@ -201,7 +250,8 @@ class TradeApi(object):
         """处理请求"""
         path, params, func, callback, reqid = req
         result, data = func(path, params)
-
+        # print("处理请求")
+        print(data)
         if result:
             if data['status'] == 'ok':
                 callback(data['data'], reqid)
@@ -219,8 +269,10 @@ class TradeApi(object):
         """连续运行"""
         while self.active:
             try:
+                # print("run")
                 req = self.queue.get(timeout=1)
                 self.processReq(req)
+
             except Empty:
                 pass
 
@@ -271,7 +323,7 @@ class TradeApi(object):
         params = {}
         func = self.apiGet
         callback = self.onGetAccounts
-
+        # print("*****getAccounts****")
         return self.addReq(path, params, func, callback)
 
         # ----------------------------------------------------------------------
@@ -432,6 +484,7 @@ class TradeApi(object):
 
     def onError(self, msg, reqid):
         """错误回调"""
+        # print("***onError***")
         print(msg, reqid)
 
     # ----------------------------------------------------------------------
@@ -456,6 +509,7 @@ class TradeApi(object):
 
     def onGetAccounts(self, data, reqid):
         """查询账户回调"""
+        # print("***onGetAccounts***")
         print(reqid, data)
 
         # ----------------------------------------------------------------------
@@ -493,6 +547,8 @@ class TradeApi(object):
 
     def onPlaceOrder(self, data, reqid):
         """委托回调"""
+        # 大叔
+        self.cancelOrder(data)
         print(reqid, data)
 
     # ----------------------------------------------------------------------
@@ -506,7 +562,7 @@ class TradeApi(object):
         """批量撤单回调"""
         print(reqid, data)
 
-    ########################################################################
+        ########################################################################
 
 
 class DataApi(object):
@@ -684,3 +740,15 @@ class DataApi(object):
     def onMarketDetail(self, data):
         """市场细节推送"""
         print(data)
+
+
+if __name__ == "__main__":
+    huobi = TradeApi()
+    # huobi.init("huobi", "a52fafe7-39fbf0c7-018abde9-795a5", "cce4ee39-cccd1a7b-6ff76056-ad6bc",mode="sync")
+    huobi.init("huobi", "a52fafe7-39fbf0c7-018abde9-795a5", "cce4ee39-cccd1a7b-6ff76056-ad6bc",mode="async")
+    huobi.start()
+    huobi.getSymbols()
+    huobi.getTimestamp()
+    # huobi.getCurrencys()
+    huobi.getAccounts()
+

@@ -40,7 +40,9 @@ class VtTickData(VtBaseData):
         self.time = EMPTY_STRING                # 时间 11:20:56.5
         self.date = EMPTY_STRING                # 日期 20151009
         self.datetime = None                    # python的datetime时间对象
-        
+        self.type = EMPTY_STRING                # 主动买或主动卖
+        self.volumeChange = EMPTY_INT
+        self.localTime = EMPTY_STRING
         # 常规行情
         self.openPrice = EMPTY_FLOAT            # 今日开盘价
         self.highPrice = EMPTY_FLOAT            # 今日最高价
@@ -166,7 +168,8 @@ class VtOrderData(VtBaseData):
         self.cancelTime = EMPTY_STRING          # 撤单时间
         self.exchangeOrderID = EMPTY_STRING     # 
         self.bystrategy = EMPTY_STRING
-        
+        self.deliverTime = EMPTY_STRING
+
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号
         self.sessionID = EMPTY_INT              # 连接编号
@@ -189,14 +192,16 @@ class VtPositionData(VtBaseData):
         self.contractType = EMPTY_STRING
         # 持仓相关
         self.direction = EMPTY_STRING           # 持仓方向
-        self.position = EMPTY_FLOAT               # 持仓量
-        self.frozen = EMPTY_FLOAT                # 冻结数量
+        self.position = EMPTY_FLOAT             # 持仓量
+        self.frozen = EMPTY_FLOAT               # 冻结数量
+        self.available = EMPTY_FLOAT            # 可用持仓 （现货）
         self.price = EMPTY_FLOAT                # 持仓均价
         self.priceType = EMPTY_STRING
         self.vtPositionName = EMPTY_STRING      # 持仓在vt系统中的唯一代码，通常是vtSymbol.方向
-        self.ydPosition = EMPTY_FLOAT             # 昨持仓
+        self.ydPosition = EMPTY_FLOAT           # 昨持仓
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
         self.amount = EMPTY_FLOAT
+        self.bystrategy = EMPTY_STRING
 
 
 ########################################################################
@@ -222,7 +227,7 @@ class VtAccountData(VtBaseData):
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
 
         # OKEX 数据
-        self.coinsymbol = EMPTY_STRING 
+        self.coinSymbol = EMPTY_STRING 
         self.risk_rate = EMPTY_FLOAT 
 
         
@@ -315,11 +320,11 @@ class VtOrderReq(object):
         self.price = EMPTY_FLOAT                # 价格
         self.contractType = EMPTY_STRING
         self.volume = EMPTY_FLOAT               # 数量
-        self.bystrategy = EMPTY_STRING
 
         self.priceType = EMPTY_STRING           # 价格类型
         self.direction = EMPTY_STRING           # 买卖
         self.offset = EMPTY_STRING              # 开平
+        self.bystrategy =EMPTY_STRING
         
         # 以下为IB相关
         self.productClass = EMPTY_UNICODE       # 合约类型
@@ -341,6 +346,7 @@ class VtCancelOrderReq(object):
         self.symbol = EMPTY_STRING              # 代码
         self.exchange = EMPTY_STRING            # 交易所
         self.vtSymbol = EMPTY_STRING            # VT合约代码
+        self.contractType = EMPTY_STRING        # 
         
         # 以下字段主要和CTP、LTS类接口相关
         self.orderID = EMPTY_STRING             # 报单号

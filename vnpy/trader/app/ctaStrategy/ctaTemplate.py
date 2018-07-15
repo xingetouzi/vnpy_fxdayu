@@ -113,36 +113,36 @@ class CtaTemplate(object):
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
-    def buy(self, vtSymbol, price, volume, matchPrice="0", isFuture = "0", stop=False):
+    def buy(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """买开"""
-        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, matchPrice, isFuture, stop)
+        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, stop)
 
     # ----------------------------------------------------------------------
-    def sell(self, vtSymbol, price, volume, matchPrice="0", isFuture = "0", stop=False):
+    def sell(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """卖平"""
-        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, matchPrice, isFuture, stop)
+        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, stop)
 
         # ----------------------------------------------------------------------
 
-    def short(self, vtSymbol, price, volume, matchPrice="0", isFuture = "0", stop=False):
+    def short(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """卖开"""
-        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, matchPrice, isFuture, stop)
+        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, stop)
 
         # ----------------------------------------------------------------------
 
-    def cover(self, vtSymbol, price, volume, matchPrice="0", isFuture = "0", stop=False):
+    def cover(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """买平"""
-        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, matchPrice, isFuture, stop)
+        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, stop)
 
     # ----------------------------------------------------------------------
-    def sendOrder(self, orderType, vtSymbol, price, volume, matchPrice="0", isFuture = "0", stop=False):
+    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """发送委托"""
         if self.trading:
             # 如果stop为True，则意味着发本地停止单
             if stop:
-                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, matchPrice, isFuture, self)
+                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, marketPrice, self)
             else:
-                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, matchPrice, isFuture, self)
+                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, marketPrice, self)
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
@@ -409,11 +409,13 @@ class BarGenerator(object):
         self.bar.datetime = tick.datetime
         self.bar.openInterest = tick.openInterest
 
-        if self.lastTick:
-            self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量
+        # if self.lastTick:
+            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量
+        if tick.volumeChange:
+            self.bar.volume += tick.lastVolume
 
         # 缓存Tick
-        self.lastTick = tick
+        # self.lastTick = tick
 
     # ----------------------------------------------------------------------
     def updateBar(self, bar):

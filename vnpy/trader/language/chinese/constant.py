@@ -69,9 +69,6 @@ EXCHANGE_UNKNOWN = 'UNKNOWN'# 未知交易所
 EXCHANGE_NONE = ''          # 空交易所
 EXCHANGE_HKEX = 'HKEX'      # 港交所
 EXCHANGE_HKFE = 'HKFE'      # 香港期货交易所
-EXCHANGE_OKEX = 'OKEX'      # OKEX
-EXCHANGE_HUOBI = 'HUOBI'    # 火币
-
 
 EXCHANGE_SMART = 'SMART'       # IB智能路由（股票、期权）
 EXCHANGE_NYMEX = 'NYMEX'       # IB 期货
@@ -86,6 +83,7 @@ EXCHANGE_OANDA = 'OANDA'       # OANDA外汇做市商
 EXCHANGE_OKCOIN = 'OKCOIN'     # OKCOIN比特币交易所
 EXCHANGE_OKEX = 'OKEX'         # OKEX比特币交易所
 EXCHANGE_HUOBI = 'HUOBI'       # 火币比特币交易所
+EXCHANGE_BINANCE ='BINANCE'    # 币安比特币交易所
 EXCHANGE_LHANG = 'LHANG'       # 链行比特币交易所
 
 # 货币类型

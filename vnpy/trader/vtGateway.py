@@ -80,9 +80,10 @@ class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
-        event2.dict_['data'] = account
-        self.eventEngine.put(event2)
+        if account.vtAccountID:
+            event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
+            event2.dict_['data'] = account
+            self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     def onError(self, error):
@@ -145,11 +146,7 @@ class VtGateway(object):
         """关闭"""
         pass
     
-    # def createOrderDetail(self,order):
-    #     """在下单时，往数据库插入订单信息"""
-    #     event1 = Event(type_=EVENT_ORDER)
-    #     event1.dict_['data'] = order
-    #     self.eventEngine.put(event1)
+
     
     
     

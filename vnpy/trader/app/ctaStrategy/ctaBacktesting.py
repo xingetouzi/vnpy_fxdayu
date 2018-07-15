@@ -392,6 +392,7 @@ class BacktestingEngine(object):
                     trade.offset = order.offset
                     longposName = order.vtSymbol.replace('.','_')+"_LONG"
                     shortposName = order.vtSymbol.replace('.','_')+"_SHORT"
+                    spotPosName = order.vtSymbol.replace('.','_')
                     # 以买入为例：
                     # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
                     # 2. 假设在上一根K线结束(也是当前K线开始)的时刻，策略发出的委托为限价105
@@ -408,6 +409,13 @@ class BacktestingEngine(object):
                     elif sellCross and trade.offset == OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[longposName] -= order.totalVolume
+
+                    elif buyCross and trade.offset == OFFSET_NONE:
+                        trade.price = min(order.price, buyBestCrossPrice)
+                        self.strategy.posDict[spotPosName] += order.totalVolume
+                    elif sellCross and trade.offset == OFFSET_NONE:
+                        trade.price = max(order.price, sellBestCrossPrice)
+                        self.strategy.posDict[spotPosName] -= order.totalVolume
                     
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%H:%M:%S')
@@ -466,6 +474,7 @@ class BacktestingEngine(object):
 
                     longposName = so.vtSymbol.replace('.','_')+"_LONG"
                     shortposName = so.vtSymbol.replace('.','_')+"_SHORT"
+                    spotPosName = order.vtSymbol.replace('.','_')
 
                     if buyCross and so.offset == OFFSET_OPEN: # 买开
                         self.strategy.posDict[longposName] += so.volume
@@ -478,6 +487,13 @@ class BacktestingEngine(object):
                         trade.price = min(bestCrossPrice, so.price)
                     elif sellCross and so.offset == OFFSET_CLOSE: # 卖平
                         self.strategy.posDict[longposName] -= so.volume
+                        trade.price = min(bestCrossPrice, so.price)
+
+                    elif buyCross and so.offset == OFFSET_NONE: 
+                        self.strategy.posDict[shortposName] += so.volume
+                        trade.price = max(bestCrossPrice, so.price)
+                    elif sellCross and so.offset == OFFSET_NONE: 
+                        self.strategy.posDict[shortposName] -= so.volume
                         trade.price = min(bestCrossPrice, so.price)
                     
                     self.limitOrderCount += 1
@@ -520,20 +536,19 @@ class BacktestingEngine(object):
     #------------------------------------------------      
 
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, matchPrice, isFuture, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
         """发单"""
         self.limitOrderCount += 1
         orderID = str(self.limitOrderCount)
         
         order = VtOrderData()
         order.vtSymbol = vtSymbol
-        if isFuture:
-            order.contractType = vtSymbol[4:-5]
         order.price = self.roundToPriceTick(price)
         order.totalVolume = volume
         order.orderID = orderID
         order.vtOrderID = orderID
         order.orderTime = self.dt.strftime('%H:%M:%S')
+        order.priceType = marketPrice
         
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -569,17 +584,15 @@ class BacktestingEngine(object):
             del self.workingLimitOrderDict[vtOrderID]
         
     #----------------------------------------------------------------------
-    def sendStopOrder(self, vtSymbol, orderType, price, volume, matchPrice, isFuture, strategy):
+    def sendStopOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
         """发停止单（本地实现）"""
         self.stopOrderCount += 1
         stopOrderID = STOPORDERPREFIX + str(self.stopOrderCount)
         
         so = StopOrder()
         so.vtSymbol = vtSymbol
-        if isFuture:
-            so.contractType = vtSymbol[4:-5]
         so.orderType = orderType
-        so.matchPrice = matchPrice
+        so.marketPrice = marketPrice
         so.price = self.roundToPriceTick(price)
         so.volume = volume
         so.strategy = strategy
@@ -670,6 +683,14 @@ class BacktestingEngine(object):
         for i in range(len(strategy.symbolList)):
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+            strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+            strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+
+    def initHolding(self,strategy)
+        for i in range(len(strategy.symbolList)):
+            strategy.posDict[strategy.symbolList[i].replace(".","_")] = 0
 
     #------------------------------------------------
     # 结果计算相关

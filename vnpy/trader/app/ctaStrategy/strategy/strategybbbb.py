@@ -11,10 +11,10 @@ import talib as ta
 import pandas as pd
 from datetime import datetime
 
-class TestStrategy(CtaTemplate):
+class BBBBStrategy(CtaTemplate):
     
-    className = 'TestStrategy'      #策略和仓位数据表的名称
-    author = 'Patrick'
+    className = 'BBBBStrategy'      #策略和仓位数据表的名称
+    author = 'Patrick2'
 
     # 策略交易标的
     symbolList = []                 # 初始化品种列表为空
@@ -55,7 +55,7 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
         """Constructor"""
-        super(TestStrategy, self).__init__(ctaEngine, setting)
+        super(BBBBStrategy, self).__init__(ctaEngine, setting)
         vtSymbolset=setting['vtSymbol']        # 读取交易品种
         vtSymbolList=vtSymbolset.split(',')    
         self.activeSymbol = vtSymbolList[0]    # 主动品种
@@ -85,28 +85,28 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：初始化' % self.className)
+        self.writeCtaLog(u'策略%s初始化' % self.className)
         # 获取初始持仓， 实盘的持仓从交易所获取，回测的持仓初始化为 0
-        self.ctaEngine.initPosition(self)
+        self.initPosition(self)
 
         # 载入1分钟历史数据，并采用回放计算的方式初始化策略参数
-        # self.get_history = HistoryData()
-        # pastbar = self.get_history.future_bar(self.activeSymbol[:3]+"_usd",
-        #                     type = "1min", 
-        #                     contract_type = self.activeSymbol[4:-5],
-        #                     size = self.initbars)
+        self.get_history = HistoryData()
+        pastbar = self.get_history.future_bar(self.activeSymbol[:3]+"_usd",
+                            type = "1min", 
+                            contract_type = self.activeSymbol[4:-5],
+                            size = self.initbars)
 
-        # pastbar2 = self.get_history.future_bar(self.passiveSymbol[:3]+"_usd",
-        #                 type = "1min", 
-        #                 contract_type = self.passiveSymbol[4:-5],
-        #                 size = self.initbars)
+        pastbar2 = self.get_history.future_bar(self.passiveSymbol[:3]+"_usd",
+                        type = "1min", 
+                        contract_type = self.passiveSymbol[4:-5],
+                        size = self.initbars)
         
-        # for i in range(len(pastbar['close'])):    # 计算历史数据的价差，并保存到缓存
-        #     spread = pastbar['close'][i] - pastbar2['close'][i]
-        #     self.spreadBuffer.append(spread)
+        for i in range(len(pastbar['close'])):    # 计算历史数据的价差，并保存到缓存
+            spread = pastbar['close'][i] - pastbar2['close'][i]
+            self.spreadBuffer.append(spread)
 
-        # self.amDict[self.activeSymbol].updateBar(histbar = pastbar)    # 更新数据矩阵
-        # self.amDict[self.passiveSymbol].updateBar(histbar = pastbar2)
+        self.amDict[self.activeSymbol].updateBar(histbar = pastbar)    # 更新数据矩阵
+        self.amDict[self.passiveSymbol].updateBar(histbar = pastbar2)
 
         # self.onBar()  # 是否直接推送到onBar
         self.putEvent()
@@ -116,8 +116,8 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：启动' % self.className)
-        # self.ctaEngine.loadSyncData(self)    # 加载当前正确的持仓
+        self.writeCtaLog(u'策略%s启动' % self.className)
+        self.loadSyncData(self)    # 加载当前正确的持仓
         self.putEvent()
         '''
         在点击启动策略时触发,此时的ctaEngine会将下单逻辑改为True,此时开始推送到onbar的数据会触发下单.
@@ -125,7 +125,7 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：停止' % self.className)
+        self.writeCtaLog(u'策略%s停止' % self.className)
         self.putEvent()
 
     # ----------------------------------------------------------------------
@@ -133,23 +133,23 @@ class TestStrategy(CtaTemplate):
         """收到行情TICK推送"""
 
         self.bgDict[tick.vtSymbol].updateTick(tick)
-        # print('stg on tick',tick.localTime,'*******',tick.lastVolume,"----",tick.volumeChange)
+        # print('stg on tick',datetime.now(),',',tick.datetime)
         
-        # self.flag +=1
-        # if self.flag == 30:
-        #     self.buy(self.passiveSymbol,
-        #                     self.amDict[self.passiveSymbol].close[-1] -10,
-        #                     volume = self.posSize,
-        #                     marketPrice=0)
-        # elif self.flag ==60:
-        #     self.buy(self.passiveSymbol,    
-        #                     self.amDict[self.passiveSymbol].close[-1] -10,
-        #                     volume = self.posSize,
-        #                     marketPrice=0)
+        self.flag +=1
+        if self.flag == 30:
+            self.buy(self.activeSymbol,
+                            self.amDict[self.passiveSymbol].close[-1] -10,
+                            volume = self.posSize,
+                            matchPrice=0)
+        elif self.flag ==60:
+            self.short(self.passiveSymbol,    
+                            self.amDict[self.passiveSymbol].close[-1] +10,
+                            volume = self.posSize,
+                            matchPrice=0)
 
-        # elif self.flag == 90:
-        #     self.flag=-30
-        #     self.cancelAll()
+        elif self.flag == 90:
+            self.flag=-30
+            self.cancelAll()
 
         '''
         在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
@@ -159,38 +159,35 @@ class TestStrategy(CtaTemplate):
     def onBar(self,bar):
         """收到1分钟K线推送"""
         self.amDict[bar.vtSymbol].updateBar(bar)
-
-        if self.flag:
-            self.cancelAll()
-            self.flag = 0
-            return
-        if bar.vtSymbol == self.passiveSymbol:
-            print("stg onbarrrrrrrrrrrrrrrrrrrrrrr")
-            print(self.posDict[self.psLongpos],1)
-            self.buy(self.passiveSymbol,
-                            self.amDict[self.passiveSymbol].close[-1] -20,
-                            volume = self.posSize,
-                            marketPrice=0)
-            print(self.posDict[self.psLongpos],2)
-            # self.short(self.passiveSymbol,
-            #                   bar.close+20,
-            #                   volume = 1,
-            #                   marketPrice = 0)
-            # self.short(self.activeSymbol,
-            #                   bar.close+20,
-            #                   volume = self.posSize,
-            #                   marketPrice = 0)
-            # self.buy(self.activeSymbol,
-            #                 bar.close-20,
-            #                 volume = 1,
-            #                 marketPrice=0)
-            # self.cover(self.activeSymbol,
-            #                 752.5,
-            #                 volume = self.posSize,
-            #                 marketPrice=1)
-            self.flag +=1
-        else:
-            return
+        # if self.flag:
+        #     self.cancelAll()
+        #     self.flag = 0
+        #     return
+        # if bar.vtSymbol == self.passiveSymbol:
+        #     print("stg onbarrrrrrrrrrrrrrrrrrrrrrr")
+        #     # self.buy(self.passiveSymbol,
+        #     #                 self.amDict[self.passiveSymbol].close[-1] -20,
+        #     #                 volume = self.posSize,
+        #     #                 contractType = "next_week", matchPrice=0)
+        #     # self.short(self.passiveSymbol,
+        #     #                   bar.close+20,
+        #     #                   volume = self.posSize,
+        #     #                   isFuture = 1, matchPrice = 0)
+        #     # self.short(self.activeSymbol,
+        #     #                   bar.close+20,
+        #     #                   volume = self.posSize,
+        #     #                   isFuture = 1, matchPrice = 0)
+        #     # self.sell(self.passiveSymbol,
+        #     #                 654.12,
+        #     #                 volume = self.posSize,
+        #     #                 stop = False,matchPrice=1)
+        #     # self.cover(self.passiveSymbol,
+        #     #                 752.5,
+        #     #                 volume = self.posSize,
+        #     #                 isFuture = 1,matchPrice=1)
+        #     # self.flag +=1
+        # else:
+        #     return
 
 
         self.putEvent()    

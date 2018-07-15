@@ -91,7 +91,7 @@ class HuobiGateway(VtGateway):
     def subscribe(self, subscribeReq):
         """订阅行情"""
         pass
-        #self.dataApi.subscribe(subscribeReq)
+        self.dataApi.subscribe(subscribeReq)
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -182,7 +182,7 @@ class HuobiDataApi(DataApi):
     def connect(self, exchange, symbols):
         """连接服务器"""
         if exchange == 'huobi':
-            url = 'wss://api.huobi.pro/ws'
+            url = 'wss://api.huobi.br.com/ws'
         else:
             url = 'wss://api.hadax.com/ws'
             
@@ -222,7 +222,7 @@ class HuobiDataApi(DataApi):
 
         self.subscribeMarketDepth(symbol)
         self.subscribeMarketDetail(symbol)
-        #self.subscribeTradeDetail(symbol)
+        self.subscribeTradeDetail(symbol)
 
     #----------------------------------------------------------------------
     def writeLog(self, content):
@@ -243,7 +243,23 @@ class HuobiDataApi(DataApi):
 
     #----------------------------------------------------------------------
     def onMarketDepth(self, data):
-        """行情深度推送 """
+        """行情深度推送 
+        {
+        "ch": "market.btcusdt.depth.step0",
+        "ts": 1489474082831,
+        "tick": {
+            "bids": [
+            [9999.3900,0.0098], // [price, amount]
+            [9992.5947,0.0560],
+            // more Market Depth data here
+            ]
+            "asks": [
+            [10010.9800,0.0099]
+            [10011.3900,2.0000]
+            //more data here
+            ]
+        }}
+        """
         symbol = data['ch'].split('.')[1]
 
         tick = self.tickDict.get(symbol, None)
@@ -253,15 +269,16 @@ class HuobiDataApi(DataApi):
         tick.datetime = datetime.fromtimestamp(data['ts']/1000)
         tick.date = tick.datetime.strftime('%Y%m%d')
         tick.time = tick.datetime.strftime('%H:%M:%S.%f')
-
+        tick.localTime = datetime.now()
+        tick.volumeChange = 0
         bids = data['tick']['bids']
-        for n in range(5):
+        for n in range(10):
             l = bids[n]
             tick.__setattr__('bidPrice' + str(n+1), float(l[0]))
             tick.__setattr__('bidVolume' + str(n+1), float(l[1]))
 
         asks = data['tick']['asks']
-        for n in range(5):
+        for n in range(10):
             l = asks[n]
             tick.__setattr__('askPrice' + str(n+1), float(l[0]))
             tick.__setattr__('askVolume' + str(n+1), float(l[1]))
@@ -278,26 +295,62 @@ class HuobiDataApi(DataApi):
         #print 'ask4', tick.askPrice4, tick.askVolume4
         #print 'ask3', tick.askPrice3, tick.askVolume3
         #print 'ask2', tick.askPrice2, tick.askVolume2
-        #print 'ask1', tick.askPrice1, tick.askVolume1
+        # print( 'ask1', tick.askPrice1, tick.askVolume1)
 
         #print 'bid1', tick.bidPrice1, tick.bidVolume1
         #print 'bid2', tick.bidPrice2, tick.bidVolume2
         #print 'bid3', tick.bidPrice3, tick.bidVolume3
         #print 'bid4', tick.bidPrice4, tick.bidVolume4
-        #print 'bid5', tick.bidPrice5, tick.bidVolume5
+        # print( 'bid5', tick.bidPrice5, tick.bidVolume5)
 
-        if tick.lastPrice:
+        if tick.lastPrice and tick.lastVolume:
             newtick = copy(tick)
             self.gateway.onTick(tick)
 
     #----------------------------------------------------------------------
     def onTradeDetail(self, data):
-        """成交细节推送"""
-        print(data)
+        """成交细节推送
+        {"ch": "market.btcusdt.trade.detail",
+            "ts": 1489474082831,
+            "data": [
+                {
+                "id":        601595423,
+                "price":     10195.64,
+                "time":      1494495711,
+                "amount":    0.2430,
+                "direction": "buy",
+                "tradeId":   601595423,
+                "ts":        1494495711000
+                },
+                // more Trade Detail data here
+            ]}}
+        
+        """
+        symbol = data['ch'].split('.')[1]
+        tick = self.tickDict.get(symbol, None)
+        if not tick:
+            return
+        tick.datetime = datetime.fromtimestamp(data['ts']/1000)
+        tick.date = tick.datetime.strftime('%Y%m%d')
+        tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+        t = data['data']
+        tick.lastVolume = float(t['amount'])
+        tick.lastPrice = float(t['price'])
+        tick.type = float(t['direction'])
+        tick.volumeChange = 1
+        tick.localTime = datetime.now()
+        if tick.bidPrice1:
+            newtick = copy(tick)
+            self.gateway.onTick(tick)
 
     #----------------------------------------------------------------------
     def onMarketDetail(self, data):
-        """市场细节推送"""
+        """市场细节推送
+        {'ch': 'market.btcusdt.detail', 'ts': 1530625121667, 
+        'tick': {'amount': 13112.317332314778, 'open': 6574.72, 'close': 6573.32, 'high': 6683.55, 
+        'id': 11248607690, 'count': 182105, 'low': 6528.0, 'version': 11248607690, 'vol': 86746600.49569052}}
+        """
+
         symbol = data['ch'].split('.')[1]
 
         tick = self.tickDict.get(symbol, None)
@@ -315,8 +368,9 @@ class HuobiDataApi(DataApi):
         tick.lastPrice = float(t['close'])
         tick.volume = float(t['vol'])
         tick.preClosePrice = float(tick.openPrice)
-
-        if tick.bidPrice1:
+        tick.localTime = datetime.now()
+        tick.volumeChange = 0
+        if tick.bidPrice1 and tick.lastVolume:
             newtick = copy(tick)
             self.gateway.onTick(tick)
 
@@ -409,10 +463,19 @@ class HuobiTradeApi(TradeApi):
         localid = str(self.localid)
         vtOrderID = '.'.join([self.gatewayName, localid])
 
-        if orderReq.direction == DIRECTION_LONG:
+        if orderReq.direction == DIRECTION_LONG and orderReq.priceType == 0:
             type_ = 'buy-limit'
-        else:
+        elif orderReq.direction == DIRECTION_LONG and orderReq.priceType == 1:
+            type_ = 'buy-market'
+        elif orderReq.direction == DIRECTION_SHORT and orderReq.priceType == 0:
             type_ = 'sell-limit'
+        elif orderReq.direction == DIRECTION_SHORT and orderReq.priceType == 1:
+            type_ = 'sell-market'
+
+        """
+        buy-ioc：IOC买单, sell-ioc：IOC卖单, buy-limit-maker, sell-limit-maker
+        还有这四种情况
+        """
 
         reqid = self.placeOrder(self.accountid,
                                 str(orderReq.volume),
@@ -520,8 +583,10 @@ class HuobiTradeApi(TradeApi):
                 pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
 
             pos.position += float(d['balance'])
-            if d['type'] == 'fozen':
+            if d['type'] == 'frozen':
                 pos.frozen = float(d['balance'])
+            elif d['type'] == 'trade':
+                pos.available == float(d['balance'])
 
             posDict[symbol] = pos
 
@@ -589,7 +654,6 @@ class HuobiTradeApi(TradeApi):
                     order.direction = DIRECTION_LONG
                 else:
                     order.direction = DIRECTION_SHORT
-                order.offset = OFFSET_NONE
 
                 self.orderDict[orderID] = order
 
@@ -652,7 +716,6 @@ class HuobiTradeApi(TradeApi):
                 trade.direction = DIRECTION_LONG
             else:
                 trade.direction = DIRECTION_SHORT
-            trade.offset = OFFSET_NONE
 
             strOrderID = str(d['order-id'])
             localid = self.orderLocalDict.get(strOrderID, '')
