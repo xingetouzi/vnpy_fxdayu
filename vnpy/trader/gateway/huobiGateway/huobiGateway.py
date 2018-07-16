@@ -578,6 +578,7 @@ class HuobiTradeApi(TradeApi):
                 pos.gatewayName = self.gatewayName
                 pos.symbol = d['currency']
                 pos.exchange = EXCHANGE_HUOBI
+                pos.offset = OFFSET_NONE
                 pos.vtSymbol = '.'.join([pos.symbol, pos.exchange])
                 pos.direction = DIRECTION_LONG
                 pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
@@ -644,6 +645,7 @@ class HuobiTradeApi(TradeApi):
 
                 order.symbol = d['symbol']
                 order.exchange = EXCHANGE_HUOBI
+                order.offset = OFFSET_NONE
                 order.vtSymbol = '.'.join([order.symbol, order.exchange])
 
                 order.price = float(d['price'])
@@ -703,6 +705,7 @@ class HuobiTradeApi(TradeApi):
 
             # 推送数据
             trade = VtTradeData()
+            trade.offset = OFFSET_NONE
             trade.gatewayName = self.gatewayName
 
             trade.tradeID = str(tradeID)
