@@ -547,8 +547,6 @@ class TradeApi(object):
 
     def onPlaceOrder(self, data, reqid):
         """委托回调"""
-        # 大叔
-        self.cancelOrder(data)
         print(reqid, data)
 
     # ----------------------------------------------------------------------

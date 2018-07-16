@@ -679,16 +679,17 @@ class BacktestingEngine(object):
         """获取最小价格变动"""
         return self.priceTick
     #-------------------------------------------
-    def initPosition(self,strategy):
+    def initPosition(self,strategy,detail = False):
         for i in range(len(strategy.symbolList)):
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
             strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-            strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-            strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            if detail:
+                strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+                strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+                strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+                strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
 
-    def initHolding(self,strategy)
+    def initHolding(self,strategy):
         for i in range(len(strategy.symbolList)):
             strategy.posDict[strategy.symbolList[i].replace(".","_")] = 0
 
