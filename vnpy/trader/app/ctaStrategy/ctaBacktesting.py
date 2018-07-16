@@ -490,10 +490,10 @@ class BacktestingEngine(object):
                         trade.price = min(bestCrossPrice, so.price)
 
                     elif buyCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[shortposName] += so.volume
+                        self.strategy.posDict[spotPosName] += so.volume
                         trade.price = max(bestCrossPrice, so.price)
                     elif sellCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[shortposName] -= so.volume
+                        self.strategy.posDict[spotPosName] -= so.volume
                         trade.price = min(bestCrossPrice, so.price)
                     
                     self.limitOrderCount += 1
