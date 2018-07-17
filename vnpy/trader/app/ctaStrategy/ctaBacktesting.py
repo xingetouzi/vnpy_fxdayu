@@ -225,8 +225,11 @@ class BacktestingEngine(object):
             if os.path.isdir(save_path):
                 files = list(set(os.listdir(save_path)) & set(need_files)) # 加载本地文件当中有的且在下载日期范围内的数据
                 for file in files:
-                    file_path = os.path.join(save_path, file)
-                    data_df = pd.read_hdf(file_path,"d")
+                    try:
+                        file_path = os.path.join(save_path, file)
+                        data_df = pd.read_hdf(file_path,"d")
+                    except:
+                        continue
                     dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df.iterrows()]
                     symbols_no_data[symbol].remove(file.replace(".h5",""))
 
