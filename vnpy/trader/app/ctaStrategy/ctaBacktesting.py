@@ -682,19 +682,19 @@ class BacktestingEngine(object):
         """获取最小价格变动"""
         return self.priceTick
     #-------------------------------------------
-    def initPosition(self,strategy,detail = False):
-        for i in range(len(strategy.symbolList)):
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            if detail:
-                strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-                strategy.eveningDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-                strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-                strategy.bondDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-
-    def initHolding(self,strategy):
-        for i in range(len(strategy.symbolList)):
-            strategy.posDict[strategy.symbolList[i].replace(".","_")] = 0
+    def initPosition(self,strategy,productType = 'SPOT'):
+        for item in strategy.syncList:
+            if productType == 'FUTURE':
+                for i in range(len(strategy.symbolList)):
+                    strategy.item = {}
+                    strategy.item[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+                    strategy.item[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            if productType = 'SPOT':
+                for i in range(len(strategy.symbolList)):
+                    strategy.item = {}
+                    strategy.item[strategy.symbolList[i].replace(".","_")] = 0
+            else:
+                return '-1'
 
     #------------------------------------------------
     # 结果计算相关
