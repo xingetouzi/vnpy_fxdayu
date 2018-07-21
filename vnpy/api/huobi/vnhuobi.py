@@ -34,7 +34,7 @@ HUOBI_API_HOST = "api.huobi.pro"
 HADAX_API_HOST = "api.hadax.com"
 LANG = 'zh-CN'
 try:
-    PRIVATE_KEY =open("","rb").read() # 添加huobi private key
+    PRIVATE_KEY =open("./gateway/huobiGateway/privatekey.pem","rb").read() # 添加huobi private key
 except:
     PRIVATE_KEY =""
 
