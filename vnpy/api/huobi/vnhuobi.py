@@ -11,6 +11,8 @@ import traceback
 import urllib
 import zlib
 from copy import copy
+import datetime
+import pandas as pd
 from datetime import datetime
 from multiprocessing.dummy import Pool
 from queue import Empty, Queue
@@ -102,7 +104,6 @@ def createPrivateSignature(signature):
     # print("ECDSA signautre: {:s}".format(sig_bytes.hex()))
     # print("ECDSA signautre: " + str(base64.b64encode(sig_bytes).decode()))
     return base64.b64encode(sig_bytes).decode()
-
 
 ########################################################################
 class TradeApi(object):
@@ -560,6 +561,28 @@ class TradeApi(object):
         """批量撤单回调"""
         print(reqid, data)
 
+    def loadHistoryKLine(self,symbol,period,size=150):
+        """查询历史k线数据"""
+        #{'status': 'ok', 'ch': 'market.btcusdt.kline.1min', 'ts': 1532074449568, 
+        # 'data': [{'id': 1532074440, 'open': 7474.67, 'close': 7473.69, 'low': 7464.29, 'high': 7475.0, 'amount': 5.8074, 'vol': 43397.148505, 'count': 56}, 
+        # {'id': 1532074380, 'open': 7485.75, 'close': 7474.67, 'low': 7470.87, 'high': 7489.8, 'amount': 48.60229125078332, 'vol': 363627.89729690924, 'count': 470}, 
+        # {'id': 1532074320, 'open': 7450.15, 'close': 7485.63, 'low': 7450.04, 'high': 7487.25, 'amount': 94.55160194999576, 'vol': 705808.0297657215, 'count': 475},
+        if self.hostname == HUOBI_API_HOST:
+            url =self.hosturl+ '/market/history/kline'
+        else:
+            url =self.hosturl+ '/v1/hadax/common/currencys'
+
+        params = {"symbol":symbol,"period":period,"size":size,"AccessKeyId":self.accessKey}
+        r=requests.get(url,headers=DEFAULT_GET_HEADERS,params=params)
+        text = eval(r.text)
+        df = pd.DataFrame(text['data'], columns=["id", "open", "close", "low", "high", "vol"])
+        df["datetime"] = df["id"].map(
+            lambda x: datetime.datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S"))
+        # delta = datetime.timedelta(hours=8)
+        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
+        return df.to_dict()
+
+
         ########################################################################
 
 
@@ -738,15 +761,4 @@ class DataApi(object):
     def onMarketDetail(self, data):
         """市场细节推送"""
         print(data)
-
-
-if __name__ == "__main__":
-    huobi = TradeApi()
-    # huobi.init("huobi", "a52fafe7-39fbf0c7-018abde9-795a5", "cce4ee39-cccd1a7b-6ff76056-ad6bc",mode="sync")
-    huobi.init("huobi", "a52fafe7-39fbf0c7-018abde9-795a5", "cce4ee39-cccd1a7b-6ff76056-ad6bc",mode="async")
-    huobi.start()
-    huobi.getSymbols()
-    huobi.getTimestamp()
-    # huobi.getCurrencys()
-    huobi.getAccounts()
-
+    

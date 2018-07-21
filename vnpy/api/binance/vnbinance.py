@@ -439,6 +439,7 @@ class BinanceApi(object):
     def onQueryKlines(self, data, reqid):
         """"""
         print((data, reqid))
+        return data
 
         # ----------------------------------------------------------------------
 

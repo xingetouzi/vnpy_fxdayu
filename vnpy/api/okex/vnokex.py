@@ -7,7 +7,9 @@ import json
 import traceback
 from threading import Thread
 from time import sleep
+import pandas as  pd
 import requests
+import datetime
 
 import websocket    
 
@@ -113,6 +115,7 @@ class OkexApi(object):
             self.reconnecting = True
             
             self.closeWebsocket()   # 首先关闭之前的连接
+            sleep(2)
             self.initWebsocket()
             print('API断线重连')
             self.reconnecting = False
@@ -269,7 +272,7 @@ class OkexApi(object):
             self.reconnect()
             return False
 
-###Rest 接口的sign方法------------------------------
+    ###Rest 接口的sign方法------------------------------
     def rest_sign(self, dictionary):   
         data = self._chg_dic_to_sign(dictionary)
         signature = self.__md5(data)
@@ -342,7 +345,7 @@ class OkexSpotApi(OkexApi):
         params['amount'] = str(amount)
         
         channel = 'ok_spot_order'
-        
+        print("spot order",channel,params)
         return self.sendRequest(channel, params)
 
     #----------------------------------------------------------------------
@@ -462,10 +465,10 @@ class OkexFuturesApi(OkexApi):
     def futuresTrade(self, symbol, contractType, type_, price, amount, matchPrice='0', leverRate='10'):
         """期货委托"""
         """
-        1、委托
+        1、委托id
             [{'binary': 0, 'channel': 'ok_futureusd_trade', 
             'data': {'result': True, 'order_id': 978694110346240}}]
-        2、成交
+        2、委托详情
             [{'binary': 0, 'channel': 'ok_sub_futureusd_trades', 
             'data': {'lever_rate': 10.0, 'amount': 1.0, 'orderid': 978694110346240, 'contract_id': 201806290050065, 
             'fee': -6.23e-06, 'contract_name': 'BCH0629', 'unit_amount': 10.0, 'price_avg': 802.254, 'type': 1, 
@@ -582,13 +585,30 @@ class OkexFuturesApi(OkexApi):
     # RESTFUL 接口
     def _post_url_func(self, url):
         return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + ".do"
+    
+    def _get_url_func(self, url, params=""):
+        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
+    
+    def _chg_dic_to_str(self, dictionary):
+        keys = list(dictionary.keys())
+        keys.remove("self")
+        keys.sort()
+        strings = []
+        for key in keys:
+            if dictionary[key] != None:
+                if not isinstance(dictionary[key], str):
+                    strings.append(key + "=" + str(dictionary[key]))
+                    continue
+                strings.append(key + "=" + dictionary[key])
+
+        return ".do?" + "&".join(strings)
         
     def future_userinfo(self):
         params = {}
         params['api_key'] = self.apiKey
         params['sign'] = self.rest_sign(params)
         url = self._post_url_func("future_userinfo")
-        print(url)
+        # print(url)
         r = requests.post(url, data=params, timeout=60)
         return r.json()
     
@@ -598,7 +618,7 @@ class OkexFuturesApi(OkexApi):
         data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type,
                 "order_id": order_id}
         url = self._post_url_func("future_orders_info")
-        print(url)
+        # print(url)
         r = requests.post(url, data=data, timeout=60)
         return r.json()
     
@@ -606,7 +626,7 @@ class OkexFuturesApi(OkexApi):
         api_key = self.apiKey
         data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type}
         url = self._post_url_func("future_position")
-        print(url)
+        # print(url)
         r = requests.post(url, data=data, timeout=60)
         return r.json()
     
@@ -622,7 +642,34 @@ class OkexFuturesApi(OkexApi):
         if page_length:
             data["page_length"] = page_length
         url = self._post_url_func("future_order_info")
+        # print(url)
+        r = requests.post(url, data=data, timeout=60)
+        return r.json()
+
+    def future_trade(self, symbol, contract_type, price, amount, type, match_price=None, lever_rate=None):
+        api_key = self.apiKey
+        data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type,
+                "price": price, "amount": amount, "type":type}
+        if match_price != None:
+            data["match_price"] = match_price
+        if lever_rate != None:
+            data["lever_rate"] = lever_rate
+        print(data,"********api******")
+        url = self._post_url_func("future_trade")
         print(url)
         r = requests.post(url, data=data, timeout=60)
         return r.json()
-    
+
+    def futureKline(self, symbol, type, contract_type, size=None, since=None):
+        params = self._chg_dic_to_str(locals())
+        print(params)
+        url = self._get_url_func("future_kline", params=params)
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, timeout=10)
+        print(r)
+        text = eval(r.text)
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
+        df["datetime"] = df["datetime"].map(
+            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
+        # delta = datetime.timedelta(hours=8)
+        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
+        return df.to_dict()

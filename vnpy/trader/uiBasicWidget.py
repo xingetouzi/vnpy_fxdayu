@@ -561,6 +561,7 @@ class OrderMonitor(BasicMonitor):
         d['tradedVolume'] = {'chinese':vtText.TRADED_VOLUME, 'cellType':BasicCell}
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
         d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}
+        d['rejectedInfo'] = {'chinese':vtText.ORDER_REJECTED_INFO, 'cellType':BasicCell}
         d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
         d['bystrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}        
         # d['cancelTime'] = {'chinese':vtText.CANCEL_TIME, 'cellType':BasicCell}
@@ -890,7 +891,7 @@ class TradingWidget(QtWidgets.QFrame):
         vbox.addLayout(hbox)
         vbox.addWidget(buttonSendOrder)
         vbox.addWidget(buttonCancelAll)
-        vbox.addStretch()
+        # vbox.addStretch()
 
         self.setLayout(vbox)
 

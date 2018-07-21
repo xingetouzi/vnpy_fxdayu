@@ -158,6 +158,14 @@ class HuobiGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
+    
+    def loadHistoryBar(vtSymbol, type_, size, since):
+        """接收历史数据"""
+        # period {1min, 5min, 15min, 30min, 60min, 1day, 1mon, 1week, 1year}
+        symbol = vtSymbol.split('.')[0]
+        period = type_
+        data = self.DataApi.loadHistoryKline(symbol,period,size)
+        return data
 
 
 ########################################################################
@@ -171,18 +179,15 @@ class HuobiDataApi(DataApi):
 
         self.gateway = gateway                  # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
-
         self.connectionStatus = False       # 连接状态
-
         self.tickDict = {}
-
         #self.subscribeDict = {}
 
     #----------------------------------------------------------------------
     def connect(self, exchange, symbols):
         """连接服务器"""
         if exchange == 'huobi':
-            url = 'wss://api.huobi.br.com/ws'
+            url = 'wss://api.huobi.pro/ws'
         else:
             url = 'wss://api.hadax.com/ws'
             
@@ -373,6 +378,7 @@ class HuobiDataApi(DataApi):
         if tick.bidPrice1 and tick.lastVolume:
             newtick = copy(tick)
             self.gateway.onTick(tick)
+
 
 
 ########################################################################
@@ -785,3 +791,7 @@ class HuobiTradeApi(TradeApi):
     def onBatchCancel(self, data, reqid):
         """批量撤单回调"""
         print(reqid, data)
+
+    def loadHistoryBar(self,symbol,period,size):
+        data = self.loadHistoryKLine(symbol,period,size)
+        return data

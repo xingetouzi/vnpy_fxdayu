@@ -218,8 +218,16 @@ class CtaTemplate(object):
         """查询最小价格变动"""
         return self.ctaEngine.getPriceTick(self)
 
-    def initPosition(self,strategy):
-        self.ctaEngine.initPosition(self)
+    def initPosition(self,strategy,productType='SPOT'):
+        """初始化起始仓位"""
+        print('*********************--------------***********')
+        self.ctaEngine.initPosition(self,productType)
+
+    def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
+        """策略开始前下载历史数据"""
+        data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
+        return data
+
 
 ########################################################################
 class TargetPosTemplate(CtaTemplate):
@@ -636,58 +644,3 @@ class ArrayManager(object):
         if array:
             return up, down
         return up[-1], down[-1]
-
-
-class HistoryData(object):
-    def __init__(self, key=None, secret=None, api_version='v1',
-                 url='https://www.okex.com/api', timeout=10,
-                 headers={"contentType": "application/x-www-form-urlencoded"}):
-        self.url = url
-        self.version = api_version
-        self.headers = headers
-        self.timeout = timeout
-        self.__get_url_dic = {"kline": "kline" ,"future_kline": "future_kline"}
-    def change_timeout(self, timeout):
-        self.timeout = timeout
-
-    def _chg_dic_to_str(self, dictionary):
-        keys = list(dictionary.keys())
-        keys.remove("self")
-        keys.sort()
-        strings = []
-        for key in keys:
-            if dictionary[key] != None:
-                if not isinstance(dictionary[key], str):
-                    strings.append(key + "=" + str(dictionary[key]))
-                    continue
-                strings.append(key + "=" + dictionary[key])
-
-        return ".do?" + "&".join(strings)
-
-    def _get_url_func(self, url, params=""):
-        return self.url + "/" + self.version + "/" + url + params
-
-    def bar(self, symbol, type, size=None, since=None):
-        params = self._chg_dic_to_str(locals())
-        url = self._get_url_func(self.__get_url_dic["kline"], params=params)
-        print(url)
-        r = requests.get(url, headers=self.headers, timeout=self.timeout)
-        text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume"])
-        df["datetime"] = df["datetime"].map(
-            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
-        delta = datetime.timedelta(hours=8)
-        df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
-        return df
-    def future_bar(self,symbol, type, contract_type, size=None, since=None):
-        params = self._chg_dic_to_str(locals())
-        url = self._get_url_func(self.__get_url_dic["future_kline"], params=params)
-        r = requests.get(url, headers=self.headers, timeout=self.timeout)
-        text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%(symbol[:3])])
-        df["datetime"] = df["datetime"].map(
-            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
-        # delta = datetime.timedelta(hours=8)
-        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
-        return df.to_dict()
-    

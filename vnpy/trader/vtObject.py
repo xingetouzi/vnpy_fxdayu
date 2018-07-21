@@ -169,6 +169,7 @@ class VtOrderData(VtBaseData):
         self.exchangeOrderID = EMPTY_STRING     # 
         self.bystrategy = EMPTY_STRING
         self.deliverTime = EMPTY_STRING
+        self.rejectedInfo = EMPTY_STRING
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号

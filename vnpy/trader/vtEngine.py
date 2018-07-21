@@ -58,12 +58,10 @@ class MainEngine(object):
     def addGateway(self, gatewayModule):
         """添加底层接口"""
         gatewayName = gatewayModule.gatewayName
-        print(gatewayName)
         
         # 创建接口实例
         if type(gatewayName) == list:
             for i in range(len(gatewayName)):
-                print(gatewayName[i],  gatewayModule.gatewayDisplayName[i])
                 self.gatewayDict[gatewayName[i]] = gatewayModule.gatewayClass(self.eventEngine, 
                                                                     gatewayName[i])
             
@@ -181,6 +179,14 @@ class MainEngine(object):
         if gateway:
             gateway.qryPosition()
             
+    def qryOrder(self,vtSymbol, order_id, status= None):
+        """"""
+        gatewayName = vtSymbol.split('.')[1]
+        gateway = self.getGateway(gatewayName)
+        if gateway:
+            data = gateway.qryOrder(vtSymbol,order_id,status)
+        return data
+
     #------------------------------------------------
     def initPosition(self, vtSymbol, gatewayName):
         """策略初始化时查询特定接口的持仓"""
@@ -189,9 +195,13 @@ class MainEngine(object):
         if gateway:
             gateway.initPosition(vtSymbol)
 
-    def loadHistoryBars(self):
+    def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
         """策略初始化时下载历史数据"""
-        pass
+        gatewayName = vtSymbol.split(".")
+        gateway = self.getGateway(gatewayName[1])
+        if gateway:
+            data = gateway.loadHistoryBar(vtSymbol,type_,size)
+        return data
 
     #----------------------------------------------------------------------
     def exit(self):

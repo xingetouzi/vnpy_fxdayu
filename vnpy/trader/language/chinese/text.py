@@ -111,7 +111,7 @@ ORDER = '委托'
 POSITION = '持仓'
 ACCOUNT = '账户'
 WORKING_ORDER = '可撤'
-
+ORDER_REJECTED_INFO = '拒单原因'
 SYSTEM = '系统'
 CONNECT_DATABASE = '连接数据库'
 EXIT = '退出'

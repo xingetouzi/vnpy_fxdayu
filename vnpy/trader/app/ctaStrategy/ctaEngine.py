@@ -182,7 +182,8 @@ class CtaEngine(object):
 
         so = StopOrder()
         so.vtSymbol = vtSymbol
-        so.contractType = so.vtSymbol[4:-5]
+        contractType = vtSymbol.split('.')[0]
+        so.contractType = contractType[4:]
         so.orderType = orderType
         so.price = price
         so.priceType = marketPrice
@@ -305,6 +306,31 @@ class CtaEngine(object):
         if vtOrderID in self.orderStrategyDict:
             strategy = self.orderStrategyDict[vtOrderID]
 
+            if 'eveningDict' in strategy.syncList:
+                print('***************************-----------**********')
+                if order.status == STATUS_CANCELLED:
+                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
+                        posName = order.vtSymbol.replace(".","_") + "_SHORT"
+                        strategy.eveningDict[posName] += order.volume
+                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
+                        posName = order.vtSymbol.replace(".","_") + "_LONG"
+                        strategy.eveningDict[posName] += order.volume
+
+                elif order.status == STATUS_ALLTRADED or order.status == STATUS_PARTTRADED:
+                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
+                        posName = order.vtSymbol.replace(".","_") + "_LONG"
+                        strategy.eveningDict[posName] += order.tradedVolume
+                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
+                        posName = order.vtSymbol.replace(".","_") + "_SHORT"
+                        strategy.eveningDict[posName] += order.tradedVolume
+                    elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
+                        posName = order.vtSymbol.replace(".","_") + "_SHORT"
+                        strategy.eveningDict[posName] -= order.tradedVolume
+                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
+                        posName = order.vtSymbol.replace(".","_") + "_LONG"
+                        strategy.eveningDict[posName] -= order.tradedVolume
+                
+
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
             if order.status in self.STATUS_FINISHED:
                 s = self.strategyOrderDict[strategy.name]
@@ -373,6 +399,22 @@ class CtaEngine(object):
     #     pos = event.dict_['data']
     #     if self.strategyDict:
     #         for strategy in self.strategyDict.values():
+
+
+
+                # elif order.status == STATUS_NOTTRADED:
+                #     if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
+                #         posName = order.vtSymbol.replace(".","_") + "_LONG"
+                #         strategy.bondDict[posName] += order.volume
+                #     elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
+                #         posName = order.vtSymbol.replace(".","_") + "_LONG"
+                #         strategy.bondDict[posName] += order.volume
+                #     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
+                #         posName = order.vtSymbol.replace(".","_") + "_SHORT"
+                #         strategy.bondDict[posName] += order.volume
+                #     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
+                #         posName = order.vtSymbol.replace(".","_") + "_SHORT"
+                #         strategy.bondDict[posName] += order.volume
 
     #             if pos.exchange == 'OKEX':
     #                 if pos.direction == DIRECTION_LONG:
@@ -513,7 +555,7 @@ class CtaEngine(object):
                 
                 self.mainEngine.subscribe(req, contract.gatewayName)
             else:
-                self.writeCtaLog(u'策略%s的交易合约%s无法找到' %(strategy.className, vtSymbol))
+                self.writeCtaLog(u'策略%s的交易合约%s无法找到' %(strategy.name, vtSymbol))
 
     #----------------------------------------------------------------------
     def initStrategy(self, name):
@@ -673,14 +715,14 @@ class CtaEngine(object):
     def saveSyncData(self, strategy):    #改为posDict
         """保存策略的持仓情况到数据库"""
 
-        flt = {'name': strategy.className,
+        flt = {'name': strategy.name,
             'posName':str(strategy.symbolList)}
         
         d = copy(flt)
         for key in strategy.syncList:
             d[key] = strategy.__getattribute__(key)
 
-        self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.className,
+        self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.name,
                                     d, flt, True)
                 
         content = u'策略%s: 同步数据保存成功\n当前持仓%s\n可平仓量%s\n保证金%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
@@ -690,12 +732,12 @@ class CtaEngine(object):
     def loadSyncData(self, strategy):
         """从数据库载入策略的持仓情况"""
 
-        flt = {'name': strategy.className,
+        flt = {'name': strategy.name,
         'posName': str(strategy.symbolList)}
-        syncData = self.mainEngine.dbQuery(POSITION_DB_NAME, strategy.className, flt)
+        syncData = self.mainEngine.dbQuery(POSITION_DB_NAME, strategy.name, flt)
         
         if not syncData:
-            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.className)
+            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.name)
             return
         
         d = syncData[0]
@@ -722,7 +764,7 @@ class CtaEngine(object):
             'orderby':order.bystrategy
             }
 
-        self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.className, flt)
+        self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
         
@@ -769,19 +811,23 @@ class CtaEngine(object):
             return 0
 
     #--------------------------------------------------------------
-    def loadHistoryPrice(self, strategy):
+    def loadHistoryBar(self,vtSymbol,type_,size = None,since = None):
         """读取历史数据"""
+        data = self.mainEngine.loadHistoryBar(vtSymbol, type_, size, since)
+        return data
 
-        pass
-
-    def initPosition(self,strategy):
-        # flt = {'name': strategy.className}
-        # self.mainEngine.dbDelete(POSITION_DB_NAME, strategy.className,flt)
-
-        for i in range(len(strategy.symbolList)):
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-        
+    def initPosition(self,strategy,productType = 'SPOT'):
+        for item in strategy.syncList:
+            d = strategy.__getattribute__(item)
+            if productType == 'FUTURE':
+                for i in range(len(strategy.symbolList)):
+                    d[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+                    d[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            if productType == 'SPOT':
+                for i in range(len(strategy.symbolList)):
+                    d[strategy.symbolList[i].replace(".","_")] = 0
+            else:
+                return '-1'    
         # for vtSymbol in strategy.symbolList:
         #     contract = self.mainEngine.getContract(vtSymbol)
         #     self.mainEngine.initPosition(vtSymbol, contract.gatewayName)

@@ -158,6 +158,13 @@ class BinanceGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
 
+    def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
+        symbol = vtSymbol.split('.')[0]
+        data = self.GatewayApi.loadHistoryBar(symbol,type_,size)
+        return data
+
+    
+
 
 ########################################################################
 class GatewayApi(BinanceApi):
@@ -352,6 +359,7 @@ class GatewayApi(BinanceApi):
     def onPushOrder(self, d):
         """"""
         # 委托更新
+        print(d)
         order = VtOrderData()
         order.gatewayName = self.gatewayName
 
@@ -494,6 +502,17 @@ class GatewayApi(BinanceApi):
     # ----------------------------------------------------------------------
     def cancel(self, cancelOrderReq):
         """"""
-
-
         self.cancelOrder(cancelOrderReq.symbol, origClientOrderId=cancelOrderReq.orderID)
+
+    def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
+        interval = type_
+        if size:
+            limit = size
+        else:
+            limit = 0
+        if since:
+            startTime = since
+        else:
+            startTime = 0
+        data = self.queryKlines(symbol,interval,limit,startTime)
+        return data

@@ -2,11 +2,32 @@
     {
         "name": "TEST",
         "className": "TestStrategy",
-        "vtSymbol": "eth_this_week.OKEX,eth_quarter.OKEX"
+        "vtSymbol": "eth_this_week.OKEX_eth,eth_quarter.OKEX_eth"
     },
     {
-        "name": "BBBB",
-        "className": "BBBBStrategy",
-        "vtSymbol": "bch_this_week.OKEX,bch_quarter.OKEX"
+        "name": "BCH",
+        "className": "FishingStrategy",
+        "vtSymbol": "bch_this_week.OKEX_bch,bch_quarter.OKEX_bch"
+    },
+    {
+        "name": "EOS",
+        "className": "FishingStrategy",
+        "vtSymbol": "eos_this_week.OKEX_eos,eos_quarter.OKEX_eos"
+    },
+    {
+        "name": "ETH",
+        "className": "FishingStrategy",
+        "vtSymbol": "eth_this_week.OKEX_eth,eth_quarter.OKEX_eth"
+    },
+    {
+        "name": "LTC",
+        "className": "FishingStrategy",
+        "vtSymbol": "ltc_this_week.OKEX_ltc,ltc_quarter.OKEX_ltc"
+    },
+    {
+        "name": "MultiSingal",
+        "className": "MultiSignalStrategy",
+        "vtSymbol": "bch_this_week.OKEX_bch"
     }
+
 ]
