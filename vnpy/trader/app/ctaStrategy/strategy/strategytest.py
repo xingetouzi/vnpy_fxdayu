@@ -2,8 +2,7 @@
 from vnpy.trader.vtConstant import EMPTY_STRING, DIRECTION_LONG, DIRECTION_SHORT
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
-                                                     ArrayManager,
-                                                     HistoryData)
+                                                     ArrayManager)
 
 from collections import defaultdict
 import numpy as np
