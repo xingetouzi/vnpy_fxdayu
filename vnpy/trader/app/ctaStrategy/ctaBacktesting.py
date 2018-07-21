@@ -689,7 +689,7 @@ class BacktestingEngine(object):
                     strategy.item = {}
                     strategy.item[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
                     strategy.item[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            if productType = 'SPOT':
+            if productType == 'SPOT':
                 for i in range(len(strategy.symbolList)):
                     strategy.item = {}
                     strategy.item[strategy.symbolList[i].replace(".","_")] = 0
