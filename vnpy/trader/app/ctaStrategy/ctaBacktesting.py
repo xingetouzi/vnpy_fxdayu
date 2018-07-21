@@ -682,19 +682,20 @@ class BacktestingEngine(object):
         """获取最小价格变动"""
         return self.priceTick
     #-------------------------------------------
-    def initPosition(self,strategy,productType = 'SPOT'):
+    def initPosition(self,strategy):
         for item in strategy.syncList:
-            if productType == 'FUTURE':
+            if strategy.productType == 'FUTURE':
                 for i in range(len(strategy.symbolList)):
                     strategy.item = {}
                     strategy.item[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
                     strategy.item[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            if productType == 'SPOT':
+            if strategy.productType == 'SPOT':
                 for i in range(len(strategy.symbolList)):
                     strategy.item = {}
                     strategy.item[strategy.symbolList[i].replace(".","_")] = 0
             else:
                 return '-1'
+                
 
     #------------------------------------------------
     # 结果计算相关
