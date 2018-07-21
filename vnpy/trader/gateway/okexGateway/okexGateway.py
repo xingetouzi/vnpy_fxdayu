@@ -47,6 +47,47 @@ statusMap[1] = STATUS_PARTTRADED
 statusMap[2] = STATUS_ALLTRADED
 statusMap[4] = STATUS_UNKNOWN
 
+# Restful 下单返回错误映射
+sendOrderErrorMap = {}
+sendOrderErrorMap['20001'] = u"用户不存在"
+sendOrderErrorMap['20002'] = u"用户被冻结"
+sendOrderErrorMap['20003'] = u"用户被爆仓冻结"
+sendOrderErrorMap['20004'] = u"合约账户被冻结"
+sendOrderErrorMap['20005'] = u"用户合约账户不存在"
+sendOrderErrorMap['20006'] = u"必填参数为空"
+sendOrderErrorMap['20007'] = u"参数错误"
+sendOrderErrorMap['20008'] = u"合约账户余额为空"
+sendOrderErrorMap['20009'] = u"虚拟合约状态错误"
+sendOrderErrorMap['20010'] = u"合约风险率信息不存在"
+sendOrderErrorMap['20011'] = u"10倍/20倍杠杆开BTC前保证金率低于90%/80%，10倍/20倍杠杆开LTC前保证金率低于80%/60%"
+sendOrderErrorMap['20012'] = u"10倍/20倍杠杆开BTC后保证金率低于90%/80%，10倍/20倍杠杆开LTC后保证金率低于80%/60%"
+sendOrderErrorMap['20013'] = u"暂无对手价"
+sendOrderErrorMap['20014'] = u"系统错误"
+sendOrderErrorMap['20015'] = u"订单信息不存在"
+sendOrderErrorMap['20016'] = u"平仓数量是否大于同方向可用持仓数量"
+sendOrderErrorMap['20017'] = u"非本人操作"
+sendOrderErrorMap['20018'] = u"下单价格高于前一分钟的103%或低于97%"
+sendOrderErrorMap['20019'] = u"该IP限制不能请求该资源"
+sendOrderErrorMap['20020'] = u"密钥不存在"
+sendOrderErrorMap['20021'] = u"指数信息不存在"
+sendOrderErrorMap['20022'] = u"接口调用错误（全仓模式调用全仓接口，逐仓模式调用逐仓接口）"
+sendOrderErrorMap['20023'] = u"逐仓用户"
+sendOrderErrorMap['20024'] = u"sign签名不匹配"
+sendOrderErrorMap['20025'] = u"杠杆比率错误"
+sendOrderErrorMap['20026'] = u"API鉴权错误"
+sendOrderErrorMap['20027'] = u"无交易记录"
+sendOrderErrorMap['20028'] = u"合约不存在"
+sendOrderErrorMap['20029'] = u"转出金额大于可转金额"
+sendOrderErrorMap['20030'] = u"账户存在借款"
+sendOrderErrorMap['20038'] = u"根据相关法律，您所在的国家或地区不能使用该功能。"
+sendOrderErrorMap['20049'] = u"用户请求接口过于频繁"
+sendOrderErrorMap['20061'] = u"合约相同方向只支持一个杠杆，若有10倍多单，就不能再下20倍多单"
+sendOrderErrorMap['21020'] = u"合约交割中，无法下单"
+sendOrderErrorMap['21021'] = u"合约清算中，无法下单"
+sendOrderErrorMap['HTTP错误码403'] = u"用户请求过快，IP被屏蔽"
+sendOrderErrorMap['Ping不通'] = u"用户请求过快，IP被屏蔽"
+
+
 okex_all_symbol_pairs = ['ref_usdt', 'soc_usdt', 'light_usdt', 'avt_usdt', 
 'of_usdt', 'brd_usdt', 'ast_usdt', 'int_usdt', 'zrx_usdt', 'ctr_usdt', 'dgd_usdt', 
 'aidoc_usdt', 'wtc_usdt', 'swftc_usdt', 'wrc_usdt', 'sub_usdt', 'dna_usdt', 'knc_usdt', 
@@ -136,7 +177,6 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
         """订阅行情"""
-
         pass
         
     #----------------------------------------------------------------------
@@ -153,12 +193,12 @@ class OkexGateway(VtGateway):
         # if len(cancelOrderReq.contractType) < 4:
         #     return self.spotApi.cancelOrder(cancelOrderReq)   
         # else:
-        #     return self.futuresApi.cancelOrder(cancelOrderReq)     
+        #     return self.futuresApi.cancelOrder(cancelOrderReq)   
+        # 
         return self.futuresApi.cancelOrder(cancelOrderReq) 
     #----------------------------------------------------------------------
     def qryAccount(self):
         """查询账户资金"""
-
         pass
 
     #----------------------------------------------------------------------
@@ -167,15 +207,27 @@ class OkexGateway(VtGateway):
         # self.futuresApi.futuresUserInfo()
         pass
     #------------------------------------------------
-    def loadHistoryBars(self):
+    def qryOrder(self, vtSymbol, order_id, status= None):
+        symbol = vtSymbol[:3]+"_usd"
+        contract_type = vtSymbol.split('.')[0]
+        contractType = contract_type[4:]
+        data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
+        return data
+
+    def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         """策略初始化时下载历史数据"""
-        pass
+        symbol = vtSymbol[:3]+"_usd"
+        contract_type = vtSymbol.split('.')[0]
+        contractType = contract_type[4:]
+        data = self.futuresApi.rest_future_bar(symbol,type_,contractType,size,since)
+        return data
 
     #------------------------------------------------
     def initPosition(self,vtSymbol):
         """策略初始化时查询策略的持仓"""
         symbol = vtSymbol[:3]
-        contractType = vtSymbol[4:-5]
+        contract_type = vtSymbol.split('.')[0]
+        contractType = contract_type[4:]
         if len(contractType) > 4:
             self.futuresApi.rest_futures_position(symbol,contractType)
     #----------------------------------------------------------------------
@@ -796,7 +848,7 @@ class FuturesApi(OkexFuturesApi):
         self.orderIdDict = {}           # key为系统委托号，value为本地委托号
         self.cancelDict = {}            # key为本地委托号，value为撤单请求
         self.strategyDict = {}
-
+        self.exchangeOrderDict = {}
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
         self.cache_some_order = {}
@@ -876,8 +928,8 @@ class FuturesApi(OkexFuturesApi):
             
         self.cbDict["ok_sub_futureusd_userinfo"] = self.onSubFuturesBalance
         self.cbDict['ok_futureusd_userinfo'] = self.onFuturesUserInfo
-        # self.cbDict['ok_futureusd_orderinfo'] = self.onFuturesOrderInfo
-        self.cbDict['ok_futureusd_trade'] = self.onSubFuturesOrderError 
+        self.cbDict['ok_futureusd_orderinfo'] = self.onFuturesOrderInfo
+        # self.cbDict['ok_futureusd_trade'] = self.onSubFuturesOrderError 
         self.cbDict['ok_sub_futureusd_trades'] = self.onFuturesOrderInfo
         # self.cbDict['ok_futureusd_order'] = self.onFuturesOrder
         # self.cbDict['ok_futureusd_cancel_order'] = self.onFuturesCancelOrder
@@ -897,7 +949,7 @@ class FuturesApi(OkexFuturesApi):
             contractType = symbol[4:]
             symbol = symbol[:3]
             self.subscribe(symbol,contractType)
-            # self.rest_futures_position(symbol,contractType)  # 使用restful查询持仓信息
+            self.rest_futures_position(symbol,contractType)  # 使用restful查询持仓信息
 
         self.writeLog(u'期货服务器登录成功')
     #----------------------------------------------------------------------
@@ -1166,39 +1218,64 @@ class FuturesApi(OkexFuturesApi):
         rawData = data['data']
         orderId = str(rawData['orderid'])
 
-        if orderId in self.orderIdDict:
-            localNo = self.orderIdDict[orderId]
-        else:
-            try:
-                localNo = self.localNoQueue.get_nowait()
-            except Empty:
-                self.localNo += 1
-                localNo = str(self.localNo)
+        # if orderId in self.orderIdDict:
+        #     localNo = self.orderIdDict[orderId]
+        # else:
+        #     try:
+        #         localNo = self.localNoQueue.get_nowait()
+        #     except Empty:
+        #         self.localNo += 1
+        #         localNo = str(self.localNo)
 
-        self.localNoDict[localNo] = orderId
-        self.orderIdDict[orderId] = localNo
-        order = self.localOrderDict[localNo]
+        # self.localNoDict[localNo] = orderId
+        # self.orderIdDict[orderId] = localNo
+        # order = self.localOrderDict[localNo]
         # else:
         #     self.writeLog(u'非法订单')
 
         # if self.localOrderDict[localNo]:
         #     order = self.localOrderDict[localNo]
-
-        order.price = rawData['price']
-        order.price_avg = rawData['price_avg']
-        order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
-
-        order.exchangeOrderID = orderId        
-        order.user_id = rawData['user_id']
-        order.gatewayName = self.gatewayName
-        order.orderTime = rawData['create_date_str']
-        order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        order.status = statusMap[rawData['status']] 
+        try:
+            localNo = self.exchangeOrderDict[str(orderId)]
+            order = self.localOrderDict[localNo]
+            order.price = rawData['price']
+            order.price_avg = rawData['price_avg']
+            order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
+            self.writeLog('check ontrade msg')
+            order.exchangeOrderID = orderId        
+            order.user_id = rawData['user_id']
+            order.gatewayName = self.gatewayName
+            order.orderTime = rawData['create_date_str']
+            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.status = statusMap[rawData['status']] 
+            print(localNo,order.status,orderId,self.exchangeOrderDict[str(orderId)],"-----------*******order******---------")
+            self.orderDict[order.vtOrderID] = order   #更新order信息
+            self.writeLog(u'localNo:%s, orderId:%s, status:%s'%(localNo, orderId,order.status))
+            self.gateway.onOrder(copy(order))
+        except KeyError:
+            order = VtOrderData()
+            self.exchangeOrderDict[str(orderId)] = "wait"
+            self.writeLog(u'****-*---*-*-*-*-*-exception order====ws信息先于rest返回，不会到onorder--%s*-*-%s*-*-'%(self.exchangeOrderDict[str(orderId)],orderId))
+            name = rawData['contract_name'][:3]
+            order.contractType = rawData['contract_type']
+            order.symbol = str.lower(name) + '_' + order.contractType
+            order.exchange = self.gatewayName
+            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.price = rawData['price']
+            order.price_avg = rawData['price_avg']
+            order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
+            order.totalVolume = rawData['amount']
+            order.exchangeOrderID = orderId        
+            order.user_id = rawData['user_id']
+            order.gatewayName = self.gatewayName
+            order.orderTime = rawData['create_date_str']
+            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.status = statusMap[rawData['status']] 
+            self.orderDict[orderId] = order   #更新order信息
         
-        self.orderDict[orderId] = order   #更新order信息
         lastTradedVolume = order.tradedVolume
         order.tradedVolume = float(rawData['deal_amount'])
-        self.gateway.onOrder(copy(order))
+
         
         # 成交信息
         if order.tradedVolume > lastTradedVolume:
@@ -1211,7 +1288,7 @@ class FuturesApi(OkexFuturesApi):
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
             trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
-            
+            print("gw_trade_orderid",order.orderID,order.exchangeOrderID)
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.exchangeOrderID = order.exchangeOrderID
@@ -1222,27 +1299,13 @@ class FuturesApi(OkexFuturesApi):
             trade.tradeTime = order.deliverTime
             self.gateway.onTrade(trade)
         
-        # 撤单
+        # # 撤单
+        localNo = order.orderID
         if localNo in self.cancelDict:
             req = self.cancelDict[localNo]
             self.cancelOrder(req)
             del self.cancelDict[localNo]  
-        
-    #----------------------------------------------------------------------
-      
-    def onFuturesRejectedOrder(self, data):
-        """"""
-        # 如果委托失败，则通知委托被拒单的信息
-        if self.checkDataError(data):
-            try:
-                localNo = self.localNoQueue.get_nowait()
-            except Empty:
-                return
-            
-        order = self.localOrderDict[localNo]
-        order.status = STATUS_REJECTED
-        self.gateway.onOrder(order)
-    
+
     #----------------------------------------------------------------------  
     def onSubFuturesOrderError(self, data):
         """ 下单报错信息"""
@@ -1337,7 +1400,6 @@ class FuturesApi(OkexFuturesApi):
         longPos.positionProfit = '%10.8f' % profit
         longPos.vtPositionName = '.'.join([pos.vtSymbol, longPos.direction])
 
-
         shortPos = copy(pos)
         shortPos.direction = DIRECTION_SHORT
         # 空头仓位    
@@ -1366,58 +1428,130 @@ class FuturesApi(OkexFuturesApi):
         self.contracts = contracts
         self.initCallback()
         self.connect(OKEX_FUTURES_HOST, apiKey, secretKey, trace)
+        if not apiKey:
+            self.writeLog(u'请添加apiKey和对应的密钥')
+            return
         self.writeLog(u'期货接口初始化成功')
 
     #----------------------------------------------------------------------
     def sendOrder(self, req):
         """发单"""
+        # 缓存委托信息
+        # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
+        self.localNo += 1
+        vtOrderID = '.'.join([self.gatewayName, str(self.localNo)])
+        # self.localNoQueue.put(str(self.localNo))
+
         type_ = futurepriceTypeMapReverse[(req.direction, req.offset)]
 
         if req.priceType == PRICETYPE_LIMITPRICE:
             req.priceType = 0
         elif req.priceType == PRICETYPE_MARKETPRICE:
             req.priceType = 1
+        symbol = req.symbol[:3] + "_usd"
 
-        result = self.futuresTrade(req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10")
+        if not self.gateway.connected:
+            self.writeLog(u'网络状态不良，网关 %s 不执行%s的下单命令'%(self.gatewayName,req.vtSymbol))
+            order = VtOrderData()
+            order.vtOrderID = vtOrderID
+            order.orderID = self.localNo
+            order.symbol= req.symbol
+
+            order.vtSymbol = req.vtSymbol
+            order.status = STATUS_REJECTED
+            order.gatewayName = self.gatewayName
+            order.rejectedInfo = 'BAD NETWORK'
+            order.bystrategy = req.bystrategy
+            order.direction = req.direction
+            order.offset = req.offset
+            order.price = req.price
+            order.totalVolume = req.volume
+            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.gateway.onOrder(copy(order))
+            return ''
+
+        # result = self.futuresTrade(req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
+        data = self.future_trade(symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,"10")  # restful
         # 若请求失败，则返回空字符串委托号
-        if not result:
+        result= data['result']
+        if result:
+            order_id = data['order_id']
+            self.writeLog(u'gw_sendorder_下单成功,exchangeorderid:%s' %order_id)
+        else:
+            # {'result': False, 'error_code': 20008}
+            error_code = data['error_code']
+            self.writeLog(u'gw_sendorder_下单失败，ErrorCode:%s 原因：%s' %(error_code,sendOrderErrorMap[str(error_code)]))
+            order = VtOrderData()
+            order.vtOrderID = vtOrderID
+            order.orderID = self.localNo
+            order.symbol= req.symbol
+            order.vtSymbol = req.vtSymbol
+            order.gatewayName = self.gatewayName
+            order.status = STATUS_REJECTED
+            order.rejectedInfo = str(error_code)
+            order.bystrategy = req.bystrategy
+            order.direction = req.direction
+            order.offset= req.offset
+            order.price = req.price
+            order.totalVolume = req.volume
+            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.gateway.onOrder(copy(order))
+            # 若请求失败，则返回空字符串委托号
             return ''
         
-        # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
-        self.localNo += 1
-        self.localNoQueue.put(str(self.localNo))
-        vtOrderID = '.'.join([self.gatewayName, str(self.localNo)])
-        # 缓存委托信息
-        order = VtOrderData()
-        order.gatewayName = self.gatewayName
-        order.symbol = req.symbol
-        order.exchange = self.gatewayName
-        order.vtSymbol = '.'.join([order.symbol, order.exchange])
-        order.contractType = req.contractType
-        order.orderID= str(self.localNo)
-        order.vtOrderID = vtOrderID
-        order.direction = req.direction
-        order.price = req.price
-        order.totalVolume = req.volume
-        order.bystrategy = req.bystrategy
-        
-        self.localOrderDict[str(self.localNo)] = order
-        self.localNoDict[str(self.localNo)] = vtOrderID
-        return vtOrderID
-    
 
+        try:
+            if self.exchangeOrderDict[str(order_id)]=="wait":
+                self.exchangeOrderDict[str(order_id)] = str(self.localNo)
+                order = self.orderDict[str(order_id)]
+                order.orderID = self.localNo
+                order.vtOrderID = vtOrderID
+                order.bystrategy = req.bystrategy
+                self.writeLog('order_gw_debug--%s'%order)
+                del self.orderDict[str(order_id)]
+                self.orderDict[vtOrderID] = order   #更新order信息
+                self.writeLog(u'---sendorder_try_gw---,%s,%s,%s,%s,%s'%(req.symbol,vtOrderID,order_id,order,self.orderDict[vtOrderID]))
+                self.gateway.onOrder(copy(order))
+
+        except KeyError:
+            order = VtOrderData()
+            self.writeLog(u'---sendorder_except_gw---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
+            self.exchangeOrderDict[str(order_id)] = str(self.localNo)
+            order.gatewayName = self.gatewayName
+            order.exchangeOrderID = order_id
+            order.symbol = req.symbol
+            order.exchange = self.gatewayName
+            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.contractType = req.contractType
+            order.orderID= str(self.localNo)
+            order.vtOrderID = vtOrderID
+            order.direction = req.direction
+            order.offset = req.offset
+            order.price = req.price
+            order.totalVolume = req.volume
+            order.bystrategy = req.bystrategy
+            self.orderDict[str(vtOrderID)] = order #更新order信息
+
+        self.localOrderDict[str(self.localNo)] = order
+        # self.localNoDict[str(self.localNo)] = vtOrderID
+        self.localNoDict[str(self.localNo)] = order.exchangeOrderID
+        return vtOrderID
     #---------------------------------------------------------------------------
     def cancelOrder(self, req):
         """撤单"""
-        localNo = req.orderID
+        localNo = str(req.orderID)
+        self.writeLog(u'cancelOrder localNo:%s'%(localNo))
         if localNo in self.localNoDict:
             orderID = self.localNoDict[localNo]
-
+            self.writeLog(u'---cancelorder-gw---,%s,%s,%s,%s'%(req.symbol,localNo,orderID,req.contractType))
             self.futuresCancelOrder(req.symbol, orderID, req.contractType)
         else:
             # 如果在系统委托号返回前客户就发送了撤单请求，则保存
             # 在cancelDict字典中，等待返回后执行撤单任务
             self.cancelDict[localNo] = req
+            self.writeLog(u'Not in localNoDict')
 
     #----------------------------------------------------------------------
     def generateDateTime(self, s):
@@ -1524,3 +1658,11 @@ class FuturesApi(OkexFuturesApi):
             return data['error_code']
 
 
+    def rest_qry_orders(self, symbol, contractType, order_id, status = None ):
+        data = self.future_order_info(symbol,contractType,order_id,status)
+        print(data,"rest_order_callback")
+        return data
+
+    def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
+        data = self.futureKline(symbol, type_, contract_type, size, since)
+        return data
