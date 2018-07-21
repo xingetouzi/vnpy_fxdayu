@@ -141,7 +141,7 @@ class OkexApi(object):
                                          on_close=self.onCloseCallback,
                                          on_open=self.onOpenCallback)        
         
-        self.wsThread = Thread(target=self.ws.run_forever)
+        self.wsThread = Thread(target=self.ws.run_forever,kwargs={'sslopt':{"cert_reqs": ssl.CERT_NONE}})
         self.wsThread.start()
 
     #----------------------------------------------------------------------
