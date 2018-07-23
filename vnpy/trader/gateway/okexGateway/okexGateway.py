@@ -1251,7 +1251,6 @@ class FuturesApi(OkexFuturesApi):
             print(localNo,order.status,orderId,self.exchangeOrderDict[str(orderId)],"-----------*******order******---------")
             self.orderDict[order.vtOrderID] = order   #更新order信息
             self.writeLog(u'localNo:%s, orderId:%s, status:%s'%(localNo, orderId,order.status))
-            self.gateway.onOrder(copy(order))
         except KeyError:
             order = VtOrderData()
             self.exchangeOrderDict[str(orderId)] = "wait"
@@ -1271,10 +1270,14 @@ class FuturesApi(OkexFuturesApi):
             order.orderTime = rawData['create_date_str']
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             order.status = statusMap[rawData['status']] 
+            order.thisTradedVolume = 0
             self.orderDict[orderId] = order   #更新order信息
+            return
         
         lastTradedVolume = order.tradedVolume
         order.tradedVolume = float(rawData['deal_amount'])
+        order.thisTradedVolume = order.tradedVolume - lastTradedVolume
+        self.gateway.onOrder(copy(order))
 
         
         # 成交信息

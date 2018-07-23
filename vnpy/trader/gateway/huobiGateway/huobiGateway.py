@@ -159,7 +159,7 @@ class HuobiGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
     
-    def loadHistoryBar(vtSymbol, type_, size, since):
+    def loadHistoryBar(self, vtSymbol, type_, size, since):
         """接收历史数据"""
         # period {1min, 5min, 15min, 30min, 60min, 1day, 1mon, 1week, 1year}
         symbol = vtSymbol.split('.')[0]

@@ -218,16 +218,17 @@ class CtaTemplate(object):
         """查询最小价格变动"""
         return self.ctaEngine.getPriceTick(self)
 
-    def initPosition(self,strategy,productType='SPOT'):
+    def initPosition(self,strategy):
         """初始化起始仓位"""
-        print('*********************--------------***********')
-        self.ctaEngine.initPosition(self,productType)
+        self.ctaEngine.initPosition(self)
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
         data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
         return data
-
+    def qryOrder(self,vtSymbol, order_id, status= None):
+        """查询特定的订单"""
+        return self.ctaEngine.qryOrder(vtSymbol, order_id, status)
 
 ########################################################################
 class TargetPosTemplate(CtaTemplate):

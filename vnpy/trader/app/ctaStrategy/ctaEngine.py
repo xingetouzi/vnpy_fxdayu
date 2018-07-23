@@ -307,28 +307,30 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[vtOrderID]
 
             if 'eveningDict' in strategy.syncList:
-                print('***************************-----------**********')
+                print('***************',"'eveningDict' in strategy.syncList:",'******-----------**********')
                 if order.status == STATUS_CANCELLED:
                     if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
                         posName = order.vtSymbol.replace(".","_") + "_SHORT"
-                        strategy.eveningDict[posName] += order.volume
+                        strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
                     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
                         posName = order.vtSymbol.replace(".","_") + "_LONG"
-                        strategy.eveningDict[posName] += order.volume
+                        strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
 
                 elif order.status == STATUS_ALLTRADED or order.status == STATUS_PARTTRADED:
                     if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
                         posName = order.vtSymbol.replace(".","_") + "_LONG"
-                        strategy.eveningDict[posName] += order.tradedVolume
+                        strategy.eveningDict[posName] += order.thisTradedVolume
                     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
                         posName = order.vtSymbol.replace(".","_") + "_SHORT"
-                        strategy.eveningDict[posName] += order.tradedVolume
-                    elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
+                        strategy.eveningDict[posName] += order.thisTradedVolume
+                        
+                elif order.status == STATUS_NOTTRADED:
+                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
                         posName = order.vtSymbol.replace(".","_") + "_SHORT"
-                        strategy.eveningDict[posName] -= order.tradedVolume
+                        strategy.eveningDict[posName] -= order.totalVolume
                     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
                         posName = order.vtSymbol.replace(".","_") + "_LONG"
-                        strategy.eveningDict[posName] -= order.tradedVolume
+                        strategy.eveningDict[posName] -= order.totalVolume
                 
 
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
@@ -816,18 +818,24 @@ class CtaEngine(object):
         data = self.mainEngine.loadHistoryBar(vtSymbol, type_, size, since)
         return data
 
-    def initPosition(self,strategy,productType = 'SPOT'):
+    def initPosition(self,strategy):
+        """初始化同步参数"""
         for item in strategy.syncList:
             d = strategy.__getattribute__(item)
-            if productType == 'FUTURE':
+            if strategy.productType == 'FUTURE':
                 for i in range(len(strategy.symbolList)):
                     d[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
                     d[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            if productType == 'SPOT':
+            elif strategy.productType == 'SPOT':
                 for i in range(len(strategy.symbolList)):
                     d[strategy.symbolList[i].replace(".","_")] = 0
             else:
                 return '-1'    
+        self.saveSyncData(strategy)
         # for vtSymbol in strategy.symbolList:
         #     contract = self.mainEngine.getContract(vtSymbol)
         #     self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
+    def qryOrder(self,vtSymbol, order_id, status= None):
+        """查询特定订单"""
+        data = self.mainEngine.qryOrder(vtSymbol, order_id, status)
+        return data

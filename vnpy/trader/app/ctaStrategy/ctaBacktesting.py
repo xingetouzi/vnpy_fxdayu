@@ -32,7 +32,7 @@ from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtGateway import VtOrderData, VtTradeData
 
-from .ctaBase import *
+from ctaBase import *
 
 
 ########################################################################
@@ -684,17 +684,18 @@ class BacktestingEngine(object):
     #-------------------------------------------
     def initPosition(self,strategy):
         for item in strategy.syncList:
+            d = strategy.__getattribute__(item)
             if strategy.productType == 'FUTURE':
                 for i in range(len(strategy.symbolList)):
-                    strategy.item = {}
-                    strategy.item[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-                    strategy.item[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+                    d[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+                    d[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+                print(d)
             if strategy.productType == 'SPOT':
                 for i in range(len(strategy.symbolList)):
-                    strategy.item = {}
-                    strategy.item[strategy.symbolList[i].replace(".","_")] = 0
+                    d[strategy.symbolList[i].replace(".","_")] = 0
             else:
-                return '-1'
+                return '-1'    
+        self.saveSyncData(strategy)
                 
 
     #------------------------------------------------
