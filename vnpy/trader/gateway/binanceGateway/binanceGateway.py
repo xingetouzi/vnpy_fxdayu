@@ -163,7 +163,8 @@ class BinanceGateway(VtGateway):
         data = self.GatewayApi.loadHistoryBar(symbol,type_,size)
         return data
 
-    
+    def initPosition(self,vtSymbol):s
+        pass
 
 
 ########################################################################
@@ -514,5 +515,5 @@ class GatewayApi(BinanceApi):
             startTime = since
         else:
             startTime = 0
-        data = self.queryKlines(symbol,interval,limit,startTime)
+        msg,data = self.queryKlines(symbol,interval,limit,startTime)
         return data

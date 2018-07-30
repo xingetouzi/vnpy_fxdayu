@@ -13,7 +13,8 @@ from threading import Thread
 from multiprocessing.dummy import Pool
 from time import time, sleep
 from urllib.parse import urlencode
-
+import pandas as pd
+from datetime import datetime
 from websocket import create_connection
 
 REST_ENDPOINT = 'https://www.binance.com'
@@ -244,8 +245,14 @@ class BinanceApi(object):
             params['startTime'] = startTime
         if endTime:
             params['endTime'] = endTime
+        
+        print("--检查type是否正确--",params)
+        result, data = self.request('GET', path, params, signed=False, stream=False)
+        df = pd.DataFrame(data, columns=["opentime", "open", "high", "low", "close", "volume","closetime","Quote","trades","buybase","buyquote","ignore"])
 
-        return self.addReq('GET', path, params, self.onQueryKlines)
+        df["datetime"] = df["closetime"].map(lambda x: datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
+
+        return self.addReq('GET', path, params, self.onQueryKlines),df.to_dict()
 
         # ----------------------------------------------------------------------
 
@@ -284,14 +291,22 @@ class BinanceApi(object):
         """"""
         path = '/api/v3/order'
 
-        params = {
-            'symbol': symbol,
-            'side': side,
-            'type': type_,
-            'price': price,
-            'quantity': quantity,
-            'timeInForce': timeInForce
-        }
+        if type_ == 'LIMIT':
+            params = {
+                'symbol': symbol,
+                'side': side,
+                'type': type_,
+                'price': price,
+                'quantity': quantity,
+                'timeInForce': timeInForce
+            }
+        elif type_ == 'MARKET':
+            params = {
+                'symbol': symbol,
+                'side': side,
+                'type': type_,
+                'quantity': quantity
+            }
         if newClientOrderId:
             params['newClientOrderId'] = newClientOrderId
         if timeInForce:

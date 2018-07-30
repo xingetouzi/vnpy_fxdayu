@@ -21,7 +21,7 @@
 import json
 import os
 import traceback
-from collections import OrderedDict
+from collections import OrderedDict,defaultdict
 from datetime import datetime, timedelta
 from copy import copy
 from vnpy.event import Event
@@ -307,7 +307,6 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[vtOrderID]
 
             if 'eveningDict' in strategy.syncList:
-                print('***************',"'eveningDict' in strategy.syncList:",'******-----------**********')
                 if order.status == STATUS_CANCELLED:
                     if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
                         posName = order.vtSymbol.replace(".","_") + "_SHORT"
@@ -355,7 +354,6 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[trade.vtOrderID]
 
             # 计算策略持仓
-            # if trade.exchange == 'OKEX':
             if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
                 posName = trade.vtSymbol.replace(".","_") + "_LONG"
                 strategy.posDict[str(posName)] += trade.volume
@@ -375,77 +373,71 @@ class CtaEngine(object):
                 posName = trade.vtSymbol.replace(".","_")
                 strategy.posDict[str(posName)] -= trade.volume
 
-
-            # else:
-            #     currency_pairs = trade.vtSymbol.split(".")
-            #     currency_one = currency_pairs[0]
-            #     currency_against = currency_pairs[1]
-            #     posName = trade.vtSymbol.replace(".","_")
-            #     accName_1 = currency_one
-            #     accName_2 = currency_against
-            #     if trade.direction == DIRECTION_LONG:
-            #         strategy.posDict[str(posName)] += trade.volume
-            #         strategy.accountDict[str(accName_1)] += trade.volume * trade.price
-            #         strategy.accountDict[str(accName_2)] -= trade.volume
-            #     else:
-            #         strategy.posDict[str(posName)] += trade.volume
-            #         strategy.accountDict[str(accName_1)] -= trade.volume 
-            #         strategy.accountDict[str(accName_2)] += trade.volume / trade.price
-
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
-            # 保存策略持仓到数据库
-            self.saveSyncData(strategy)
     #----------------------------------
     def processPositionEvent(self, event):
-        pass
-    #     pos = event.dict_['data']
-    #     if self.strategyDict:
-    #         for strategy in self.strategyDict.values():
+        """处理持仓推送"""
+        pos = event.dict_['data']
+        temp0 = pos.vtSymbol.split('.')[0]
+        temp1 = pos.vtSymbol.split('.')[1]
+        if 'quarter' in temp0 or 'week' in temp0 or 'bitmex' in temp1:
+            productType = 'FUTURE'
+        else:
+            productType = 'SPOT'
 
+        for strategy in self.strategyDict.values():
+            if strategy.inited and pos.vtSymbol in strategy.symbolList:
+                if productType == 'FUTURE':
+                    if pos.direction == DIRECTION_LONG:
+                        posName = pos.vtSymbol.replace(".","_") + "_LONG"
+                        if 'posDict' in strategy.syncList:
+                            strategy.posDict[str(posName)] = pos.position
+                        if 'eveningDict' in strategy.syncList:
+                            strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                        if 'bondDict' in strategy.syncList:
+                            strategy.bondDict[str(posName)]=pos.frozen
+                    elif pos.direction == DIRECTION_SHORT:
+                        posName2 = pos.vtSymbol.replace(".","_") + "_SHORT"
+                        if 'posDict' in strategy.syncList:
+                            strategy.posDict[str(posName2)] = pos.position
+                        if 'eveningDict' in strategy.syncList:
+                            strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                        if 'bondDict' in strategy.syncList:
+                            strategy.bondDict[str(posName2)]=pos.frozen
+                elif productType == 'SPOT':
+                    posName = pos.vtSymbol.replace(".","_")
+                    if 'posDict' in strategy.syncList:
+                        strategy.posDict[str(posName)] = pos.position
+                    if 'bondDict' in strategy.syncList:
+                        strategy.bondDict[str(posName)] = pos.frozen
 
-
-                # elif order.status == STATUS_NOTTRADED:
-                #     if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
-                #         posName = order.vtSymbol.replace(".","_") + "_LONG"
-                #         strategy.bondDict[posName] += order.volume
-                #     elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
-                #         posName = order.vtSymbol.replace(".","_") + "_LONG"
-                #         strategy.bondDict[posName] += order.volume
-                #     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
-                #         posName = order.vtSymbol.replace(".","_") + "_SHORT"
-                #         strategy.bondDict[posName] += order.volume
-                #     elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
-                #         posName = order.vtSymbol.replace(".","_") + "_SHORT"
-                #         strategy.bondDict[posName] += order.volume
-
-    #             if pos.exchange == 'OKEX':
-    #                 if pos.direction == DIRECTION_LONG:
-    #                     posName = pos.vtSymbol.replace(".","_") + "_LONG"
-    #                     strategy.posDict[str(posName)] = pos.position
-    #                     strategy.eveningDict[str(posName)] = pos.position - pos.frozen
-    #                     strategy.bondDict[str(posName)]=pos.frozen
-    #                 else:
-    #                     posName2 = pos.vtSymbol.replace(".","_") + "_SHORT"
-    #                     strategy.posDict[str(posName2)] = pos.position
-    #                     strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
-    #                     strategy.bondDict[str(posName2)]=pos.frozen
-
-    #             else:
-    #                 posName = pos.vtSymbol.replace(".","_")
-    #                 strategy.posDict[str(posName)] = pos.position
-    #                 strategy.availableDict[str(posName)] = pos.available
-    #                 strategy.bondDict[str(posName)]=pos.frozen
-
-    #             # 保存策略持仓到数据库
-    #             self.saveSyncData(strategy)  
+                # 保存策略持仓到数据库
+                self.saveSyncData(strategy)  
 
     #------------------------------------------------------
+    def processAccountEvent(self,event):
+        """账户推送"""
+        account = event.dict_['data']
+
+        for strategy in self.strategyDict.values():
+            if strategy.inited:
+                accountName = account.vtSymbol.replace('.','_')
+                if 'accountDict' in strategy.syncList:
+                    strategy.accountDict[str(posName)] = account.position
+                elif 'bondDict' in strategy.syncList:
+                    strategy.bondDict[str(posName)] = account.frozen
+
+            # 保存策略持仓到数据库
+            self.saveSyncData(strategy)  
+
+    #--------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
         self.eventEngine.register(EVENT_TICK, self.processTickEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
-        # self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
+        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
+        self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
 
 
     #----------------------------------------------------------------------
@@ -568,7 +560,7 @@ class CtaEngine(object):
             if not strategy.inited:
                 strategy.inited = True
                 self.callStrategyFunc(strategy, strategy.onInit)
-                self.loadSyncData(strategy)                             # 初始化完成后加载同步数据
+                # self.loadSyncData(strategy)                             # 初始化完成后加载同步数据
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
 
             else:
@@ -819,23 +811,10 @@ class CtaEngine(object):
         return data
 
     def initPosition(self,strategy):
-        """初始化同步参数"""
         for item in strategy.syncList:
             d = strategy.__getattribute__(item)
-            if strategy.productType == 'FUTURE':
-                for i in range(len(strategy.symbolList)):
-                    d[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-                    d[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-            elif strategy.productType == 'SPOT':
-                for i in range(len(strategy.symbolList)):
-                    d[strategy.symbolList[i].replace(".","_")] = 0
-            else:
-                return '-1'    
-        self.saveSyncData(strategy)
-        # for vtSymbol in strategy.symbolList:
-        #     contract = self.mainEngine.getContract(vtSymbol)
-        #     self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
-    def qryOrder(self,vtSymbol, order_id, status= None):
-        """查询特定订单"""
-        data = self.mainEngine.qryOrder(vtSymbol, order_id, status)
-        return data
+            d = defaultdict(None)
+
+        for vtSymbol in strategy.symbolList:
+            contract = self.mainEngine.getContract(vtSymbol)
+            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)

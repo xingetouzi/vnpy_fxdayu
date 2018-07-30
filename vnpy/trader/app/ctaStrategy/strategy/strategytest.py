@@ -26,6 +26,7 @@ class TestStrategy(CtaTemplate):
     posDict = {}                    # 仓位数据缓存
     eveningDict = {}                # 可平仓量数据缓存
     bondDict = {}                   # 保证金数据缓存
+    productType = 'FUTURE'
 
     # 策略变量
     posSize = 1                     # 每笔下单的数量

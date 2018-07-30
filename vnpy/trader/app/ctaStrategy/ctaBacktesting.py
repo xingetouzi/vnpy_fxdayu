@@ -32,7 +32,7 @@ from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtGateway import VtOrderData, VtTradeData
 
-from ctaBase import *
+from vnpy.trader.app.ctaStrategy.ctaBase import *
 
 
 ########################################################################

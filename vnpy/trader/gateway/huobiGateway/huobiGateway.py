@@ -91,7 +91,7 @@ class HuobiGateway(VtGateway):
     def subscribe(self, subscribeReq):
         """订阅行情"""
         pass
-        self.dataApi.subscribe(subscribeReq)
+        # self.dataApi.subscribe(subscribeReq)
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -159,13 +159,15 @@ class HuobiGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
     
-    def loadHistoryBar(self, vtSymbol, type_, size, since):
+    def loadHistoryBar(self, vtSymbol, type_, size, since= None):
         """接收历史数据"""
         # period {1min, 5min, 15min, 30min, 60min, 1day, 1mon, 1week, 1year}
         symbol = vtSymbol.split('.')[0]
         period = type_
-        data = self.DataApi.loadHistoryKline(symbol,period,size)
+        data = self.tradeApi.loadHistoryBar(symbol,period,size)
         return data
+    def initPosition(self,vtSymbol):
+        pass
 
 
 ########################################################################
@@ -315,33 +317,36 @@ class HuobiDataApi(DataApi):
     #----------------------------------------------------------------------
     def onTradeDetail(self, data):
         """成交细节推送
-        {"ch": "market.btcusdt.trade.detail",
-            "ts": 1489474082831,
-            "data": [
-                {
-                "id":        601595423,
-                "price":     10195.64,
-                "time":      1494495711,
-                "amount":    0.2430,
-                "direction": "buy",
-                "tradeId":   601595423,
-                "ts":        1494495711000
-                },
-                // more Trade Detail data here
-            ]}}
-        
+        #     {"ch": "market.btcusdt.trade.detail",
+        #         "ts": 1489474082831,
+        #         "data": [
+        #             {
+        #             "id":        601595423,
+        #             "price":     10195.64,
+        #             "time":      1494495711,
+        #             "amount":    0.2430,
+        #             "direction": "buy",
+        #             "tradeId":   601595423,
+        #             "ts":        1494495711000
+        #             },
+        #             // more Trade Detail data here
+        #         ]}}
+            
+            {'ch': 'market.bchbtc.trade.detail', 'ts': 1532181573753, 
+        'tick': {'id': 13203109172, 'ts': 1532181573637,
+        'data': [{'amount': 0.6104, 'ts': 1532181573637, 'id': 132031091728269885978, 'price': 0.105892, 'direction': 'sell'}]}}
         """
         symbol = data['ch'].split('.')[1]
         tick = self.tickDict.get(symbol, None)
         if not tick:
             return
-        tick.datetime = datetime.fromtimestamp(data['ts']/1000)
+        tick.datetime = datetime.fromtimestamp(data['tick']['ts']/1000)
         tick.date = tick.datetime.strftime('%Y%m%d')
         tick.time = tick.datetime.strftime('%H:%M:%S.%f')
-        t = data['data']
+        t = data['tick']['data'][0]
         tick.lastVolume = float(t['amount'])
         tick.lastPrice = float(t['price'])
-        tick.type = float(t['direction'])
+        tick.type = t['direction']
         tick.volumeChange = 1
         tick.localTime = datetime.now()
         if tick.bidPrice1:
@@ -482,13 +487,20 @@ class HuobiTradeApi(TradeApi):
         buy-ioc：IOC买单, sell-ioc：IOC卖单, buy-limit-maker, sell-limit-maker
         还有这四种情况
         """
+        if 'market' in type_:
 
-        reqid = self.placeOrder(self.accountid,
-                                str(orderReq.volume),
-                                orderReq.symbol,
-                                type_,
-                                price=str(orderReq.price),
-                                source='api')
+            reqid = self.placeOrder(self.accountid,
+                                    str(orderReq.volume),
+                                    orderReq.symbol,
+                                    type_,
+                                    source='api')
+        else:
+            reqid = self.placeOrder(self.accountid,
+                                    str(orderReq.volume),
+                                    orderReq.symbol,
+                                    type_,
+                                    price=str(orderReq.price),
+                                    source='api')
 
         self.reqLocalDict[reqid] = localid
 

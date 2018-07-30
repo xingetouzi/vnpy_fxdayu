@@ -162,6 +162,7 @@ class VtOrderData(VtBaseData):
         self.contractType = EMPTY_STRING        # OKEX的期货
         self.totalVolume = EMPTY_FLOAT          # 报单总数量
         self.tradedVolume = EMPTY_FLOAT         # 报单成交数量
+        self.thisTradedVolume = EMPTY_FLOAT     # 本次成交数量
         self.status = EMPTY_UNICODE             # 报单状态
         self.priceType = EMPTY_STRING
         self.orderTime = EMPTY_STRING           # 发单时间

@@ -10,7 +10,7 @@ from time import sleep
 import pandas as  pd
 import requests
 import datetime
-
+import ssl
 import websocket    
 
 # 常量定义
@@ -387,6 +387,38 @@ class OkexSpotApi(OkexApi):
         """订阅资金推送"""
         channel = 'ok_sub_spot_%s_balance' %symbol
         self.sendRequest(channel)
+
+
+    # RESTFUL 
+    def _get_url_func(self, url, params=""):
+        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
+    def _chg_dic_to_str(self, dictionary):
+        keys = list(dictionary.keys())
+        keys.remove("self")
+        keys.sort()
+        strings = []
+        for key in keys:
+            if dictionary[key] != None:
+                if not isinstance(dictionary[key], str):
+                    strings.append(key + "=" + str(dictionary[key]))
+                    continue
+                strings.append(key + "=" + dictionary[key])
+
+        return ".do?" + "&".join(strings)
+    def spotKline(self, symbol, type, size=None, since=None):
+        params = self._chg_dic_to_str(locals())
+        print(params)
+        url = self._get_url_func("kline", params=params)
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, timeout=10)
+        print(r)
+        text = eval(r.text)
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume"])
+        df["datetime"] = df["datetime"].map(
+            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
+        # delta = datetime.timedelta(hours=8)
+        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
+        return df.to_dict()
+
 ########################################################################
 class OkexFuturesApi(OkexApi):
     """期货交易接口
@@ -504,6 +536,8 @@ class OkexFuturesApi(OkexApi):
         channel = 'ok_futureusd_cancel_order'
 
         self.sendRequest(channel, params)
+
+    
 
     #----------------------------------------------------------------------
     def futuresUserInfo(self):
