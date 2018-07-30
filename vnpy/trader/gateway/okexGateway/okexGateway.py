@@ -122,6 +122,19 @@ okex_all_symbol_pairs = ['ref_usdt', 'soc_usdt', 'light_usdt', 'avt_usdt',
 'mtl_btc', 'cmt_btc', 'xrp_btc', 'spf_btc', 'aac_btc', 'can_btc', 'omg_btc', 'hsr_btc', 
 'link_btc', 'dnt_btc', 'true_btc', 'ukg_btc', 'xem_btc', 'ngc_btc', 'lev_btc', 'rdn_btc', 
 'ace_btc', 'ipc_btc', 'ugc_btc', 'viu_btc', 'mag_btc', 'hot_btc', 'pst_btc']
+KLINE_PERIOD = ["1min",
+                "3min",
+                "5min",
+                "15min",
+                "30min",
+                "1hour",
+                "2hour",
+                "4hour",
+                "6hour",
+                "12hour",
+                "day",
+                "3day",
+                "week"]
 
 ########################################################################
 class OkexGateway(VtGateway):
@@ -215,6 +228,10 @@ class OkexGateway(VtGateway):
         """策略初始化时下载历史数据"""
         temp= vtSymbol.split('.')[0]
         contractType = temp[4:]
+        if type_ not in KLINE_PERIOD:
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
+            return '-1'
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]+"_usd"
             data = self.futuresApi.rest_future_bar(symbol,type_,contractType,size,since)

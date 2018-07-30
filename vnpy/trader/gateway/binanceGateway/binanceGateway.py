@@ -159,6 +159,11 @@ class BinanceGateway(VtGateway):
         self.qryEnabled = qryEnabled
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
+        KLINE_PERIOD=['1m', '3m', '5m', '15m', '30m', '1h','2h','4h','6h','8h', '12h','1d', '3d', '1w', '1M']
+        if type_ not in KLINE_PERIOD:
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("BINANCE Type_ hint：'1m', '3m', '5m', '15m', '30m', '1h','2h','4h','6h','8h', '12h','1d', '3d', '1w', '1M'")
+            return '-1'
         symbol = vtSymbol.split('.')[0]
         data = self.GatewayApi.loadHistoryBar(symbol,type_,size)
         return data

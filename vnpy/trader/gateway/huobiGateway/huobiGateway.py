@@ -161,7 +161,11 @@ class HuobiGateway(VtGateway):
     
     def loadHistoryBar(self, vtSymbol, type_, size, since= None):
         """接收历史数据"""
-        # period {1min, 5min, 15min, 30min, 60min, 1day, 1mon, 1week, 1year}
+        KLINE_PERIOD=['1min', '5min', '15min', '30min', '60min', '1day', '1mon', '1week', '1year']
+        if type_ not in KLINE_PERIOD:
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("HUOBI Type_ hint：1min,5min,15min,30min,60min,1day,1week,1year")
+            return '-1'
         symbol = vtSymbol.split('.')[0]
         period = type_
         data = self.tradeApi.loadHistoryBar(symbol,period,size)

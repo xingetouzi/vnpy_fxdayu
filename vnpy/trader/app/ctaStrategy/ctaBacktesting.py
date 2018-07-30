@@ -7,7 +7,7 @@
 from __future__ import division
 
 from datetime import datetime, timedelta
-from collections import OrderedDict
+from collections import OrderedDict,defaultdict
 from itertools import product
 import multiprocessing
 import copy
@@ -685,17 +685,11 @@ class BacktestingEngine(object):
     def initPosition(self,strategy):
         for item in strategy.syncList:
             d = strategy.__getattribute__(item)
-            if strategy.productType == 'FUTURE':
-                for i in range(len(strategy.symbolList)):
-                    d[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-                    d[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
-                print(d)
-            if strategy.productType == 'SPOT':
-                for i in range(len(strategy.symbolList)):
-                    d[strategy.symbolList[i].replace(".","_")] = 0
-            else:
-                return '-1'    
-        self.saveSyncData(strategy)
+            d = defaultdict(None)
+
+        for vtSymbol in strategy.symbolList:
+            contract = self.mainEngine.getContract(vtSymbol)
+            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
                 
 
     #------------------------------------------------
