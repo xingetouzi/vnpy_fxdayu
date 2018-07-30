@@ -686,12 +686,7 @@ class BacktestingEngine(object):
         for item in strategy.syncList:
             d = strategy.__getattribute__(item)
             d = defaultdict(None)
-
-        for vtSymbol in strategy.symbolList:
-            contract = self.mainEngine.getContract(vtSymbol)
-            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
                 
-
     #------------------------------------------------
     # 结果计算相关
     #------------------------------------------------      
