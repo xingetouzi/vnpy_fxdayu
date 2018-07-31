@@ -168,7 +168,7 @@ class BinanceGateway(VtGateway):
         data = self.GatewayApi.loadHistoryBar(symbol,type_,size)
         return data
 
-    def initPosition(self,vtSymbol):s
+    def initPosition(self,vtSymbol):
         pass
 
 
@@ -498,10 +498,16 @@ class GatewayApi(BinanceApi):
         orderId = self.date + str(self.orderId).rjust(6, '0')
         vtOrderID = '.'.join([self.gatewayName, orderId])
         side = directionMap.get(orderReq.direction, '')
-        type_ = priceTypeMap.get(orderReq.priceType, PRICETYPE_LIMITPRICE)
-
-        self.newOrder(orderReq.symbol, side, type_, orderReq.price,
+        if orderReq.priceType == 0:
+            orderReq.priceType = PRICETYPE_LIMITPRICE
+            type_ = priceTypeMap.get(orderReq.priceType, PRICETYPE_LIMITPRICE)
+            self.newOrder(orderReq.symbol, side, type_, orderReq.price,
                       orderReq.volume, 'GTC', newClientOrderId=orderId)
+        elif orderReq.priceType == 1:
+            orderReq.priceType = PRICETYPE_MARKETPRICE
+            type_ = priceTypeMap.get(orderReq.priceType, PRICETYPE_MARKETPRICE)
+            self.newOrder(orderReq.symbol, side, type_, orderReq.price,
+                      orderReq.volume,timeInForce='' , newClientOrderId=orderId)
 
         return vtOrderID
 

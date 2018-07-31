@@ -1049,6 +1049,10 @@ class TradingWidget(QtWidgets.QFrame):
             req.contractType = symbol[4:]
         req.direction = str(self.comboDirection.currentText())
         req.priceType = str(self.comboPriceType.currentText())
+        if req.priceType == PRICETYPE_LIMITPRICE:
+            req.priceType = 0
+        elif req.priceType == PRICETYPE_MARKETPRICE:
+            req.priceType = 1
         req.offset = str(self.comboOffset.currentText())
         req.currency = currency
         req.productClass = productClass
