@@ -27,13 +27,13 @@ except ImportError:
 
 from collections import defaultdict
 
+
 from vnpy.trader.vtGlobal import globalSetting
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtGateway import VtOrderData, VtTradeData
 
 from vnpy.trader.app.ctaStrategy.ctaBase import *
-
 
 ########################################################################
 class BacktestingEngine(object):
@@ -342,7 +342,7 @@ class BacktestingEngine(object):
         """
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
-        self.strategy.posDict = {}
+        # self.strategy.posDict = {}
 
 
     #----------------------------------------------------------------------
@@ -683,9 +683,10 @@ class BacktestingEngine(object):
         return self.priceTick
     #-------------------------------------------
     def initPosition(self,strategy):
-        for item in strategy.syncList:
-            d = strategy.__getattribute__(item)
-            d = defaultdict(None)
+        for i in range(len(strategy.symbolList)):
+            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
+            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+
                 
     #------------------------------------------------
     # 结果计算相关
