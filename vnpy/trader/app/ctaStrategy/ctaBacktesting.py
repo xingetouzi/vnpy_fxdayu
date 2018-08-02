@@ -1071,8 +1071,6 @@ class BacktestingEngine(object):
     def calculateDailyResult(self):
         """计算按日统计的交易结果"""
         self.output(u'计算按日统计结果')
-
-        print(self.dailyResultDict,0000000000000000000)
         dailyResultDict = copy.deepcopy(self.dailyResultDict)
         # 将成交添加到每日交易结果中
         for trade in self.tradeDict.values():
@@ -1112,7 +1110,6 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def calculateDailyStatistics(self, df):
         """计算按日统计的结果"""
-        print(df.head())
         df['balance'] = df['netPnl'].cumsum() + self.capital
         df['return'] = (np.log(df['balance']) - np.log(df['balance'].shift(1))).fillna(0)
         df['highlevel'] = df['balance'].rolling(min_periods=1,window=len(df),center=False).max()
@@ -1188,7 +1185,6 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def showDailyResult(self, df=None, result=None):
         """显示按日统计的交易结果"""
-        print(df)
         if df is None:
             df = self.calculateDailyResult()
             df, result = self.calculateDailyStatistics(df)
