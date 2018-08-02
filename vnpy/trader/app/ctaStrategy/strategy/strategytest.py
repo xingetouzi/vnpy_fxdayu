@@ -87,26 +87,23 @@ class TestStrategy(CtaTemplate):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'策略%s：初始化' % self.className)
         # 获取初始持仓， 实盘的持仓从交易所获取，回测的持仓初始化为 0
-        self.ctaEngine.initPosition(self)
+        self.ctaEngine.initPosition()
 
         # 载入1分钟历史数据，并采用回放计算的方式初始化策略参数
-        # self.get_history = HistoryData()
-        # pastbar = self.get_history.future_bar(self.activeSymbol[:3]+"_usd",
-        #                     type = "1min", 
-        #                     contract_type = self.activeSymbol[4:-5],
-        #                     size = self.initbars)
+        pastbar = self.loadHistoryBar(self.activeSymbol,
+                            type_ = "1min", 
+                            size = self.initbars)
 
-        # pastbar2 = self.get_history.future_bar(self.passiveSymbol[:3]+"_usd",
-        #                 type = "1min", 
-        #                 contract_type = self.passiveSymbol[4:-5],
-        #                 size = self.initbars)
+        pastbar2 = self.loadHistoryBar(self.passiveSymbol,
+                        type_ = "1min", 
+                        size = self.initbars)
         
-        # for i in range(len(pastbar['close'])):    # 计算历史数据的价差，并保存到缓存
-        #     spread = pastbar['close'][i] - pastbar2['close'][i]
-        #     self.spreadBuffer.append(spread)
+        for i in range(len(pastbar['close'])):    # 计算历史数据的价差，并保存到缓存
+            spread = pastbar['close'][i] - pastbar2['close'][i]
+            self.spreadBuffer.append(spread)
 
-        # self.amDict[self.activeSymbol].updateBar(histbar = pastbar)    # 更新数据矩阵
-        # self.amDict[self.passiveSymbol].updateBar(histbar = pastbar2)
+        self.amDict[self.activeSymbol].updateBar(histbar = pastbar)    # 更新数据矩阵
+        self.amDict[self.passiveSymbol].updateBar(histbar = pastbar2)
 
         # self.onBar()  # 是否直接推送到onBar
         self.putEvent()
@@ -117,7 +114,6 @@ class TestStrategy(CtaTemplate):
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
         self.writeCtaLog(u'策略%s：启动' % self.className)
-        # self.ctaEngine.loadSyncData(self)    # 加载当前正确的持仓
         self.putEvent()
         '''
         在点击启动策略时触发,此时的ctaEngine会将下单逻辑改为True,此时开始推送到onbar的数据会触发下单.

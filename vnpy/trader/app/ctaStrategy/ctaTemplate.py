@@ -204,12 +204,12 @@ class CtaTemplate(object):
         """查询当前运行的环境"""
         return self.ctaEngine.engineType
     #----------------------------------------------------------------------
-    def saveSyncData(self,strategy):
+    def saveSyncData(self):
         """保存同步数据到数据库"""
         if self.trading:
             self.ctaEngine.saveSyncData(self)
             
-    def loadSyncData(self,strategy):
+    def loadSyncData(self):
         """从数据库读取同步数据"""
         self.ctaEngine.loadSyncData(self)
 
@@ -218,7 +218,7 @@ class CtaTemplate(object):
         """查询最小价格变动"""
         return self.ctaEngine.getPriceTick(self)
 
-    def initPosition(self,strategy):
+    def initPosition(self):
         """初始化起始仓位"""
         self.ctaEngine.initPosition(self)
 
@@ -226,9 +226,13 @@ class CtaTemplate(object):
         """策略开始前下载历史数据"""
         data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
         return data
-    def qryOrder(self,vtSymbol, order_id, status= None):
+    def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""
-        return self.ctaEngine.qryOrder(vtSymbol, order_id, status)
+        return self.ctaEngine.qryOrder(vtSymbol,self.name,status)
+    def onRestore():
+        pass
+
+
 
 ########################################################################
 class TargetPosTemplate(CtaTemplate):

@@ -90,20 +90,23 @@ class CtaStrategyManager(QtWidgets.QGroupBox):
         buttonInit = QtWidgets.QPushButton(text.INIT)
         buttonStart = QtWidgets.QPushButton(text.START)
         buttonStop = QtWidgets.QPushButton(text.STOP)
+        buttonRestore = QtWidgets.QPushButton(text.RESTORE)
         buttonInit.clicked.connect(self.init)
         buttonStart.clicked.connect(self.start)
         buttonStop.clicked.connect(self.stop)
+        buttonRestore.clicked.connect(self.restore)
 
         hbox1 = QtWidgets.QHBoxLayout()
         hbox1.addWidget(buttonInit)
         hbox1.addWidget(buttonStart)
         hbox1.addWidget(buttonStop)
+        hbox1.addWidget(buttonRestore)
         hbox1.addStretch()
 
-        hbox2 = QtWidgets.QHBoxLayout()
+        hbox2 = QtWidgets.QVBoxLayout()
         hbox2.addWidget(self.paramMonitor)
 
-        hbox3 = QtWidgets.QHBoxLayout()
+        hbox3 = QtWidgets.QVBoxLayout()
         hbox3.addWidget(self.varMonitor)
 
         vbox = QtWidgets.QVBoxLayout()
@@ -144,6 +147,10 @@ class CtaStrategyManager(QtWidgets.QGroupBox):
         """停止策略"""
         self.ctaEngine.stopStrategy(self.name)
 
+    def restore(self):
+        "恢复策略"
+        self.ctaEngine.restoreStrategy(self.name)
+
 
 ########################################################################
 class CtaEngineManager(QtWidgets.QWidget):
@@ -170,7 +177,7 @@ class CtaEngineManager(QtWidgets.QWidget):
     def initUi(self):
         """初始化界面"""
         self.setWindowTitle(text.CTA_STRATEGY)
-        self.setMinimumSize(1000, 650); 
+        self.setMinimumSize(1200, 800); 
         # 按钮
         loadButton = QtWidgets.QPushButton(text.LOAD_STRATEGY)
         initAllButton = QtWidgets.QPushButton(text.INIT_ALL)
@@ -189,7 +196,7 @@ class CtaEngineManager(QtWidgets.QWidget):
         # CTA组件的日志监控
         self.ctaLogMonitor = QtWidgets.QTextEdit()
         self.ctaLogMonitor.setReadOnly(True)
-        self.ctaLogMonitor.setMaximumHeight(500)
+        # self.ctaLogMonitor.setMaximumHeight(700)
 
         # 设置布局
         hbox2 = QtWidgets.QHBoxLayout()
@@ -200,8 +207,8 @@ class CtaEngineManager(QtWidgets.QWidget):
         hbox2.addStretch()
 
         vbox = QtWidgets.QVBoxLayout()
-        vbox.addLayout(hbox2,1)
-        vbox.addWidget(self.scrollArea)
+        vbox.addLayout(hbox2)
+        vbox.addWidget(self.scrollArea,1)
         vbox.addWidget(self.ctaLogMonitor,2)
         self.setLayout(vbox)
 

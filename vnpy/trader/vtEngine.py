@@ -179,19 +179,10 @@ class MainEngine(object):
         if gateway:
             gateway.qryPosition()
             
-    def qryOrder(self,vtSymbol, order_id, status= None):
-        """"""
-        gatewayName = vtSymbol.split('.')[1]
-        gateway = self.getGateway(gatewayName)
-        if gateway:
-            data = gateway.qryOrder(vtSymbol,order_id,status)
-        return data
-
     #------------------------------------------------
     def initPosition(self, vtSymbol, gatewayName):
         """策略初始化时查询特定接口的持仓"""
         gateway = self.getGateway(gatewayName)
-        
         if gateway:
             gateway.initPosition(vtSymbol)
 
@@ -201,6 +192,13 @@ class MainEngine(object):
         gateway = self.getGateway(gatewayName[1])
         if gateway:
             data = gateway.loadHistoryBar(vtSymbol,type_,size)
+        return data
+
+    def qryOrder(self, vtSymbol,orderId,status=None):
+        gatewayName = vtSymbol.split('.')
+        gateway = self.getGateway(gatewayName[1])
+        if gateway:
+            data = gateway.qryOrder(vtSymbol,orderId,status)
         return data
 
     #----------------------------------------------------------------------
@@ -466,6 +464,8 @@ class DataEngine(object):
         """处理委托事件"""
         order = event.dict_['data']        
         self.orderDict[order.vtOrderID] = order
+        
+        print('vtEngine---%s,%s'%(order.vtOrderID,self.orderDict[order.vtOrderID].status))
         
         # 如果订单的状态是全部成交或者撤销，则需要从workingOrderDict中移除
         if order.status in self.FINISHED_STATUS:

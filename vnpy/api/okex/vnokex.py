@@ -115,7 +115,6 @@ class OkexApi(object):
             self.reconnecting = True
             
             self.closeWebsocket()   # 首先关闭之前的连接
-            sleep(2)
             self.initWebsocket()
             print('API断线重连')
             self.reconnecting = False
@@ -163,7 +162,7 @@ class OkexApi(object):
         """关闭WS"""
         if self.wsThread and self.wsThread.isAlive():
             self.ws.close()
-            self.wsThread.join()
+            self.wsThread.join(2)
     
     #----------------------------------------------------------------------
     def close(self):

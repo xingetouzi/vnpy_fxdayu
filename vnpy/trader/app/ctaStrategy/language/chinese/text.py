@@ -3,6 +3,7 @@
 INIT = '初始化'
 START = '启动'
 STOP = '停止'
+RESTORE = '恢复'
 
 CTA_ENGINE_STARTED = 'CTA引擎启动成功'
 
