@@ -265,7 +265,7 @@ class BacktestingEngine(object):
     def runBacktesting(self):
         """运行回测"""
         dataLimit = 1000000
-
+        self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
         # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
         if self.mode == self.BAR_MODE:
             func = self.newBar
@@ -1072,9 +1072,8 @@ class BacktestingEngine(object):
         """计算按日统计的交易结果"""
         self.output(u'计算按日统计结果')
 
-
+        print(self.dailyResultDict,0000000000000000000)
         dailyResultDict = copy.deepcopy(self.dailyResultDict)
-
         # 将成交添加到每日交易结果中
         for trade in self.tradeDict.values():
             date = trade.dt.date()
@@ -1113,6 +1112,7 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def calculateDailyStatistics(self, df):
         """计算按日统计的结果"""
+        print(df.head())
         df['balance'] = df['netPnl'].cumsum() + self.capital
         df['return'] = (np.log(df['balance']) - np.log(df['balance'].shift(1))).fillna(0)
         df['highlevel'] = df['balance'].rolling(min_periods=1,window=len(df),center=False).max()
@@ -1188,6 +1188,7 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def showDailyResult(self, df=None, result=None):
         """显示按日统计的交易结果"""
+        print(df)
         if df is None:
             df = self.calculateDailyResult()
             df, result = self.calculateDailyStatistics(df)
