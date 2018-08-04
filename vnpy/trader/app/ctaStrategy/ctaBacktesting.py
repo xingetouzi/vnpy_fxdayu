@@ -342,7 +342,9 @@ class BacktestingEngine(object):
         """
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
-        # self.strategy.posDict = {}
+        self.strategy.posDict = {}
+        self.initPosition(self.strategy)
+
 
 
     #----------------------------------------------------------------------
