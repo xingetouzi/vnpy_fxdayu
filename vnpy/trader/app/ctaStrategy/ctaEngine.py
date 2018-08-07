@@ -354,24 +354,24 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[trade.vtOrderID]
 
             # 计算策略持仓
-            if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
-                posName = trade.vtSymbol.replace(".","_") + "_LONG"
-                strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_CLOSE:
-                posName = trade.vtSymbol.replace(".","_") + "_SHORT"
-                strategy.posDict[str(posName)] -= trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_CLOSE:
-                posName = trade.vtSymbol.replace(".","_") + "_LONG"
-                strategy.posDict[str(posName)] -= trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
-                posName = trade.vtSymbol.replace(".","_") + "_SHORT"
-                strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol.replace(".","_")
-                strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol.replace(".","_")
-                strategy.posDict[str(posName)] -= trade.volume
+            # if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
+            #     posName = trade.vtSymbol.replace(".","_") + "_LONG"
+            #     strategy.posDict[str(posName)] += trade.volume
+            # elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_CLOSE:
+            #     posName = trade.vtSymbol.replace(".","_") + "_SHORT"
+            #     strategy.posDict[str(posName)] -= trade.volume
+            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_CLOSE:
+            #     posName = trade.vtSymbol.replace(".","_") + "_LONG"
+            #     strategy.posDict[str(posName)] -= trade.volume
+            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
+            #     posName = trade.vtSymbol.replace(".","_") + "_SHORT"
+            #     strategy.posDict[str(posName)] += trade.volume
+            # elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
+            #     posName = trade.vtSymbol.replace(".","_")
+            #     strategy.posDict[str(posName)] += trade.volume
+            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
+            #     posName = trade.vtSymbol.replace(".","_")
+            #     strategy.posDict[str(posName)] -= trade.volume
 
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
     #----------------------------------
@@ -424,11 +424,8 @@ class CtaEngine(object):
                 accountName = account.vtSymbol.replace('.','_')
                 if 'accountDict' in strategy.syncList:
                     strategy.accountDict[str(posName)] = account.position
-                elif 'bondDict' in strategy.syncList:
+                if 'frozenDict' in strategy.syncList:
                     strategy.bondDict[str(posName)] = account.frozen
-
-            # 保存策略持仓到数据库
-            self.saveSyncData(strategy)  
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -436,8 +433,8 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_TICK, self.processTickEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
-        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
+        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
 
 
     #----------------------------------------------------------------------
@@ -560,7 +557,6 @@ class CtaEngine(object):
             if not strategy.inited:
                 strategy.inited = True
                 self.callStrategyFunc(strategy, strategy.onInit)
-                # self.loadSyncData(strategy)                             # 初始化完成后加载同步数据
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
 
             else:
@@ -577,6 +573,7 @@ class CtaEngine(object):
             if strategy.inited and not strategy.trading:
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onStart)
+                self.loadSyncData(strategy)            # 初始化完成后加载同步数据
         else:
             self.writeCtaLog('策略实例不存在：%s' %name)
 
@@ -647,9 +644,8 @@ class CtaEngine(object):
             for setting in l:
                 self.loadStrategy(setting)
 
-        # self.loadPosition()
-        for strategy in self.strategyDict.values():
-            self.loadSyncData(strategy)
+        # for strategy in self.strategyDict.values():
+        #     self.loadSyncData(strategy)
 
     #----------------------------------------------------------------------
     def getStrategyVar(self, name):
@@ -722,6 +718,21 @@ class CtaEngine(object):
         content = u'策略%s: 同步数据保存成功\n当前持仓%s\n可平仓量%s\n保证金%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
         self.writeCtaLog(content)
 
+
+    def saveVarData(self, strategy):
+        flt = {'name': strategy.name,
+            'posName':str(strategy.symbolList)}
+        
+        d = copy(flt)
+        for key in strategy.varList:
+            d[key] = strategy.__getattribute__(key)
+
+        self.mainEngine.dbUpdate(VAR_DB_NAME, strategy.name,
+                                    d, flt, True)
+                
+        content = u'策略%s: 参数数据保存成功' %(strategy.name)
+        self.writeCtaLog(content)
+
     #----------------------------------------------------------------------
     def loadSyncData(self, strategy):
         """从数据库载入策略的持仓情况"""
@@ -736,6 +747,22 @@ class CtaEngine(object):
         
         d = syncData[0]
         for key in strategy.syncList:
+            if key in d:
+                strategy.__setattr__(key, d[key])
+
+    def loadVarData(self, strategy):
+        """从数据库载入策略的持仓情况"""
+
+        flt = {'name': strategy.name,
+        'posName': str(strategy.symbolList)}
+        varData = self.mainEngine.dbQuery(VAR_DB_NAME, strategy.name, flt)
+        
+        if not varData:
+            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.name)
+            return
+        
+        d = varData[0]
+        for key in strategy.varList:
             if key in d:
                 strategy.__setattr__(key, d[key])
 
@@ -818,3 +845,23 @@ class CtaEngine(object):
         for vtSymbol in strategy.symbolList:
             contract = self.mainEngine.getContract(vtSymbol)
             self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
+
+    def qryOrder(self,vtOrderID,name,status=None):
+        s = self.strategyOrderDict[name]
+        for orderID in list(s):
+            if STOPORDERPREFIX not in orderID:
+                order = self.mainEngine.getOrder(vtOrderID)
+                self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID,status = None)
+    def restoreStrategy(self, name):
+        """恢复策略"""
+        if name in self.strategyDict:
+            strategy = self.strategyDict[name]
+
+            if strategy.inited and not strategy.trading:
+                strategy.trading = True
+                self.callStrategyFunc(strategy, strategy.onRestore)
+                self.loadVarData(strategy)            # 初始化完成后加载同步数据
+        else:
+            self.writeCtaLog('策略实例不存在：%s' %name)
+
+        self.writeCtaLog(u"你以为%s会恢复吗，呵呵,是会的"%name)
