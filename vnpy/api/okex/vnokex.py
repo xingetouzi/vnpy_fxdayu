@@ -5,7 +5,7 @@ from __future__ import print_function
 import hashlib
 import json
 import traceback
-from threading import Thread
+from threading import Thread, Event, Timer
 from time import sleep
 import pandas as  pd
 import requests
@@ -65,6 +65,7 @@ KLINE_PERIOD = ["1min",
 ########################################################################
 class OkexApi(object):    
     """交易接口"""
+    reconnect_timeout = 10 # 重连超时时间
 
     #----------------------------------------------------------------------
     def __init__(self):
@@ -81,14 +82,16 @@ class OkexApi(object):
         self.heartbeatThread = None     # 心跳线程
         self.heartbeatReceived = True   # 心跳是否收到
         
+        self.connectEvent = Event() # 表示是否连接
         self.reconnecting = False       # 重新连接中
+        self.reconnectTimer = None
     
     #----------------------------------------------------------------------
     def heartbeat(self):
         """"""
         while self.active:
+            self.connectEvent.wait()
             self.heartbeatCount += 1
-            
             if self.heartbeatCount < 10:
                 sleep(1)
             else:
@@ -101,7 +104,7 @@ class OkexApi(object):
                     d = {'event': 'ping'}
                     j = json.dumps(d)
                     
-                    try:
+                    try:                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
                         self.ws.send(j) 
                     except:
                         msg = traceback.format_exc()
@@ -113,10 +116,13 @@ class OkexApi(object):
         """重新连接"""
         if not self.reconnecting:
             self.reconnecting = True
-            
-            self.closeWebsocket()   # 首先关闭之前的连接
-            self.initWebsocket()
+            self.closeWebsocket()  # 首先关闭之前的连接
             print('API断线重连')
+            self.reconnectTimer = Timer(self.reconnect_timeout, self.connectEvent.set)
+            self.connectEvent.clear() # 设置未连接上
+            self.initWebsocket()
+            self.reconnectTimer.start()
+            self.heartbeatReceived = True # avoid too frequent reconnect
             self.reconnecting = False
         
     #----------------------------------------------------------------------
@@ -129,18 +135,22 @@ class OkexApi(object):
         
         self.initWebsocket()
         self.active = True
+        self.heartbeatReceived = True
         print('API初始化连接')
         
     #----------------------------------------------------------------------
     def initWebsocket(self):
         """"""
-        self.ws = websocket.WebSocketApp(self.host, 
+        self.ws = websocket.WebSocketApp(self.host,
                                          on_message=self.onMessageCallback,
                                          on_error=self.onErrorCallback,
                                          on_close=self.onCloseCallback,
-                                         on_open=self.onOpenCallback)        
+                                         on_open=self.onOpenCallback,
+                                        )        
         
-        self.wsThread = Thread(target=self.ws.run_forever,kwargs={'sslopt':{"cert_reqs": ssl.CERT_NONE}})
+        self.wsThread = Thread(target=self.ws.run_forever,kwargs=dict(
+            sslopt = {"cert_reqs": ssl.CERT_NONE, "check_hostname": False},
+        ))
         self.wsThread.start()
 
     #----------------------------------------------------------------------
@@ -156,6 +166,7 @@ class OkexApi(object):
         if self.heartbeatThread and self.heartbeatThread.isAlive():
             self.active = False
             self.heartbeatThread.join()
+        self.heartbeatThread = None
 
     #----------------------------------------------------------------------
     def closeWebsocket(self):
@@ -212,10 +223,13 @@ class OkexApi(object):
     #----------------------------------------------------------------------
     def onOpenCallback(self, ws):
         """"""
+        self.connectEvent.set() # 设置为连接上
+        if self.reconnectTimer:
+            self.reconnectTimer.cancel()
+        self.heartbeatReceived = True
         if not self.heartbeatThread:
             self.heartbeatThread = Thread(target=self.heartbeat)
             self.heartbeatThread.start()
-        
         self.onOpen()
         
     #----------------------------------------------------------------------
@@ -277,7 +291,6 @@ class OkexApi(object):
         signature = self.__md5(data)
         return signature.upper()
     
-    
     def _chg_dic_to_sign(self, dictionary):
         keys = list(dictionary.keys())
         if "self" in keys:
@@ -292,7 +305,6 @@ class OkexApi(object):
                 strings.append(key + "=" + dictionary[key])
         strings.append("secret_key" + "=" + self.secretKey)
         return "&".join(strings)
-    
 
     def __md5(self, string):
         m = hashlib.md5()
@@ -387,10 +399,10 @@ class OkexSpotApi(OkexApi):
         channel = 'ok_sub_spot_%s_balance' %symbol
         self.sendRequest(channel)
 
-
     # RESTFUL 
     def _get_url_func(self, url, params=""):
         return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
+    
     def _chg_dic_to_str(self, dictionary):
         keys = list(dictionary.keys())
         keys.remove("self")
@@ -402,8 +414,8 @@ class OkexSpotApi(OkexApi):
                     strings.append(key + "=" + str(dictionary[key]))
                     continue
                 strings.append(key + "=" + dictionary[key])
-
         return ".do?" + "&".join(strings)
+    
     def spotKline(self, symbol, type, size=None, since=None):
         params = self._chg_dic_to_str(locals())
         print(params)
@@ -524,6 +536,7 @@ class OkexFuturesApi(OkexApi):
         print("dingdong",channel, params)
         self.sendRequest(channel, params)
         return True
+
     #----------------------------------------------------------------------
     def futuresCancelOrder(self, symbol, orderid, contractType):
         """期货撤单"""
@@ -535,8 +548,6 @@ class OkexFuturesApi(OkexApi):
         channel = 'ok_futureusd_cancel_order'
 
         self.sendRequest(channel, params)
-
-    
 
     #----------------------------------------------------------------------
     def futuresUserInfo(self):
@@ -609,11 +620,8 @@ class OkexFuturesApi(OkexApi):
         lever_rate(double): 杠杆倍数
 
         """
-
         channel = 'ok_sub_futureusd_positions' 
         self.sendRequest(channel, {})    
-    
-    
     
     # RESTFUL 接口
     def _post_url_func(self, url):
@@ -662,7 +670,6 @@ class OkexFuturesApi(OkexApi):
         # print(url)
         r = requests.post(url, data=data, timeout=60)
         return r.json()
-    
     
     def future_order_info(self, symbol, contract_type, order_id, status=None, current_page=None, page_length=None):
         api_key = self.apiKey
