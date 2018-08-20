@@ -686,8 +686,22 @@ class BacktestingEngine(object):
     #-------------------------------------------
     def initPosition(self,strategy):
         for i in range(len(strategy.symbolList)):
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_LONG"] = 0
-            strategy.posDict[strategy.symbolList[i].replace(".","_")+"_SHORT"] = 0
+            symbol = strategy.symbolList[i]
+            if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
+                if 'posDict' in strategy.syncList:
+                    strategy.posDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.posDict[symbol.replace(".","_")+"_SHORT"] = 0
+                if 'eveningDict' in strategy.syncList:
+                    strategy.eveningDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.eveningDict[symbol.replace(".","_")+"_SHORT"] = 0
+                if 'bondDict' in strategy.syncList:
+                    strategy.bondDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.bondDict[symbol.replace(".","_")+"_SHORT"] = 0
+            else:
+                if 'accountDict' in strategy.syncList:
+                    strategy.accountDict[symbol.replace(".","_")] = 0
+                if 'posDict' in strategy.syncList:
+                    strategy.posDict[symbol.replace(".","_")] = 0
 
                 
     #------------------------------------------------
@@ -1041,6 +1055,7 @@ class BacktestingEngine(object):
         l = []
 
         for setting in settingList:
+            self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
             l.append(pool.apply_async(optimize, (strategyClass, setting,
                                                  targetName, self.mode, 
                                                  self.startDate, self.initDays, self.endDate,

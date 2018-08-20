@@ -123,29 +123,17 @@ class TestStrategy(CtaTemplate):
         """停止策略（必须由用户继承实现）"""
         self.writeCtaLog(u'策略%s：停止' % self.className)
         self.putEvent()
+        
+    # ----------------------------------------------------------------------
+    def onRestore(self):
+        """从错误状态恢复策略（必须由用户继承实现）"""
+        self.writeCtaLog(u'策略%s：恢复策略状态成功' % self.className)
+        self.putEvent()
 
     # ----------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送"""
-
         self.bgDict[tick.vtSymbol].updateTick(tick)
-        # print('stg on tick',tick.localTime,'*******',tick.lastVolume,"----",tick.volumeChange)
-        
-        # self.flag +=1
-        # if self.flag == 30:
-        #     self.buy(self.passiveSymbol,
-        #                     self.amDict[self.passiveSymbol].close[-1] -10,
-        #                     volume = self.posSize,
-        #                     marketPrice=0)
-        # elif self.flag ==60:
-        #     self.buy(self.passiveSymbol,    
-        #                     self.amDict[self.passiveSymbol].close[-1] -10,
-        #                     volume = self.posSize,
-        #                     marketPrice=0)
-
-        # elif self.flag == 90:
-        #     self.flag=-30
-        #     self.cancelAll()
 
         '''
         在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
@@ -156,47 +144,30 @@ class TestStrategy(CtaTemplate):
         """收到1分钟K线推送"""
         self.amDict[bar.vtSymbol].updateBar(bar)
 
-        if self.flag:
-            self.cancelAll()
-            self.flag = 0
-            return
-        if bar.vtSymbol == self.passiveSymbol:
-            print("stg onbarrrrrrrrrrrrrrrrrrrrrrr")
-            print(self.posDict[self.psLongpos],1)
-            self.buy(self.passiveSymbol,
-                            self.amDict[self.passiveSymbol].close[-1] -20,
-                            volume = self.posSize,
-                            marketPrice=0)
-            print(self.posDict[self.psLongpos],2)
-            # self.short(self.passiveSymbol,
-            #                   bar.close+20,
-            #                   volume = 1,
-            #                   marketPrice = 0)
-            # self.short(self.activeSymbol,
-            #                   bar.close+20,
-            #                   volume = self.posSize,
-            #                   marketPrice = 0)
-            # self.buy(self.activeSymbol,
-            #                 bar.close-20,
-            #                 volume = 1,
-            #                 marketPrice=0)
-            # self.cover(self.activeSymbol,
-            #                 752.5,
-            #                 volume = self.posSize,
-            #                 marketPrice=1)
-            self.flag +=1
-        else:
-            return
-
-
+        self.buy(self.activeSymbol,
+                    self.amDict[self.activeSymbol].close[-1] -20,
+                    volume = self.posSize,
+                    marketPrice=0)
         self.putEvent()    
         
     # ----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
-        print("\n\n\n   stg onorder orderid",order.exchangeOrderID,order.vtOrderID)
-        # self.cancelOrder(order.vtOrderID)
-        # self.cancelAll()
+
+        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, %s,id:%s, List:%s, dealamount:%s'%(order.status, order.rejectedInfo,order.vtOrderID,self.limitOrderDict,order.tradedVolume))
+
+        # 变动的订单是市价追单
+        if order.status == STATUS_REJECTED and order.rejectedInfo == 'BAD NETWORK':
+            ####市价追单再发一遍
+            if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
+                self.buy(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
+            elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
+                self.cover(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
+            elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
+                self.short(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
+            elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
+                self.sell(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
+
         self.putEvent()
 
     # ----------------------------------------------------------------------

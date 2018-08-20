@@ -53,6 +53,7 @@ class CtaEngine(object):
 
         # 当前日期
         self.today = todayDate()
+        self.minute_temp = 0
 
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
@@ -297,6 +298,9 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
+                    if tick.datetime.second == 40 and tick.datetime.minute != self.minute_temp:
+                        self.minute_temp = tick.datetime.minute
+                        self.qryOrder(strategy.name)
 
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -378,9 +382,9 @@ class CtaEngine(object):
     def processPositionEvent(self, event):
         """处理持仓推送"""
         pos = event.dict_['data']
-        temp0 = pos.vtSymbol.split('.')[0]
-        temp1 = pos.vtSymbol.split('.')[1]
-        if 'quarter' in temp0 or 'week' in temp0 or 'bitmex' in temp1:
+
+        symbol = pos.vtSymbol
+        if 'quarter' in symbol or 'week' in symbol or 'bitmex' in symbol:
             productType = 'FUTURE'
         else:
             productType = 'SPOT'
@@ -431,10 +435,11 @@ class CtaEngine(object):
     def registerEvent(self):
         """注册事件监听"""
         self.eventEngine.register(EVENT_TICK, self.processTickEvent)
+        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
-        self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
+
 
 
     #----------------------------------------------------------------------
@@ -558,6 +563,8 @@ class CtaEngine(object):
                 strategy.inited = True
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
+                self.initPosition(strategy)
+
 
             else:
                 self.writeCtaLog('请勿重复初始化策略实例：%s' %name)
@@ -573,7 +580,7 @@ class CtaEngine(object):
             if strategy.inited and not strategy.trading:
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onStart)
-                self.loadSyncData(strategy)            # 初始化完成后加载同步数据
+                # self.loadSyncData(strategy)            # 初始化完成后加载同步数据
         else:
             self.writeCtaLog('策略实例不存在：%s' %name)
 
@@ -695,9 +702,11 @@ class CtaEngine(object):
             # 停止策略，修改状态为未初始化
             strategy.trading = False
             strategy.inited = False
+            self.saveSyncData(strategy)
+            self.saveVarData(strategy)
 
             # 发出日志
-            content = '\n'.join(['策略%s：触发异常已停止' %strategy.name,
+            content = '\n'.join(['策略%s：触发异常已停止, 当前状态已保存' %strategy.name,
                                 traceback.format_exc()])
             self.writeCtaLog(content)
 
@@ -838,30 +847,51 @@ class CtaEngine(object):
         return data
 
     def initPosition(self,strategy):
-        for item in strategy.syncList:
-            d = strategy.__getattribute__(item)
-            d = defaultdict(None)
+        # 因交易所更改仓位的读取方式，暂时取消使用defaultdict初始化posdict
+        # for item in strategy.syncList:
+        #     d = strategy.__getattribute__(item)
+        #     d = defaultdict(None)
+        
+        # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
+        for i in range(len(strategy.symbolList)):
+            symbol = strategy.symbolList[i]
+            if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
+                if 'posDict' in strategy.syncList:
+                    strategy.posDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.posDict[symbol.replace(".","_")+"_SHORT"] = 0
+                if 'eveningDict' in strategy.syncList:
+                    strategy.eveningDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.eveningDict[symbol.replace(".","_")+"_SHORT"] = 0
+                if 'bondDict' in strategy.syncList:
+                    strategy.bondDict[symbol.replace(".","_")+"_LONG"] = 0
+                    strategy.bondDict[symbol.replace(".","_")+"_SHORT"] = 0
+            else:
+                if 'accountDict' in strategy.syncList:
+                    strategy.accountDict[symbol.replace(".","_")] = 0
+                if 'posDict' in strategy.syncList:
+                    strategy.posDict[symbol.replace(".","_")] = 0
 
+        # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
             contract = self.mainEngine.getContract(vtSymbol)
             self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
 
-    def qryOrder(self,vtOrderID,name,status=None):
+    def qryOrder(self,name,status=None):
         s = self.strategyOrderDict[name]
-        for orderID in list(s):
-            if STOPORDERPREFIX not in orderID:
+        for vtOrderID in list(s):
+            if STOPORDERPREFIX not in vtOrderID:
                 order = self.mainEngine.getOrder(vtOrderID)
-                self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID,status = None)
+                self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+
     def restoreStrategy(self, name):
         """恢复策略"""
         if name in self.strategyDict:
             strategy = self.strategyDict[name]
 
-            if strategy.inited and not strategy.trading:
+            if not strategy.inited and not strategy.trading:
+                strategy.inited = True
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onRestore)
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据
         else:
             self.writeCtaLog('策略实例不存在：%s' %name)
-
-        self.writeCtaLog(u"你以为%s会恢复吗，呵呵,是会的"%name)

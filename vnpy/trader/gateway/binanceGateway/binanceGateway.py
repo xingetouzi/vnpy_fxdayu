@@ -169,8 +169,11 @@ class BinanceGateway(VtGateway):
         return data
 
     def initPosition(self,vtSymbol):
+    
         pass
-
+        
+    def qryOrder(self):
+        return ""
 
 ########################################################################
 class GatewayApi(BinanceApi):

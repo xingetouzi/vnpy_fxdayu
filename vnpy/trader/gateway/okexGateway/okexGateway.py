@@ -183,7 +183,7 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
-        if len(orderReq.contractType)<4:
+        if 'quarter' in orderReq.contractType or 'week' in orderReq.contractType:
             return self.spotApi.sendOrder(orderReq)
         else:
             return self.futuresApi.sendOrder(orderReq)
@@ -208,8 +208,8 @@ class OkexGateway(VtGateway):
     def qryOrder(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
         contract_type = vtSymbol.split('.')[0]
-        contractType = contract_type[4:]
-        data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
+        if 'quarter' in contract_type or 'week' in contract_type:
+            data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
         return data
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
@@ -1476,7 +1476,7 @@ class FuturesApi(OkexFuturesApi):
         symbol = req.symbol[:3] + "_usd"
 
         if not self.gateway.connected:
-            self.writeLog(u'网络状态不良，网关 %s 不执行%s的下单命令'%(self.gatewayName,req.vtSymbol))
+            self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
             order = VtOrderData()
             order.vtOrderID = vtOrderID
             order.orderID = self.localNo
@@ -1495,9 +1495,13 @@ class FuturesApi(OkexFuturesApi):
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.gateway.onOrder(copy(order))
             return ''
-
+ 
         # result = self.futuresTrade(req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
-        data = self.future_trade(symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,"10")  # restful
+        try:
+            data = self.future_trade(symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,"10")  # restful
+        except:
+            self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
+            return ''        # 若请求失败，则返回空字符串委托号
         # 若请求失败，则返回空字符串委托号
         result= data['result']
         if result:
@@ -1686,6 +1690,11 @@ class FuturesApi(OkexFuturesApi):
     def rest_qry_orders(self, symbol, contractType, order_id, status = None ):
         data = self.future_order_info(symbol,contractType,order_id,status)
         print(data,"rest_order_callback")
+        order = VtOrderData()
+        
+
+
+
         return data
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):

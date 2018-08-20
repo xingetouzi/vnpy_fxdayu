@@ -1,5 +1,5 @@
 ::Install Python Modules
-pip install -r requirements.txt
+pip install -r requirements.txt -i https://pypi.douban.com/simple/
 
 ::Install Ta-Lib
 conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/

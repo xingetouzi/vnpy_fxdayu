@@ -123,13 +123,11 @@ class CtaTemplate(object):
         return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, stop)
 
         # ----------------------------------------------------------------------
-
     def short(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """卖开"""
         return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, stop)
 
         # ----------------------------------------------------------------------
-
     def cover(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
         """买平"""
         return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, stop)
@@ -146,7 +144,7 @@ class CtaTemplate(object):
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
-            return []
+            return ''
 
     # ----------------------------------------------------------------------
     def cancelOrder(self, vtOrderID):
@@ -218,19 +216,22 @@ class CtaTemplate(object):
         """查询最小价格变动"""
         return self.ctaEngine.getPriceTick(self)
 
-    def initPosition(self):
-        """初始化起始仓位"""
-        self.ctaEngine.initPosition(self)
+    # def initPosition(self):
+    #     """初始化起始仓位"""
+    #     self.ctaEngine.initPosition(self)
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
         data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
         return data
+        
     def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""
         return self.ctaEngine.qryOrder(vtSymbol,self.name,status)
-    def onRestore():
-        pass
+
+    def onRestore(self):
+        """恢复策略（必须由用户继承实现）"""
+        raise NotImplementedError
 
 
 
