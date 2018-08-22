@@ -844,7 +844,19 @@ class CtaEngine(object):
     def loadHistoryBar(self,vtSymbol,type_,size = None,since = None):
         """读取历史数据"""
         data = self.mainEngine.loadHistoryBar(vtSymbol, type_, size, since)
-        return data
+        histbar = []
+        for i in range(len(data['open'])):
+            bar = VtBarData()
+            bar.open = data['open'][i]
+            bar.close = data['close'][i]
+            bar.high = data['high'][i]
+            bar.low = data['low'][i]
+            bar.volume = data['volume'][i]
+            bar.vtSymbol = vtSymbol
+            bar.datetime = data['datetime'][i]
+            histbar.append(bar)
+
+        return histbar
 
     def initPosition(self,strategy):
         # 因交易所更改仓位的读取方式，暂时取消使用defaultdict初始化posdict

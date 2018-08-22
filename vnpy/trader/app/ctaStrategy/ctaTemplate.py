@@ -492,7 +492,7 @@ class ArrayManager(object):
         self.volumeArray = np.zeros(size)
 
     # ----------------------------------------------------------------------
-    def updateBar(self, bar=None, histbar=None):
+    def updateBar(self, bar):
         """更新K线"""
         if bar:  # 如果是实盘K线
             self.count += 1
@@ -510,26 +510,6 @@ class ArrayManager(object):
             self.lowArray[-1] = bar.low
             self.closeArray[-1] = bar.close
             self.volumeArray[-1] = bar.volume
-            
-        else:  # 如果是历史K线
-            for i in range(len(histbar)):
-                
-                self.count += 1
-                if not self.inited and self.count >= self.size:
-                    self.inited = True
-
-                self.openArray[0:self.size - 1] = self.openArray[1:self.size]
-                self.highArray[0:self.size - 1] = self.highArray[1:self.size]
-                self.lowArray[0:self.size - 1] = self.lowArray[1:self.size]
-                self.closeArray[0:self.size - 1] = self.closeArray[1:self.size]
-                self.volumeArray[0:self.size - 1] = self.volumeArray[1:self.size]
-
-                self.openArray[-1] = histbar['open'][i]
-                self.highArray[-1] = histbar['high'][i]
-                self.lowArray[-1] = histbar['low'][i]
-                self.closeArray[-1] = histbar['close'][i]
-                volume = list(histbar.keys())[6]
-                self.volumeArray[-1] = histbar[volume][i]
 
     # ----------------------------------------------------------------------
     @property
