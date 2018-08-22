@@ -87,10 +87,10 @@ class TestStrategy(CtaTemplate):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'策略%s：初始化' % self.className)
         # 获取初始持仓， 实盘的持仓从交易所获取，回测的持仓初始化为 0
-        self.ctaEngine.initPosition()
+        # self.ctaEngine.initPosition()
 
         # 载入1分钟历史数据，并采用回放计算的方式初始化策略参数
-        pastbar = self.loadHistoryBar(self.activeSymbol,
+        pastbar1 = self.loadHistoryBar(self.activeSymbol,
                             type_ = "1min", 
                             size = self.initbars)
 
@@ -98,14 +98,13 @@ class TestStrategy(CtaTemplate):
                         type_ = "1min", 
                         size = self.initbars)
         
-        for i in range(len(pastbar['close'])):    # 计算历史数据的价差，并保存到缓存
-            spread = pastbar['close'][i] - pastbar2['close'][i]
+        for bar1,bar2 in zip(pastbar1,pastbar2):    # 计算历史数据的价差，并保存到缓存
+            spread = bar1.close - bar2.close
+            self.amDict[self.activeSymbol].updateBar(bar1)    # 更新数据矩阵(optional)
+            self.amDict[self.passiveSymbol].updateBar(bar2)
             self.spreadBuffer.append(spread)
 
-        self.amDict[self.activeSymbol].updateBar(histbar = pastbar)    # 更新数据矩阵
-        self.amDict[self.passiveSymbol].updateBar(histbar = pastbar2)
-
-        # self.onBar()  # 是否直接推送到onBar
+        # self.onBar(bar)  # 是否直接推送到onBar
         self.putEvent()
         '''
         在点击初始化策略时触发,载入历史数据,会推送到onbar去执行updatebar,但此时ctaEngine下单逻辑为False,不会触发下单.
