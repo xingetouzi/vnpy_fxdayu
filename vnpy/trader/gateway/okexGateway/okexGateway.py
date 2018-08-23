@@ -183,10 +183,10 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
-        if 'quarter' in orderReq.contractType or 'week' in orderReq.contractType:
-            return self.spotApi.sendOrder(orderReq)
-        else:
+        if 'quarter' in orderReq.vtSymbol or 'week' in orderReq.vtSymbol:
             return self.futuresApi.sendOrder(orderReq)
+        else:
+            return self.spotApi.sendOrder(orderReq)
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
