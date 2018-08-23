@@ -716,15 +716,16 @@ class CtaEngine(object):
 
         flt = {'name': strategy.name,
             'posName':str(strategy.symbolList)}
-        
+        result = []
         d = copy(flt)
         for key in strategy.syncList:
             d[key] = strategy.__getattribute__(key)
+            result.append(d[key])
 
         self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.name,
                                     d, flt, True)
-                
-        content = u'策略%s: 同步数据保存成功\n当前持仓%s\n可平仓量%s\n保证金%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
+
+        content = u'策略%s: 同步数据保存成功,当前仓位状态:\n%s' %(strategy.name, result)
         self.writeCtaLog(content)
 
 
