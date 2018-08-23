@@ -425,11 +425,12 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                accountName = account.vtSymbol.replace('.','_')
-                if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[str(posName)] = account.position
-                if 'frozenDict' in strategy.syncList:
-                    strategy.bondDict[str(posName)] = account.frozen
+                if account.coinSymbol:
+                    accountName = account.coinSymbol
+                    if 'accountDict' in strategy.syncList:
+                        strategy.accountDict[str(posName)] = account.position
+                    if 'frozenDict' in strategy.syncList:
+                        strategy.bondDict[str(posName)] = account.frozen
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -561,10 +562,9 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
+                self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
-                self.initPosition(strategy)
-
 
             else:
                 self.writeCtaLog('请勿重复初始化策略实例：%s' %name)
