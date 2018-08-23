@@ -239,19 +239,15 @@ class CtaTemplate(object):
 class TargetPosTemplate(CtaTemplate):
     """
     允许直接通过修改目标持仓来实现交易的策略模板
-
     开发策略时，无需再调用buy/sell/cover/short这些具体的委托指令，
     只需在策略逻辑运行完成后调用setTargetPos设置目标持仓，底层算法
     会自动完成相关交易，适合不擅长管理交易挂撤单细节的用户。
-
     使用该模板开发策略时，请在以下回调方法中先调用母类的方法：
     onTick
     onBar
     onOrder
-
     假设策略名为TestStrategy，请在onTick回调中加上：
     super(TestStrategy, self).onTick(tick)
-
     其他方法类同。
     """
 

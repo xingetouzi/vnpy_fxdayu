@@ -709,7 +709,9 @@ class OkexFuturesApi(OkexApi):
         text = eval(r.text)
         df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
         df["datetime"] = df["datetime"].map(
-            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
+            lambda x: datetime.datetime.fromtimestamp(x / 1000).strftime("%Y%m%d %H:%M:%S"))
+        df["datetime"] = df["datetime"].map(
+            lambda x: datetime.datetime.strptime(x,"%Y%m%d %H:%M:%S"))
         # delta = datetime.timedelta(hours=8)
         # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
         return df.to_dict()

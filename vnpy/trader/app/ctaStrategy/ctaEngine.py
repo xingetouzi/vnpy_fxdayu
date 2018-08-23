@@ -501,7 +501,7 @@ class CtaEngine(object):
             vtSymbolList=vtSymbolset.split(',')
 
         except Exception as e:
-            self.writeCtaLog('载入策略出错：%s' %e)
+            self.writeCtaLog('载入策略%s出错：%s' %e)
             return
 
         # 获取策略类
