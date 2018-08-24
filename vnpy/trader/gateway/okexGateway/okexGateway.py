@@ -1500,7 +1500,7 @@ class FuturesApi(OkexFuturesApi):
             order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.gateway.onOrder(copy(order))
-            return ''
+            return vtOrderID
  
         # result = self.futuresTrade(req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
         try:
@@ -1534,7 +1534,7 @@ class FuturesApi(OkexFuturesApi):
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.gateway.onOrder(copy(order))
             # 若请求失败，则返回空字符串委托号
-            return ''
+            return vtOrderID
         
 
         try:

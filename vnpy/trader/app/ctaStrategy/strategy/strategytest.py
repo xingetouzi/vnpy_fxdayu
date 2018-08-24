@@ -16,7 +16,6 @@ class TestStrategy(CtaTemplate):
     author = 'Patrick'
 
     # 策略交易标的
-    symbolList = []                 # 初始化品种列表为空
     activeSymbol = EMPTY_STRING     # 主动品种
     passiveSymbol = EMPTY_STRING    # 被动品种
     asLongpos = EMPTY_STRING        # 主动品种多仓
@@ -26,7 +25,7 @@ class TestStrategy(CtaTemplate):
     posDict = {}                    # 仓位数据缓存
     eveningDict = {}                # 可平仓量数据缓存
     bondDict = {}                   # 保证金数据缓存
-    productType = 'FUTURE'
+    spreadBuffer = []               # 价差缓存列表
 
     # 策略变量
     posSize = 1                     # 每笔下单的数量
@@ -56,11 +55,14 @@ class TestStrategy(CtaTemplate):
     def __init__(self, ctaEngine, setting):
         """Constructor"""
         super(TestStrategy, self).__init__(ctaEngine, setting)
-        vtSymbolset=setting['vtSymbol']        # 读取交易品种
-        vtSymbolList=vtSymbolset.split(',')    
-        self.activeSymbol = vtSymbolList[0]    # 主动品种
-        self.passiveSymbol = vtSymbolList[1]   # 被动品种
-        self.symbolList = [self.activeSymbol, self.passiveSymbol]
+             
+    # ----------------------------------------------------------------------
+    def onInit(self):
+        """初始化策略（必须由用户继承实现）"""
+        self.writeCtaLog(u'策略%s：初始化' % self.name)
+
+        self.activeSymbol = self.symbolList[0]    # 主动品种
+        self.passiveSymbol = self.symbolList[1]   # 被动品种
         
         # 给持仓字典设置名称，为了方便调用
         # MONGO数据库不支持字段名含有 "." ，需特别处理)
@@ -79,15 +81,6 @@ class TestStrategy(CtaTemplate):
             sym: ArrayManager()
             for sym in self.symbolList
         }
-
-        # 价差缓存列表
-        self.spreadBuffer = []        
-    # ----------------------------------------------------------------------
-    def onInit(self):
-        """初始化策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：初始化' % self.className)
-        # 获取初始持仓， 实盘的持仓从交易所获取，回测的持仓初始化为 0
-        # self.ctaEngine.initPosition()
 
         # 载入1分钟历史数据，并采用回放计算的方式初始化策略参数
         pastbar1 = self.loadHistoryBar(self.activeSymbol,
@@ -112,7 +105,7 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：启动' % self.className)
+        self.writeCtaLog(u'策略%s：启动' % self.name)
         self.putEvent()
         '''
         在点击启动策略时触发,此时的ctaEngine会将下单逻辑改为True,此时开始推送到onbar的数据会触发下单.
@@ -120,13 +113,13 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：停止' % self.className)
+        self.writeCtaLog(u'策略%s：停止' % self.name)
         self.putEvent()
         
     # ----------------------------------------------------------------------
     def onRestore(self):
         """从错误状态恢复策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：恢复策略状态成功' % self.className)
+        self.writeCtaLog(u'策略%s：恢复策略状态成功' % self.name)
         self.putEvent()
 
     # ----------------------------------------------------------------------
@@ -153,7 +146,7 @@ class TestStrategy(CtaTemplate):
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
 
-        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, %s,id:%s, List:%s, dealamount:%s'%(order.status, order.rejectedInfo,order.vtOrderID,self.limitOrderDict,order.tradedVolume))
+        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, %s,id:%s, List:%s, dealamount:%s'%(order.status, order.rejectedInfo,order.vtOrderID, order.tradedVolume))
 
         # 变动的订单是市价追单
         if order.status == STATUS_REJECTED and order.rejectedInfo == 'BAD NETWORK':
@@ -173,8 +166,6 @@ class TestStrategy(CtaTemplate):
     def onTrade(self, trade):
         """收到成交信息变化推送"""
         print("\n\n\n\n stg onTrade",trade.vtSymbol)
-
-        # self.saveSyncData()
         self.putEvent()
     # ---------------------------------------------------------------------
     def onStopOrder(self, so):

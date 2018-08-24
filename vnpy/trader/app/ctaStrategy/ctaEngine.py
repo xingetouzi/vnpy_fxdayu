@@ -58,6 +58,7 @@ class CtaEngine(object):
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
         self.strategyDict = {}
+        self.strategySymbolDict = {}
 
         # 保存vtSymbol和策略实例映射的字典（用于推送tick数据）
         # 由于可能多个strategy交易同一个vtSymbol，因此key为vtSymbol
@@ -408,12 +409,12 @@ class CtaEngine(object):
                             strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
                         if 'bondDict' in strategy.syncList:
                             strategy.bondDict[str(posName2)]=pos.frozen
-                elif productType == 'SPOT':
-                    posName = pos.vtSymbol.replace(".","_")
-                    if 'posDict' in strategy.syncList:
-                        strategy.posDict[str(posName)] = pos.position
-                    if 'bondDict' in strategy.syncList:
-                        strategy.bondDict[str(posName)] = pos.frozen
+                # elif productType == 'SPOT':
+                #     posName = pos.vtSymbol.replace(".","_")
+                #     if 'posDict' in strategy.syncList:
+                #         strategy.posDict[str(posName)] = pos.position
+                #     if 'bondDict' in strategy.syncList:
+                #         strategy.bondDict[str(posName)] = pos.frozen
 
                 # 保存策略持仓到数据库
                 self.saveSyncData(strategy)  
@@ -505,6 +506,7 @@ class CtaEngine(object):
 
         # 获取策略类
         strategyClass = STRATEGY_CLASS.get(className, None)
+        
         if not strategyClass:
             self.writeCtaLog('找不到策略类：%s' %className)
             return
@@ -516,6 +518,7 @@ class CtaEngine(object):
             # 创建策略实例
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
+            self.strategySymbolDict[name] = vtSymbolList
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -560,6 +563,7 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
+                strategy.symbolList = self.strategySymbolDict[name]
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
@@ -578,7 +582,6 @@ class CtaEngine(object):
             if strategy.inited and not strategy.trading:
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onStart)
-                # self.loadSyncData(strategy)            # 初始化完成后加载同步数据
         else:
             self.writeCtaLog('策略实例不存在：%s' %name)
 
@@ -729,10 +732,11 @@ class CtaEngine(object):
     def saveVarData(self, strategy):
         flt = {'name': strategy.name,
             'posName':str(strategy.symbolList)}
-        
+        result = {}
         d = copy(flt)
         for key in strategy.varList:
             d[key] = strategy.__getattribute__(key)
+            result[key].add(d[key])
 
         self.mainEngine.dbUpdate(VAR_DB_NAME, strategy.name,
                                     d, flt, True)
@@ -765,7 +769,7 @@ class CtaEngine(object):
         varData = self.mainEngine.dbQuery(VAR_DB_NAME, strategy.name, flt)
         
         if not varData:
-            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.name)
+            self.writeCtaLog(u'策略%s: 当前没有保存的变量信息'%strategy.name)
             return
         
         d = varData[0]
@@ -916,5 +920,7 @@ class CtaEngine(object):
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onRestore)
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据
+                self.loadSyncData(strategy)
+
         else:
             self.writeCtaLog('策略实例不存在：%s' %name)
