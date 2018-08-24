@@ -931,7 +931,7 @@ class FuturesApi(OkexFuturesApi):
             contract.name = symbol
             contract.size = 0.00001
             contract.priceTick = 0.00001
-            contract.productClass = PRODUCT_FUTURE
+            contract.productClass = PRODUCT_FUTURES
             self.gateway.onContract(contract)
     
     #----------------------------------------------------------------------
