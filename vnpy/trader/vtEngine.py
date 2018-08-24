@@ -198,8 +198,7 @@ class MainEngine(object):
         gatewayName = vtSymbol.split('.')
         gateway = self.getGateway(gatewayName[1])
         if gateway:
-            data = gateway.qryOrder(vtSymbol,orderId,status)
-        return data
+            gateway.qryOrder(vtSymbol,orderId,status)
 
     #----------------------------------------------------------------------
     def exit(self):

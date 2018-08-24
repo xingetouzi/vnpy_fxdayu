@@ -208,8 +208,11 @@ class OkexGateway(VtGateway):
     def qryOrder(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
         contract_type = vtSymbol.split('.')[0]
-        if 'quarter' in contract_type or 'week' in contract_type:
+        contractType = contract_type[4:]
+        if 'quarter' in contractType or 'week' in contractType:
             data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
+        else:
+            data = self.spotApi.rest_qry_orders(symbol,order_id,status)
         return data
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
@@ -230,8 +233,8 @@ class OkexGateway(VtGateway):
         temp= vtSymbol.split('.')[0]
         contractType = temp[4:]
         if type_ not in KLINE_PERIOD:
-            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
-            self.writeLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
+            self.writeCtaLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeCtaLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
             return '-1'
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]+"_usd"
@@ -850,7 +853,8 @@ class SpotApi(OkexSpotApi):
     def rest_spot_bar(self,symbol,type_,size = None, since = None):
         data = self.spotKline(symbol, type_, size, since)
         return data
-
+    def rest_spot_order(self,symbol,type_,size = None,since = None):
+        self.spot_qry_order(symbol,type_,size,since)
 
 class FuturesApi(OkexFuturesApi):
     """OKEX的期货API实现"""
@@ -927,7 +931,7 @@ class FuturesApi(OkexFuturesApi):
             contract.name = symbol
             contract.size = 0.00001
             contract.priceTick = 0.00001
-            contract.productClass = PRODUCT_FUTURES
+            contract.productClass = PRODUCT_FUTURE
             self.gateway.onContract(contract)
     
     #----------------------------------------------------------------------
@@ -1114,6 +1118,7 @@ class FuturesApi(OkexFuturesApi):
         if tick.lastPrice and tick.lastVolume:
             newtick = copy(tick)
             self.gateway.onTick(newtick)
+    
     #----------------------------------------------------------------------
     def onSubFuturesTrades(self,data):
         """接收最新成交量数据
@@ -1157,29 +1162,30 @@ class FuturesApi(OkexFuturesApi):
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
 
+    #---------------------------------------------------
     def onFuturesUserInfo(self, data):
         """期货账户资金推送"""  
-    #{'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
+        #{'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
 
-    # 'info': {'btc': {'balance': 0.00524741, 'rights': 0.00524741, 
-    # 'contracts': [{'contract_type': 'this_week', 'freeze': 0, 'balance': 5.259e-05, 'contract_id':201807060000013, 
-    # 'available': 0.00524741, 'profit': -5.259e-05, 'bond': 0, 'unprofit': 0}, 
-    # {'contract_type': 'next_week', 'freeze': 0, 'balance': 0, 'contract_id': 201807130000034, 'available': 0.00524741, 
-    # 'profit': 0, 'bond': 0, 'unprofit': 0}]}, 
+        # 'info': {'btc': {'balance': 0.00524741, 'rights': 0.00524741, 
+        # 'contracts': [{'contract_type': 'this_week', 'freeze': 0, 'balance': 5.259e-05, 'contract_id':201807060000013, 
+        # 'available': 0.00524741, 'profit': -5.259e-05, 'bond': 0, 'unprofit': 0}, 
+        # {'contract_type': 'next_week', 'freeze': 0, 'balance': 0, 'contract_id': 201807130000034, 'available': 0.00524741, 
+        # 'profit': 0, 'bond': 0, 'unprofit': 0}]}, 
 
-    # 'eos': {'balance': 0, 'rights': 0, 'contracts': []}, 
-    # 'ltc': {'balance': 0, 'rights': 0, 'contracts': []}}}}
+        # 'eos': {'balance': 0, 'rights': 0, 'contracts': []}, 
+        # 'ltc': {'balance': 0, 'rights': 0, 'contracts': []}}}}
 
 
-    #    {'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
-    #    'info': {'btc': {'risk_rate': 10000, 'account_rights': 0.00080068, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'btg': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'etc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'bch': {'risk_rate': 10000, 'account_rights': 0.07406406, 'profit_unreal': 0, 'profit_real': 0.00017953, 'keep_deposit': 0}, 
-    #    'xrp': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'eth': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'eos': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-    #    'ltc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}}}}
+        #    {'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
+        #    'info': {'btc': {'risk_rate': 10000, 'account_rights': 0.00080068, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'btg': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'etc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'bch': {'risk_rate': 10000, 'account_rights': 0.07406406, 'profit_unreal': 0, 'profit_real': 0.00017953, 'keep_deposit': 0}, 
+        #    'xrp': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'eth': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'eos': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
+        #    'ltc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}}}}
 
         if self.checkDataError(data):
             return
@@ -1688,14 +1694,62 @@ class FuturesApi(OkexFuturesApi):
 
 
     def rest_qry_orders(self, symbol, contractType, order_id, status = None ):
+        """
+                {
+        "orders":
+            [
+                {
+                    "amount":111,
+                    "contract_name":"LTC0815",
+                    "create_date":1408076414000,
+                    "deal_amount":1,
+                    "fee":0,
+                    "order_id":106837,
+                    "price":1111,
+                    "price_avg":0,
+                    "status":"0",
+                    "symbol":"ltc_usd",
+                    "type":"1",
+                    "unit_amount":100,
+                    "lever_rate":10
+                }
+            ],
+        "result":true
+        }
+        """
         data = self.future_order_info(symbol,contractType,order_id,status)
         print(data,"rest_order_callback")
-        order = VtOrderData()
-        
+        if data['result']:
+            orderinfo = data['orders'][0]
+            order = VtOrderData()
 
+            symbol = orderinfo['contract_name']
+            order.orderTime = orderinfo['create_date']
+            date, time = self.generateDateTime(orderinfo['create_date'])
+            ss = date+' '+time
+            ordertime_temp = datetime.strptime(ss, '%Y%m%d %H:%M:%S.%f')
 
+            cc = '2018'+symbol[3:]+' 16:00:00'
+            contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
 
-        return data
+            delta_datetime = (contract_temp - ordertime_temp).days
+
+            if delta_datetime < 7:
+                vtSymbol = symbol[:3] + '_this_week'
+            elif delta_datetime > 14:
+                vtSymbol = symbol[:3] + '_quarter'
+            else:
+                vtSymbol = symbol[:3] + '_next_week'
+
+            order.symbol = vtSymbol
+            order.vtSymbol = vtSymbol + self.gatewayName
+            order.totalVolume = orderinfo['amount']
+            order.tradedVolume = orderinfo['deal_amount']
+            order.status = statusMap[orderinfo['status']]
+            order.price = orderinfo['price']
+            order.price_avg = orderinfo['price_avg']
+            order.direction,order.offset = futurepriceTypeMap[str(orderinfo['type'])]
+            self.gateway.onOrder(copy(order))
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)

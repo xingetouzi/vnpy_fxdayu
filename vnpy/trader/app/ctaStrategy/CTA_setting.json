@@ -2,6 +2,6 @@
     {
         "name": "TEST",
         "className": "TestStrategy",
-        "vtSymbol": "eth_this_week.OKEX_1,eth_quarter.OKEX_1"
+        "vtSymbol": "eth_this_week.OKEX_1,eth_quarter.OKEX_1",
     }
 ]

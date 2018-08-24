@@ -267,7 +267,7 @@ class CtaEngine(object):
                         del self.workingStopOrderDict[so.stopOrderID]
 
                         # 从策略委托号集合中移除
-                        s = self.strategyOrderDict[strategy.name]
+                        s = self.strategyOrderDict[so.strategy.name]
                         if so.stopOrderID in s:
                             s.remove(so.stopOrderID)
 
@@ -428,9 +428,9 @@ class CtaEngine(object):
                 if account.coinSymbol:
                     accountName = account.coinSymbol
                     if 'accountDict' in strategy.syncList:
-                        strategy.accountDict[str(posName)] = account.position
+                        strategy.accountDict[str(accountName)] = account.position
                     if 'frozenDict' in strategy.syncList:
-                        strategy.bondDict[str(posName)] = account.frozen
+                        strategy.bondDict[str(accountName)] = account.frozen
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -440,8 +440,6 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
-
-
 
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
@@ -716,18 +714,17 @@ class CtaEngine(object):
 
         flt = {'name': strategy.name,
             'posName':str(strategy.symbolList)}
-        result = []
+        result = {}
         d = copy(flt)
         for key in strategy.syncList:
             d[key] = strategy.__getattribute__(key)
+            result[key].add(d[key])
 
         self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.name,
                                     d, flt, True)
-        for key in d.keys():
-            result.append =d[key]
-        content = u'策略%s: 同步数据保存成功\n当前仓位状态%s' %(strategy.name, strategy.posDict,strategy.eveningDict,strategy.bondDict)
-        self.writeCtaLog(content)
 
+        content = u'策略%s: 同步数据保存成功,当前仓位状态\n%s' %(strategy.name, result)
+        self.writeCtaLog(content)
 
     def saveVarData(self, strategy):
         flt = {'name': strategy.name,
@@ -880,9 +877,22 @@ class CtaEngine(object):
                     strategy.bondDict[symbol.replace(".","_")+"_SHORT"] = 0
             else:
                 if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[symbol.replace(".","_")] = 0
-                if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol.replace(".","_")] = 0
+                    symbol = symbol.split('.')[0]
+                    name = str.lower(symbol.replace('_',''))
+                    if 'btc' in name[-3:]:
+                        a = name.split('btc')[0]
+                        strategy.accountDict[a] = 0
+                        strategy.accountDict['btc'] = 0
+                    elif 'usdt' in name[-4:]:
+                        a = name.split('usdt')[0]
+                        strategy.accountDict[a] = 0
+                        strategy.accountDict['usdt'] = 0
+                    elif 'bnb' in name[-3:]:
+                        a = name.split('bnb')[0]
+                        strategy.accountDict[a] = 0
+                        strategy.accountDict['bnb'] = 0
+                # if 'posDict' in strategy.syncList:
+                #     strategy.posDict[symbol.replace(".","_")] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
