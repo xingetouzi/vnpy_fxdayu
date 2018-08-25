@@ -87,6 +87,16 @@ sendOrderErrorMap['21021'] = u"合约清算中，无法下单"
 sendOrderErrorMap['HTTP错误码403'] = u"用户请求过快，IP被屏蔽"
 sendOrderErrorMap['Ping不通'] = u"用户请求过快，IP被屏蔽"
 
+KlinePeriodMap = {}
+KlinePeriodMap['1min'] = '1min'
+KlinePeriodMap['5min'] = '5min'
+KlinePeriodMap['15min'] = '15min'
+KlinePeriodMap['30min'] = '30min'
+KlinePeriodMap['60min'] = '1hour'
+KlinePeriodMap['1day'] = 'day'
+KlinePeriodMap['1week'] = 'week'
+KlinePeriodMap['4hour'] = '4hour'
+
 
 okex_all_symbol_pairs = ['ref_usdt', 'soc_usdt', 'light_usdt', 'avt_usdt', 
 'of_usdt', 'brd_usdt', 'ast_usdt', 'int_usdt', 'zrx_usdt', 'ctr_usdt', 'dgd_usdt', 
@@ -171,8 +181,8 @@ class OkexGateway(VtGateway):
             return            
         
         # 初始化接口
-        self.spotApi.init(apiKey, secretKey, trace, symbols)
         self.futuresApi.init(apiKey, secretKey, trace, contracts)
+        self.spotApi.init(apiKey, secretKey, trace, symbols)
 
 
     #----------------------------------------------------------------------
@@ -190,10 +200,11 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
-        if len(cancelOrderReq.contractType) < 4:
-            return self.spotApi.cancelOrder(cancelOrderReq)   
+        if 'quarter' in cancelOrderReq.vtSymbol or 'week' in cancelOrderReq.vtSymbol:
+            return self.futuresApi.cancelOrderReq(cancelOrderReq)
         else:
-            return self.futuresApi.cancelOrder(cancelOrderReq)   
+            return self.spotApi.cancelOrderReq(cancelOrderReq)
+
     #----------------------------------------------------------------------
     def qryAccount(self):
         """查询账户资金"""
@@ -207,7 +218,7 @@ class OkexGateway(VtGateway):
     #------------------------------------------------
     def qryOrder(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
-        contract_type = vtSymbol.split('.')[0]
+        contract_type = vtSymbol.split(':')[0]
         contractType = contract_type[4:]
         if 'quarter' in contractType or 'week' in contractType:
             data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
@@ -217,43 +228,31 @@ class OkexGateway(VtGateway):
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         """策略初始化时下载历史数据"""
-        KLINE_PERIOD = ["1min",
-                "3min",
-                "5min",
-                "15min",
-                "30min",
-                "1hour",
-                "2hour",
-                "4hour",
-                "6hour",
-                "12hour",
-                "day",
-                "3day",
-                "week"]
-        temp= vtSymbol.split('.')[0]
-        contractType = temp[4:]
-        if type_ not in KLINE_PERIOD:
-            self.writeCtaLog("不支持的历史数据初始化方法，请检查type_参数")
-            self.writeCtaLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
-            return '-1'
+        type_ = KlinePeriodMap[type_]
+        symbol= vtSymbol.split(':')[0]
+        contractType = symbol[4:]
+        # if type_ not in KLINE_PERIOD:
+        #     self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+        #     self.writeLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
+        #     return '-1'
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]+"_usd"
-            data = self.futuresApi.rest_future_bar(symbol,type_,contractType,size,since)
+            data = self.futuresApi.rest_future_bar(symbol, type_, contractType, size, since)
         else:
-            symbol = vtSymbol.split('.')[0]
-            data = self.spotApi.rest_spot_bar(symbol,type_,size,since)
+            symbol = symbol
+            data = self.spotApi.rest_spot_bar(symbol, type_, size, since)
         return data
 
     #------------------------------------------------
     def initPosition(self,vtSymbol):
         """策略初始化时查询策略的持仓"""
-        temp= vtSymbol.split('.')[0]
-        contractType = temp[4:]
+        symbol= vtSymbol.split(':')[0]
+        contractType = symbol[4:]
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]
             self.futuresApi.rest_futures_position(symbol,contractType)
         else:
-            symbol = vtSymbol.split('.')[0]
+            symbol = symbol
             self.spotApi.rest_spot_posotion(symbol)
     #----------------------------------------------------------------------
     def close(self):
@@ -301,6 +300,13 @@ class OkexGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
+
+    def writeLog(self, content):
+        """快速记录日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.onLog(log)
 
 
 ##################################################################################################
@@ -374,12 +380,12 @@ class SpotApi(OkexSpotApi):
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
             contract.symbol = symbol
-            contract.exchange = self.gatewayName
-            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+            contract.exchange = EXCHANGE_OKEX
+            contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
             contract.name = symbol
             
             contract.size = 0.00001
-            contract.priceTick = 0.00001
+            contract.priceTick = 5
             contract.productClass = PRODUCT_SPOT
             self.gateway.onContract(contract)
     
@@ -425,9 +431,10 @@ class SpotApi(OkexSpotApi):
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            
             
             self.tickDict[symbol] = tick
         else:
@@ -454,9 +461,10 @@ class SpotApi(OkexSpotApi):
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            
 
             self.tickDict[symbol] = tick
         else:
@@ -548,9 +556,10 @@ class SpotApi(OkexSpotApi):
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            
 
             self.tickDict[symbol] = tick
         else:
@@ -602,19 +611,15 @@ class SpotApi(OkexSpotApi):
             available = float(free[symbol])
             
             if frozen or available:
-                pos = VtPositionData()
-                pos.gatewayName = self.gatewayName
+                account = VtAccountData()
+                account.gatewayName = self.gatewayName
                 
-                pos.symbol = symbol
-                pos.exchange = self.gatewayName
-                pos.vtSymbol = '.'.join([pos.symbol, pos.exchange])
-                pos.direction = DIRECTION_LONG
-                pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
+                account.accountID = symbol
+                account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
+                account.balance = frozen + available
+                account.available = available
                 
-                pos.frozen = frozen
-                pos.position = frozen + available
-                    
-                self.gateway.onPosition(pos)
+                self.gateway.onAccount(account)                      
         
         self.writeLog(u'现货持仓信息查询成功')
         
@@ -643,11 +648,11 @@ class SpotApi(OkexSpotApi):
                 order.gatewayName = self.gatewayName
                 
                 order.symbol = d['symbol']
-                order.exchange = self.gatewayName
-                order.vtSymbol = '.'.join([order.symbol, order.exchange])
+                order.exchange = EXCHANGE_OKEX
+                order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
     
                 order.orderID = localNo
-                order.vtOrderID = '.'.join([self.gatewayName, order.orderID])
+                order.vtOrderID = ':'.join([self.gatewayName, order.orderID])
                 
                 order.price = d['price']
                 order.totalVolume = d['amount']
@@ -689,10 +694,10 @@ class SpotApi(OkexSpotApi):
             order = VtOrderData()
             order.gatewayName = self.gatewayName
             order.symbol = rawData['symbol']
-            order.exchange = self.gatewayName
-            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.exchange = EXCHANGE_OKEX
+            order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
             order.orderID = localNo
-            order.vtOrderID = '.'.join([self.gatewayName, localNo])
+            order.vtOrderID = ':'.join([self.gatewayName, localNo])
             order.direction, priceType = priceTypeMap[rawData['tradeType']]
             order.price = float(rawData['tradeUnitPrice'])
             order.totalVolume = float(rawData['tradeAmount'])
@@ -715,7 +720,7 @@ class SpotApi(OkexSpotApi):
             
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
+            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
             
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
@@ -730,7 +735,7 @@ class SpotApi(OkexSpotApi):
         # 撤单
         if localNo in self.cancelDict:
             req = self.cancelDict[localNo]
-            self.spotCancel(req)
+            self.cancelOrder(req)
             del self.cancelDict[localNo]        
 
     #----------------------------------------------------------------------        
@@ -740,18 +745,16 @@ class SpotApi(OkexSpotApi):
         free = rawData['info']['free']
         freezed = rawData['info']['freezed']
         
-        for symbol in free.keys():
-            pos = VtPositionData()
-            pos.gatewayName = self.gatewayName
-            pos.symbol = symbol
-            pos.exchange = self.gatewayName
-            pos.vtSymbol = '.'.join([pos.symbol, pos.exchange])
-            pos.direction = DIRECTION_LONG
-            pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
-            pos.frozen = float(freezed[symbol])
-            pos.position = pos.frozen + float(free[symbol])
-
-            self.gateway.onPosition(pos)
+        for symbol in free.keys():            
+            account = VtAccountData()
+            account.gatewayName = self.gatewayName
+            
+            account.accountID = symbol
+            account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
+            account.available = float(free[symbol])
+            account.balance = account.available + float(freezed[symbol])
+            
+            self.gateway.onAccount(account)           
     
     #----------------------------------------------------------------------
     def init(self, apiKey, secretKey, trace, symbols):
@@ -759,6 +762,9 @@ class SpotApi(OkexSpotApi):
         self.symbols = symbols
         self.initCallback()
         self.connect(OKEX_SPOT_HOST, apiKey, secretKey, trace)
+        if not apiKey:
+            self.writeLog(u'请添加apiKey和对应的密钥')
+            return
         self.writeLog(u'现货接口初始化成功')
 
     #----------------------------------------------------------------------
@@ -779,12 +785,12 @@ class SpotApi(OkexSpotApi):
         self.localNo += 1
         self.localNo = '_spot_' +str(self.localNo)
         self.localNoQueue.put(str(self.localNo))
-        vtOrderID = '.'.join([self.gatewayName, str(self.localNo)])
+        vtOrderID = ':'.join([self.gatewayName, str(self.localNo)])
         # 缓存委托信息
         order = VtOrderData()
         order.gatewayName = self.gatewayName
         order.symbol = req.symbol
-        order.exchange = self.gatewayName
+        order.exchange = EXCHANGE_OKEX
         order.contractType = None
         order.vtSymbol = req.vtSymbol
         order.orderID= str(self.localNo)
@@ -850,11 +856,13 @@ class SpotApi(OkexSpotApi):
         self.subSpotOrder(symbol)
         self.subSpotBalance(symbol)
 
-    def rest_spot_bar(self,symbol,type_,size = None, since = None):
+    def rest_spot_bar(self, symbol,type_,size = None, since = None):
         data = self.spotKline(symbol, type_, size, since)
         return data
-    def rest_spot_order(self,symbol,type_,size = None,since = None):
-        self.spot_qry_order(symbol,type_,size,since)
+    def rest_spot_posotion(self, symbol):
+        pass
+    def rest_spot_orders(self,symbol,order_id,status):
+        pass
 
 class FuturesApi(OkexFuturesApi):
     """OKEX的期货API实现"""
@@ -868,7 +876,7 @@ class FuturesApi(OkexFuturesApi):
         self.cbDict = {}
         self.tickDict = {}
         self.orderDict = {}
-        self.posDict = {}
+        # self.posDict = {}
         self.channelSymbolMap = {}
         self.channelcontractTypeMap = {}
         
@@ -925,12 +933,12 @@ class FuturesApi(OkexFuturesApi):
             contract.gatewayName = self.gatewayName
 
             contract.symbol = symbol
-            contract.exchange = self.gatewayName
+            contract.exchange = EXCHANGE_OKEX
             contract.contractType = symbol[4:]
-            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+            contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
             contract.name = symbol
             contract.size = 0.00001
-            contract.priceTick = 0.00001
+            contract.priceTick = 5   # 小数点后5位
             contract.productClass = PRODUCT_FUTURES
             self.gateway.onContract(contract)
     
@@ -972,7 +980,7 @@ class FuturesApi(OkexFuturesApi):
         """"""
         # 查询持仓
         self.futuresUserInfo()
-        # self.subscribeFuturesPositions()   # 没用，初始查询不给持仓信息
+        # self.subscribeFuturesPositions()   # 没用，Websocket初始查询不给持仓信息
 
         # 订阅推送
         for symbol in self.contracts:
@@ -999,10 +1007,11 @@ class FuturesApi(OkexFuturesApi):
 
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
-            tick.contractType = contractType
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.contractType = contractType
+            
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
@@ -1039,11 +1048,12 @@ class FuturesApi(OkexFuturesApi):
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.contractType = contractType
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
-
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.contractType = contractType
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+
+            
 
             self.tickDict[symbol] = tick
         else:
@@ -1140,11 +1150,12 @@ class FuturesApi(OkexFuturesApi):
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
-            tick.exchange = self.gatewayName
-            tick.contractType = contractType
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
-
+            tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
+            tick.contractType = contractType
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+
+            
 
             self.tickDict[symbol] = tick
         else:
@@ -1269,16 +1280,14 @@ class FuturesApi(OkexFuturesApi):
             order.price = rawData['price']
             order.price_avg = rawData['price_avg']
             order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
-            self.writeLog('check ontrade msg')
             order.exchangeOrderID = orderId        
             order.user_id = rawData['user_id']
             order.gatewayName = self.gatewayName
             order.orderTime = rawData['create_date_str']
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             order.status = statusMap[rawData['status']] 
-            print(localNo,order.status,orderId,self.exchangeOrderDict[str(orderId)],"-----------*******order******---------")
             self.orderDict[order.vtOrderID] = order   #更新order信息
-            self.writeLog(u'localNo:%s, orderId:%s, status:%s'%(localNo, orderId,order.status))
+            self.writeLog(u'gw_onFuturesOrderInfo_updateorder_localNo:%s, orderId:%s, status:%s, exchangeID:%s'%(localNo, orderId,order.status,self.exchangeOrderDict[str(orderId)]))
         except KeyError:
             order = VtOrderData()
             self.exchangeOrderDict[str(orderId)] = "wait"
@@ -1286,15 +1295,16 @@ class FuturesApi(OkexFuturesApi):
             name = rawData['contract_name'][:3]
             order.contractType = rawData['contract_type']
             order.symbol = str.lower(name) + '_' + order.contractType
-            order.exchange = self.gatewayName
-            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.exchange = EXCHANGE_OKEX
+            order.gatewayName = self.gatewayName
+            order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
             order.price = rawData['price']
             order.price_avg = rawData['price_avg']
             order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
             order.totalVolume = rawData['amount']
             order.exchangeOrderID = orderId        
             order.user_id = rawData['user_id']
-            order.gatewayName = self.gatewayName
+            
             order.orderTime = rawData['create_date_str']
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             order.status = statusMap[rawData['status']] 
@@ -1318,7 +1328,7 @@ class FuturesApi(OkexFuturesApi):
             
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
+            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
             print("gw_trade_orderid",order.orderID,order.exchangeOrderID)
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
@@ -1410,44 +1420,44 @@ class FuturesApi(OkexFuturesApi):
         pos = VtPositionData()
         pos.gatewayName = self.gatewayName
         pos.symbol = vtSymbol
-        pos.exchange = self.gatewayName
-        pos.vtSymbol = '.'.join([pos.symbol, pos.exchange])
+        pos.exchange = EXCHANGE_OKEX
+        pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
 
         longPos = copy(pos)
         longPos.direction = DIRECTION_LONG
         # 多头仓位
-        longPosName = '.'.join([pos.vtSymbol, DIRECTION_LONG])
-        try:
-            longPos = self.posDict[longPosName]
-        except KeyError:
-            longPos = copy(pos)
-            longPos.direction = DIRECTION_LONG
-            longPos.vtPositionName = longPosName
-            self.posDict[longPosName] = longPos
+        # longPosName = ':'.join([pos.vtSymbol, DIRECTION_LONG])
+        # try:
+        #     longPos = self.posDict[longPosName]
+        # except KeyError:
+        #     longPos = copy(pos)
+        #     longPos.direction = DIRECTION_LONG
+        #     longPos.vtPositionName = longPosName
+        #     self.posDict[longPosName] = longPos
         longPos.position = position[0]['hold_amount']
         longPos.price = position[0]['avgprice']
         longPos.frozen = longPos.position - position[0]['eveningup']
         profit = position[0]['realized']
         longPos.positionProfit = '%10.8f' % profit
-        longPos.vtPositionName = '.'.join([pos.vtSymbol, longPos.direction])
+        longPos.vtPositionName = ':'.join([pos.vtSymbol, longPos.direction])
 
         shortPos = copy(pos)
         shortPos.direction = DIRECTION_SHORT
         # 空头仓位    
-        shortPosName = '.'.join([pos.vtSymbol, DIRECTION_SHORT])
-        try:
-            shortPos = self.posDict[shortPosName]
-        except KeyError:
-            shortPos = copy(pos)
-            shortPos.direction = DIRECTION_SHORT
-            shortPos.vtPositionName = shortPosName 
-            self.posDict[shortPosName] = shortPos
+        shortPosName = ':'.join([pos.vtSymbol, DIRECTION_SHORT])
+        # try:
+        #     shortPos = self.posDict[shortPosName]
+        # except KeyError:
+        #     shortPos = copy(pos)
+        #     shortPos.direction = DIRECTION_SHORT
+        #     shortPos.vtPositionName = shortPosName 
+        #     self.posDict[shortPosName] = shortPos
         shortPos.position = position[1]['hold_amount']
         shortPos.price = position[1]['avgprice']
         shortPos.frozen = shortPos.position - position[1]['eveningup']
         profit = position[1]['realized']
         shortPos.positionProfit = '%10.8f' % profit
-        shortPos.vtPositionName = '.'.join([pos.vtSymbol, shortPos.direction])            
+        shortPos.vtPositionName = ':'.join([pos.vtSymbol, shortPos.direction])            
             
         self.gateway.onPosition(longPos)
         self.gateway.onPosition(shortPos)
@@ -1470,7 +1480,7 @@ class FuturesApi(OkexFuturesApi):
         # 缓存委托信息
         # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
         self.localNo += 1
-        vtOrderID = '.'.join([self.gatewayName, str(self.localNo)])
+        vtOrderID = ':'.join([self.gatewayName, str(self.localNo)])
         # self.localNoQueue.put(str(self.localNo))
 
         type_ = futurepriceTypeMapReverse[(req.direction, req.offset)]
@@ -1481,6 +1491,7 @@ class FuturesApi(OkexFuturesApi):
             req.priceType = 1
         symbol = req.symbol[:3] + "_usd"
 
+        # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
         if not self.gateway.connected:
             self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
             order = VtOrderData()
@@ -1501,18 +1512,38 @@ class FuturesApi(OkexFuturesApi):
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.gateway.onOrder(copy(order))
             return vtOrderID
- 
+        
+        # 下单判断状态 2 ： 发单失败，返回失败请求
         # result = self.futuresTrade(req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
         try:
-            data = self.future_trade(symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,"10")  # restful
+            data = self.future_trade(symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,req.levelRate)  # restful
         except:
             self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
-            return ''        # 若请求失败，则返回空字符串委托号
-        # 若请求失败，则返回空字符串委托号
+            order = VtOrderData()
+            order.vtOrderID = vtOrderID
+            order.orderID = self.localNo
+            order.symbol= req.symbol
+
+            order.vtSymbol = req.vtSymbol
+            order.status = STATUS_REJECTED
+            order.gatewayName = self.gatewayName
+            order.rejectedInfo = 'RESTFUL REQUEST ERROR'
+            order.bystrategy = req.bystrategy
+            order.direction = req.direction
+            order.offset = req.offset
+            order.price = req.price
+            order.totalVolume = req.volume
+            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            self.gateway.onOrder(copy(order))
+            return vtOrderID        
+        
+        # 下单判断状态 3 ： 发单正常，下单成功，返回下单信息
         result= data['result']
         if result:
             order_id = data['order_id']
             self.writeLog(u'gw_sendorder_下单成功,exchangeorderid:%s' %order_id)
+        # 下单判断状态 4 ： 发单正常，下单失败，返回报错信息
         else:
             # {'result': False, 'error_code': 20008}
             error_code = data['error_code']
@@ -1533,12 +1564,11 @@ class FuturesApi(OkexFuturesApi):
             order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             self.gateway.onOrder(copy(order))
-            # 若请求失败，则返回空字符串委托号
             return vtOrderID
         
 
         try:
-            if self.exchangeOrderDict[str(order_id)]=="wait":
+            if self.exchangeOrderDict[str(order_id)]=="wait":  # 如果ws先收到了未成交回报
                 self.exchangeOrderDict[str(order_id)] = str(self.localNo)
                 order = self.orderDict[str(order_id)]
                 order.orderID = self.localNo
@@ -1550,15 +1580,15 @@ class FuturesApi(OkexFuturesApi):
                 self.writeLog(u'---sendorder_try_gw---,%s,%s,%s,%s,%s'%(req.symbol,vtOrderID,order_id,order,self.orderDict[vtOrderID]))
                 self.gateway.onOrder(copy(order))
 
-        except KeyError:
+        except KeyError:   # 如果rest先收到未成交回报
             order = VtOrderData()
             self.writeLog(u'---sendorder_except_gw---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
             self.exchangeOrderDict[str(order_id)] = str(self.localNo)
             order.gatewayName = self.gatewayName
             order.exchangeOrderID = order_id
             order.symbol = req.symbol
-            order.exchange = self.gatewayName
-            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.exchange = EXCHANGE_OKEX
+            order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
             order.contractType = req.contractType
             order.orderID= str(self.localNo)
             order.vtOrderID = vtOrderID
@@ -1645,43 +1675,37 @@ class FuturesApi(OkexFuturesApi):
             if not data['holding']:
                 return
             position = data['holding'][0]
+            pos = VtPositionData()
+            pos.gatewayName = self.gatewayName
+            pos.exchange = EXCHANGE_OKEX
             symbol = position['symbol'][:3]
             contract_type = position['contract_type']
-            gateway = self.gatewayName
-            vtSymbol = symbol + '_'+contract_type +'.'+ gateway
-            self.contract_id[str(position['contract_id'])] =vtSymbol
+            pos.symbol = symbol + '_' + contract_type
+            pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
+            self.contract_id[str(position['contract_id'])] =pos.vtSymbol
 
-            pos1 = VtPositionData()
-            pos1.gatewayName = gateway
-            pos1.symbol = vtSymbol
-            pos1.vtSymbol = pos1.symbol
-            pos1.exchange = self.gatewayName
+            pos1 = copy(pos)
             pos1.direction = DIRECTION_LONG
-            pos1.vtPositionName = '.'.join([pos1.vtSymbol, pos1.direction])
+            pos1.vtPositionName = ':'.join([pos1.vtSymbol, pos1.direction])
             
             # 汇总总仓
             pos1.position = position['buy_amount']
             pos1.positionProfit = position['buy_profit_real']
             pos1.price =  position['buy_price_avg']
             pos1.frozen = pos1.position - position['buy_available']
-            print(pos1.vtPositionName,pos1.position,pos1.frozen)
+            print('***RESTFUL_initposition***',pos1.vtPositionName,pos1.position,pos1.frozen)
             self.gateway.onPosition(pos1)
 
-            
-            pos2 = VtPositionData()
-            pos2.gatewayName = gateway
-            pos2.symbol = vtSymbol
-            pos2.vtSymbol = pos2.symbol
-            pos2.exchange = self.gatewayName
+            pos2 = copy(pos)
             pos2.direction = DIRECTION_SHORT
-            pos2.vtPositionName = '.'.join([pos2.vtSymbol, pos2.direction])
+            pos2.vtPositionName = ':'.join([pos2.vtSymbol, pos2.direction])
 
             # 汇总总仓
             pos2.position = position['sell_amount']
             pos2.positionProfit = position['sell_profit_real']
             pos2.price =  position['sell_price_avg']
             pos2.frozen = pos2.position - position['sell_available']
-            print(pos2.vtPositionName,pos2.position,pos1.frozen)
+            print('***RESTFUL_initposition***',pos2.vtPositionName,pos2.position,pos1.frozen)
             self.gateway.onPosition(pos2)
             # # 遍历推送
             # for pos in list(self.posDict.values()):
@@ -1718,7 +1742,7 @@ class FuturesApi(OkexFuturesApi):
         }
         """
         data = self.future_order_info(symbol,contractType,order_id,status)
-        print(data,"rest_order_callback")
+        print(data,"*******rest_order_callback***********")
         if data['result']:
             orderinfo = data['orders'][0]
             order = VtOrderData()

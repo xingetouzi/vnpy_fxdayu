@@ -30,7 +30,7 @@ class CtaTemplate(object):
 
     # 策略的基本参数
     name = EMPTY_UNICODE  # 策略实例名称
-    # vtSymbol = EMPTY_STRING        # 交易的合约vt系统代码
+    vtSymbol = EMPTY_STRING        # 交易的合约vt系统代码
     productClass = EMPTY_STRING  # 产品类型（只有IB接口需要）
     currency = EMPTY_STRING  # 货币（只有IB接口需要）
 
@@ -41,6 +41,11 @@ class CtaTemplate(object):
     barsList = []
     ticksList = []
     posDict = {}
+    eveningDict = {}
+    bondDict = {}
+    accountDict = {}
+    frozenDict = {}
+
     # 参数列表，保存了参数的名称
     paramList = ['name',
                  'className',
@@ -51,6 +56,7 @@ class CtaTemplate(object):
     varList = ['inited',
                'trading',
                'posDict']
+
     # 同步列表，保存了需要保存到数据库的变量名称
     syncList = ['posDict',
                 'eveningDict',
@@ -113,34 +119,34 @@ class CtaTemplate(object):
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
-    def buy(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
+    def buy(self, vtSymbol, price, volume, marketPrice="0", levelRate = '10', stop=False):
         """买开"""
-        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, stop)
+        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sell(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
+    def sell(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
         """卖平"""
-        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, stop)
+        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def short(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
+    def short(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
         """卖开"""
-        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, stop)
+        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def cover(self, vtSymbol, price, volume, marketPrice="0",  stop=False):
+    def cover(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
         """买平"""
-        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, stop)
+        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice="0",  stop=False):
+    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
         """发送委托"""
         if self.trading:
             # 如果stop为True，则意味着发本地停止单
             if stop:
-                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, marketPrice, self)
+                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, marketPrice, levelRate, self)
             else:
-                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, marketPrice, self)
+                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, marketPrice, levelRate, self)
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
@@ -215,10 +221,6 @@ class CtaTemplate(object):
     def getPriceTick(self):
         """查询最小价格变动"""
         return self.ctaEngine.getPriceTick(self)
-
-    # def initPosition(self):
-    #     """初始化起始仓位"""
-    #     self.ctaEngine.initPosition(self)
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
@@ -355,7 +357,7 @@ class TargetPosTemplate(CtaTemplate):
                 else:
                     l = self.short(shortPrice, abs(posChange))
             self.orderList.extend(l)
-
+#
 #
 # ########################################################################
 class BarGenerator(object):

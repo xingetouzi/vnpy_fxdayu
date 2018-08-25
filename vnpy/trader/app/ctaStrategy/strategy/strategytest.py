@@ -64,13 +64,6 @@ class TestStrategy(CtaTemplate):
         self.activeSymbol = self.symbolList[0]    # 主动品种
         self.passiveSymbol = self.symbolList[1]   # 被动品种
         
-        # 给持仓字典设置名称，为了方便调用
-        # MONGO数据库不支持字段名含有 "." ，需特别处理)
-        self.asLongpos = self.activeSymbol.replace(".","_")+"_LONG"
-        self.asShortpos = self.activeSymbol.replace(".","_")+"_SHORT"
-        self.psLongpos = self.passiveSymbol.replace(".","_")+"_LONG"
-        self.psShortpos = self.passiveSymbol.replace(".","_")+"_SHORT"
-        
         # 构造K线合成器对象
         self.bgDict = {
             sym: BarGenerator(self.onBar)
@@ -126,7 +119,6 @@ class TestStrategy(CtaTemplate):
     def onTick(self, tick):
         """收到行情TICK推送"""
         self.bgDict[tick.vtSymbol].updateTick(tick)
-
         '''
         在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
         注：如果没有updateTick，将不会推送分钟bar
@@ -137,16 +129,16 @@ class TestStrategy(CtaTemplate):
         self.amDict[bar.vtSymbol].updateBar(bar)
 
         self.buy(self.activeSymbol,
-                    self.amDict[self.activeSymbol].close[-1] -20,
+                    999,
                     volume = self.posSize,
-                    marketPrice=0)
-        self.putEvent()    
+                    marketPrice = 1)
+        self.putEvent()
         
     # ----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
 
-        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, %s,id:%s, List:%s, dealamount:%s'%(order.status, order.rejectedInfo,order.vtOrderID, order.tradedVolume))
+        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume))
 
         # 变动的订单是市价追单
         if order.status == STATUS_REJECTED and order.rejectedInfo == 'BAD NETWORK':
