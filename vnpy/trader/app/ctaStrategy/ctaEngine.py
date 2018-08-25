@@ -912,7 +912,8 @@ class CtaEngine(object):
         for vtOrderID in list(s):
             if STOPORDERPREFIX not in vtOrderID:
                 order = self.mainEngine.getOrder(vtOrderID)
-                self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+                if order:
+                    self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
 
     def restoreStrategy(self, name):
         """恢复策略"""

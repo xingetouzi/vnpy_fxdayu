@@ -233,7 +233,6 @@ class CtaTemplate(object):
             self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数%s，同时size不得大于2000'%self.KlinePeriod)
             return
         
-        
     def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""
         return self.ctaEngine.qryOrder(vtSymbol,self.name,status)
@@ -241,7 +240,6 @@ class CtaTemplate(object):
     def onRestore(self):
         """恢复策略（必须由用户继承实现）"""
         raise NotImplementedError
-
 
 
 ########################################################################
