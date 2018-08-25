@@ -34,6 +34,8 @@ class CtaTemplate(object):
     productClass = EMPTY_STRING  # 产品类型（只有IB接口需要）
     currency = EMPTY_STRING  # 货币（只有IB接口需要）
 
+    KlinePeriod = ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
+
     # 策略的基本变量，由引擎管理
     inited = False  # 是否进行了初始化
     trading = False  # 是否启动交易，由引擎管理
@@ -119,27 +121,27 @@ class CtaTemplate(object):
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
-    def buy(self, vtSymbol, price, volume, marketPrice="0", levelRate = '10', stop=False):
+    def buy(self, vtSymbol, price, volume, marketPrice=0, levelRate = 10, stop=False):
         """买开"""
         return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sell(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
+    def sell(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
         """卖平"""
         return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def short(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
+    def short(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
         """卖开"""
         return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def cover(self, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
+    def cover(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
         """买平"""
         return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice="0",  levelRate = '10', stop=False):
+    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
         """发送委托"""
         if self.trading:
             # 如果stop为True，则意味着发本地停止单
@@ -224,8 +226,13 @@ class CtaTemplate(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
-        data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
-        return data
+        if type_ in self.KlinePeriod:
+            data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
+            return data
+        else:
+            self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数%s，同时size不得大于2000'%self.KlinePeriod)
+            return
+        
         
     def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""

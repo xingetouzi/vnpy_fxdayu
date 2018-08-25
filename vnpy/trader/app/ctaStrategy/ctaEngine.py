@@ -58,7 +58,6 @@ class CtaEngine(object):
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
         self.strategyDict = {}
-        self.strategySymbolDict = {}
 
         # 保存vtSymbol和策略实例映射的字典（用于推送tick数据）
         # 由于可能多个strategy交易同一个vtSymbol，因此key为vtSymbol
@@ -99,7 +98,6 @@ class CtaEngine(object):
         """发单"""
         
         contract = self.mainEngine.getContract(vtSymbol)
-        print(contract.priceTick,price,'hhhhhhhhhhhhhhhhhhhhhhhhh')
         req = VtOrderReq()
         
         req.symbol = contract.symbol
@@ -117,7 +115,7 @@ class CtaEngine(object):
         # req.priceType = PRICETYPE_LIMITPRICE
 
         req.priceType = marketPrice    #OKEX 用number作priceType
-        req.levelRate = levelRate
+        req.levelRate = str(levelRate)
 
         if marketPrice:
             type_shown = PRICETYPE_MARKETPRICE
@@ -500,32 +498,31 @@ class CtaEngine(object):
             name = setting['name']
             className = setting['className']
             vtSymbolset=setting['vtSymbol']
-            vtSymbolList=vtSymbolset.split(',')
 
         except Exception as e:
-            self.writeCtaLog('载入策略%s出错：%s' %e)
+            self.writeCtaLog(u'载入策略%s出错：%s' %e)
             return
 
         # 获取策略类
         strategyClass = STRATEGY_CLASS.get(className, None)
         
+        
         if not strategyClass:
-            self.writeCtaLog('找不到策略类：%s' %className)
+            self.writeCtaLog(u'找不到策略类：%s' %className)
             return
 
         # 防止策略重名
         if name in self.strategyDict:
-            self.writeCtaLog('策略实例重名：%s' %name)
+            self.writeCtaLog(u'策略实例重名：%s' %name)
         else:
             # 创建策略实例
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
-            print("tetetetetete",strategy['vtSymbol'])
-            self.strategySymbolDict[name] = vtSymbolList
+            strategy.symbolList = vtSymbolset
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
-            for vtSymbol in vtSymbolList :
+            for vtSymbol in vtSymbolset :
 
                 # 保存Tick映射关系
                 if vtSymbol in self.tickStrategyDict:
@@ -566,15 +563,15 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
-                strategy.symbolList = self.strategySymbolDict[name]
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
+                self.writeCtaLog(u'策略%s： 初始化' %name)
 
             else:
-                self.writeCtaLog('请勿重复初始化策略实例：%s' %name)
+                self.writeCtaLog(u'请勿重复初始化策略实例：%s' %name)
         else:
-            self.writeCtaLog('策略实例不存在：%s' %name)
+            self.writeCtaLog(u'策略实例不存在：%s' %name)
 
     #---------------------------------------------------------------------
     def startStrategy(self, name):
@@ -585,8 +582,9 @@ class CtaEngine(object):
             if strategy.inited and not strategy.trading:
                 strategy.trading = True
                 self.callStrategyFunc(strategy, strategy.onStart)
+                self.writeCtaLog(u'策略%s： 启动' %name)
         else:
-            self.writeCtaLog('策略实例不存在：%s' %name)
+            self.writeCtaLog(u'策略实例不存在：%s' %name)
 
     #----------------------------------------------------------------------
     def stopStrategy(self, name):
@@ -595,7 +593,7 @@ class CtaEngine(object):
             strategy = self.strategyDict[name]
 
             if strategy.trading:
-                self.writeCtaLog(u'策略%s:准备停止工作' %name)
+                self.writeCtaLog(u'策略%s： 准备停止工作' %name)
                 self.saveVarData(strategy)
                 strategy.trading = False
                 self.callStrategyFunc(strategy, strategy.onStop)
@@ -611,7 +609,7 @@ class CtaEngine(object):
                         self.cancelStopOrder(stopOrderID)
 
             strategy.inited = False  ## 取消注释使策略在停止后可以再次初始化
-            self.writeCtaLog(u'策略%s:停止工作' %name)
+            self.writeCtaLog(u'策略%s： 停止工作' %name)
             ## 加上删除持仓信息
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
@@ -673,7 +671,7 @@ class CtaEngine(object):
 
             return varDict
         else:
-            self.writeCtaLog('策略实例不存在：' + name)
+            self.writeCtaLog(u'策略实例不存在：' + name)
             return None
 
     #----------------------------------------------------------------------
@@ -688,7 +686,7 @@ class CtaEngine(object):
 
             return paramDict
         else:
-            self.writeCtaLog('策略实例不存在：' + name)
+            self.writeCtaLog(u'策略实例不存在：' + name)
             return None
 
     #----------------------------------------------------------------------
@@ -713,7 +711,7 @@ class CtaEngine(object):
             strategy.inited = False
 
             # 发出日志
-            content = '\n'.join(['策略%s：触发异常已停止, 当前状态已保存' %strategy.name,
+            content = '\n'.join([u'策略%s：触发异常已停止, 当前状态已保存' %strategy.name,
                                 traceback.format_exc()])
             self.writeCtaLog(content)
 
@@ -879,14 +877,14 @@ class CtaEngine(object):
             symbol = strategy.symbolList[i]
             if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
                 if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.posDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.posDict[symbol+"_LONG"] = 0
+                    strategy.posDict[symbol+"_SHORT"] = 0
                 if 'eveningDict' in strategy.syncList:
-                    strategy.eveningDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.eveningDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.eveningDict[symbol+"_LONG"] = 0
+                    strategy.eveningDict[symbol+"_SHORT"] = 0
                 if 'bondDict' in strategy.syncList:
-                    strategy.bondDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.bondDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.bondDict[symbol+"_LONG"] = 0
+                    strategy.bondDict[symbol+"_SHORT"] = 0
             else:
                 if 'accountDict' in strategy.syncList:
                     symbol = symbol.split('.')[0]
@@ -903,8 +901,6 @@ class CtaEngine(object):
                         a = name.split('bnb')[0]
                         strategy.accountDict[a] = 0
                         strategy.accountDict['bnb'] = 0
-                # if 'posDict' in strategy.syncList:
-                #     strategy.posDict[symbol.replace(".","_")] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
@@ -929,10 +925,7 @@ class CtaEngine(object):
 
                 self.callStrategyFunc(strategy, strategy.onRestore)
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据                
-                print('testrestore333',strategy.inited,strategy.trading)
-
                 self.loadSyncData(strategy)
-                print('testrestore2',strategy.inited,strategy.trading)
-
+                self.writeCtaLog(u'策略%s： 恢复策略状态成功' %name)
         else:
-            self.writeCtaLog('策略实例不存在：%s' %name)
+            self.writeCtaLog(u'策略实例不存在：%s' %name)

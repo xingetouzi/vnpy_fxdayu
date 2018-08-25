@@ -188,14 +188,14 @@ class MainEngine(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
         """策略初始化时下载历史数据"""
-        gatewayName = vtSymbol.split(".")
+        gatewayName = vtSymbol.split(':')
         gateway = self.getGateway(gatewayName[1])
         if gateway:
             data = gateway.loadHistoryBar(vtSymbol,type_,size)
         return data
 
     def qryOrder(self, vtSymbol,orderId,status=None):
-        gatewayName = vtSymbol.split('.')
+        gatewayName = vtSymbol.split(':')
         gateway = self.getGateway(gatewayName[1])
         if gateway:
             gateway.qryOrder(vtSymbol,orderId,status)

@@ -1,5 +1,6 @@
 # coding: utf-8
 from vnpy.trader.vtConstant import EMPTY_STRING, DIRECTION_LONG, DIRECTION_SHORT
+from vnpy.trader.app.ctaStrategy.mail import mail
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
                                                      ArrayManager)
@@ -18,10 +19,7 @@ class TestStrategy(CtaTemplate):
     # 策略交易标的
     activeSymbol = EMPTY_STRING     # 主动品种
     passiveSymbol = EMPTY_STRING    # 被动品种
-    asLongpos = EMPTY_STRING        # 主动品种多仓
-    asShortpos = EMPTY_STRING       # 主动品种空仓
-    psLongpos = EMPTY_STRING        # 被动品种多仓
-    psShortpos = EMPTY_STRING       # 被动品种空仓
+
     posDict = {}                    # 仓位数据缓存
     eveningDict = {}                # 可平仓量数据缓存
     bondDict = {}                   # 保证金数据缓存
@@ -59,8 +57,6 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：初始化' % self.name)
-
         self.activeSymbol = self.symbolList[0]    # 主动品种
         self.passiveSymbol = self.symbolList[1]   # 被动品种
         
@@ -98,7 +94,6 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：启动' % self.name)
         self.putEvent()
         '''
         在点击启动策略时触发,此时的ctaEngine会将下单逻辑改为True,此时开始推送到onbar的数据会触发下单.
@@ -106,13 +101,12 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：停止' % self.name)
         self.putEvent()
         
     # ----------------------------------------------------------------------
     def onRestore(self):
         """从错误状态恢复策略（必须由用户继承实现）"""
-        self.writeCtaLog(u'策略%s：恢复策略状态成功' % self.name)
+        
         self.putEvent()
 
     # ----------------------------------------------------------------------
@@ -131,7 +125,8 @@ class TestStrategy(CtaTemplate):
         self.buy(self.activeSymbol,
                     999,
                     volume = self.posSize,
-                    marketPrice = 1)
+                    marketPrice = 1,
+                    levelRate = 10)
         self.putEvent()
         
     # ----------------------------------------------------------------------
@@ -139,7 +134,7 @@ class TestStrategy(CtaTemplate):
         """收到委托变化推送（必须由用户继承实现）"""
 
         self.writeCtaLog(u'onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume))
-
+        self.writeCtaLog(u'stg_onorder_check:posDict %s'%self.posDict)
         # 变动的订单是市价追单
         if order.status == STATUS_REJECTED and order.rejectedInfo == 'BAD NETWORK':
             ####市价追单再发一遍

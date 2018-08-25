@@ -327,6 +327,7 @@ class VtOrderReq(object):
         self.direction = EMPTY_STRING           # 买卖
         self.offset = EMPTY_STRING              # 开平
         self.bystrategy =EMPTY_STRING
+        self.levelRate = EMPTY_INT
         
         # 以下为IB相关
         self.productClass = EMPTY_UNICODE       # 合约类型

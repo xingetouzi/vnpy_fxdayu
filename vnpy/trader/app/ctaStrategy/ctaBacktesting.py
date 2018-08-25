@@ -25,9 +25,6 @@ try:
 except ImportError:
     pass
 
-from collections import defaultdict
-
-
 from vnpy.trader.vtGlobal import globalSetting
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtConstant import *
@@ -344,8 +341,6 @@ class BacktestingEngine(object):
         self.strategy.name = self.strategy.className
         self.strategy.posDict = {}
         self.initPosition(self.strategy)
-
-
 
     #----------------------------------------------------------------------
     def crossLimitOrder(self, data):
