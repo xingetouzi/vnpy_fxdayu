@@ -1,5 +1,5 @@
 # coding: utf-8
-from vnpy.trader.vtConstant import EMPTY_STRING, DIRECTION_LONG, DIRECTION_SHORT
+from vnpy.trader.vtConstant import *
 from vnpy.trader.app.ctaStrategy.mail import mail
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
