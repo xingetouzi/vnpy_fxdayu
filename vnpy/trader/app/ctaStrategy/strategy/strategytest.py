@@ -23,7 +23,6 @@ class TestStrategy(CtaTemplate):
     posDict = {}                    # 仓位数据缓存
     eveningDict = {}                # 可平仓量数据缓存
     bondDict = {}                   # 保证金数据缓存
-    spreadBuffer = []               # 价差缓存列表
 
     # 策略变量
     posSize = 1                     # 每笔下单的数量
@@ -81,14 +80,12 @@ class TestStrategy(CtaTemplate):
                         type_ = "1min", 
                         size = self.initbars)
         
-        for bar1,bar2 in zip(pastbar1,pastbar2):    # 计算历史数据的价差，并保存到缓存
-            spread = bar1.close - bar2.close
+        for bar1,bar2 in zip(pastbar1,pastbar2):    
             self.amDict[self.activeSymbol].updateBar(bar1)    # 更新数据矩阵(optional)
             self.amDict[self.passiveSymbol].updateBar(bar2)
-            self.spreadBuffer.append(spread)
 
         # self.onBar(bar)  # 是否直接推送到onBar
-        self.putEvent()
+        self.putEvent()  # putEvent 能刷新UI界面的信息
         '''
         在点击初始化策略时触发,载入历史数据,会推送到onbar去执行updatebar,但此时ctaEngine下单逻辑为False,不会触发下单.
         '''
@@ -107,7 +104,6 @@ class TestStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onRestore(self):
         """从错误状态恢复策略（必须由用户继承实现）"""
-        
         self.putEvent()
 
     # ----------------------------------------------------------------------
@@ -134,8 +130,8 @@ class TestStrategy(CtaTemplate):
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
 
-        self.writeCtaLog(u'stg_onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume))
-        self.writeCtaLog(u'stg_onorder_check:posDict %s'%self.posDict)
+        content = u'stg_onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume)
+        mail('xxxx@xxx.com',content)   # 邮件模块可以将信息发送给策略师，第一个参数为收件人邮件地址，第二个参数为邮件正文
 
         self.putEvent()
 

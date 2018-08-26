@@ -2,9 +2,9 @@ import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
-my_sender='xxxx@xxxx.com'  # 发件人邮箱
-my_pass = 'xxxxxxx'  # 发件人邮箱密码
-my_server_smtp, port = "smtp.qq.com", 465
+my_sender='trade-msg@yandex.com'
+my_server_smtp, port = "smtp.yandex.com",465
+my_pass = 'zaq!1234'
 # my_receiver='xxxx@xxxx.com'    # 收件人邮箱
 # my_context=''     # 邮件正文（可由参数传入）
 my_title='策略信息播报'   # 邮件标题
@@ -12,7 +12,13 @@ my_name='VNPY_CryptoCurrency'  # 发件人显示名称
 
 # 仅需修改以上配置
 
-def mail(my_receiver,my_context = None):
+def mail(my_receiver,my_context):
+    if not my_context:
+        print("Please write email context")
+        return
+    elif not my_receiver:
+        print('Please provide receiver\'s email')
+        return
     ret=True
     try:
         msg=MIMEText(my_context,'html','utf-8')
@@ -24,8 +30,8 @@ def mail(my_receiver,my_context = None):
         server.login(my_sender, my_pass)
         server.sendmail(my_sender,[my_receiver,],msg.as_string())
         server.quit()
-        print("Mail send successfully ...")
+        print("Send successfully ...")
     except Exception:
         ret=False
-        print("Mail send is failed ...")
+        print("Send email failed ...")
     return ret
