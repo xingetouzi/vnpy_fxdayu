@@ -497,7 +497,7 @@ class CtaEngine(object):
         try:
             name = setting['name']
             className = setting['className']
-            vtSymbolset=setting['vtSymbol']
+            vtSymbolset=setting['symbolList']
 
         except Exception as e:
             self.writeCtaLog(u'载入策略%s出错：%s' %e)

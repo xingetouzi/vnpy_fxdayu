@@ -72,6 +72,7 @@ class TestStrategy(CtaTemplate):
         }
 
         # 载入1分钟历史数据，并采用回放计算的方式初始化策略参数
+        # 可选参数：["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
         pastbar1 = self.loadHistoryBar(self.activeSymbol,
                             type_ = "1min", 
                             size = self.initbars)
@@ -121,10 +122,10 @@ class TestStrategy(CtaTemplate):
     def onBar(self,bar):
         """收到1分钟K线推送"""
         self.amDict[bar.vtSymbol].updateBar(bar)
-
-        self.buy(self.activeSymbol,
+        if self.posDict[self.activeSymbol+'_LONG'] > 0:
+            self.sell(self.activeSymbol,
                     999,
-                    volume = self.posSize,
+                    self.posDict[self.activeSymbol+'_LONG'],
                     marketPrice = 1,
                     levelRate = 10)
         self.putEvent()
@@ -133,19 +134,8 @@ class TestStrategy(CtaTemplate):
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
 
-        self.writeCtaLog(u'onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume))
+        self.writeCtaLog(u'stg_onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume))
         self.writeCtaLog(u'stg_onorder_check:posDict %s'%self.posDict)
-        # 变动的订单是市价追单
-        if order.status == STATUS_REJECTED and order.rejectedInfo == 'BAD NETWORK':
-            ####市价追单再发一遍
-            if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
-                self.buy(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
-            elif order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
-                self.cover(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
-            elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
-                self.short(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
-            elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
-                self.sell(order.vtSymbol,order.price,order.totalVolume,marketPrice=1)
 
         self.putEvent()
 

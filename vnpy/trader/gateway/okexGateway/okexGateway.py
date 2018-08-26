@@ -201,9 +201,9 @@ class OkexGateway(VtGateway):
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
         if 'quarter' in cancelOrderReq.vtSymbol or 'week' in cancelOrderReq.vtSymbol:
-            return self.futuresApi.cancelOrderReq(cancelOrderReq)
+            return self.futuresApi.cancelOrder(cancelOrderReq)
         else:
-            return self.spotApi.cancelOrderReq(cancelOrderReq)
+            return self.spotApi.cancelOrder(cancelOrderReq)
 
     #----------------------------------------------------------------------
     def qryAccount(self):
@@ -223,7 +223,7 @@ class OkexGateway(VtGateway):
         if 'quarter' in contractType or 'week' in contractType:
             data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
         else:
-            data = self.spotApi.rest_qry_orders(symbol,order_id,status)
+            data = self.spotApi.rest_spot_orders(symbol,order_id,status)
         return data
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
@@ -1053,8 +1053,6 @@ class FuturesApi(OkexFuturesApi):
             tick.contractType = contractType
             tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
 
-            
-
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
@@ -1155,8 +1153,6 @@ class FuturesApi(OkexFuturesApi):
             tick.contractType = contractType
             tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
 
-            
-
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
@@ -1200,7 +1196,7 @@ class FuturesApi(OkexFuturesApi):
 
         if self.checkDataError(data):
             return
-        print(data,"持仓的币种")
+        # print(data,"持仓的币种")
         contracts = data['data']['info']
         x = 0
         # 帐户信息
