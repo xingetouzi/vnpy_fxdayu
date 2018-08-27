@@ -4,7 +4,6 @@ from vnpy.trader.app.ctaStrategy.mail import mail
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
                                                      ArrayManager)
-
 from collections import defaultdict
 import numpy as np
 import talib as ta
@@ -31,7 +30,7 @@ class TestStrategy(CtaTemplate):
 
     # 参数列表，保存了参数的名称
     paramList = ['name',
-                'className',
+                 'className',
                  'author',
                  'activeSymbol',
                  'passiveSymbol']
@@ -39,8 +38,7 @@ class TestStrategy(CtaTemplate):
     # 变量列表，保存了变量的名称
     varList = ['inited',
                'trading',
-               'posDict',
-               'posSize'
+               'posDict'
                ]
 
     # 同步列表，保存了需要保存到数据库的变量名称
@@ -120,7 +118,7 @@ class TestStrategy(CtaTemplate):
         self.amDict[bar.vtSymbol].updateBar(bar)
         if self.posDict[self.activeSymbol+'_LONG'] > 0:
             self.sell(self.activeSymbol,
-                    999,
+                    999,  # 市价单价格无效
                     self.posDict[self.activeSymbol+'_LONG'],
                     marketPrice = 1,
                     levelRate = 10)
@@ -131,7 +129,7 @@ class TestStrategy(CtaTemplate):
         """收到委托变化推送（必须由用户继承实现）"""
 
         content = u'stg_onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume)
-        mail('xxxx@xxx.com',content)   # 邮件模块可以将信息发送给策略师，第一个参数为收件人邮件地址，第二个参数为邮件正文
+        # mail('xxxx@xxx.com',content)   # 邮件模块可以将信息发送给策略师，第一个参数为收件人邮件地址，第二个参数为邮件正文
 
         self.putEvent()
 
