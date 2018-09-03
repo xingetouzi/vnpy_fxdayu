@@ -1740,37 +1740,42 @@ class FuturesApi(OkexFuturesApi):
         """
         data = self.future_order_info(symbol,contractType,order_id,status)
         print(data,"*******rest_order_callback***********")
-        if data['result']:
-            orderinfo = data['orders'][0]
-            order = VtOrderData()
+        try:
+            localNo = self.exchangeOrderDict[str(order_id)]
+            if data['result']:
+                orderinfo = data['orders'][0]
+                order = VtOrderData()
+                order.vtOrderID = ':'.join([self.gatewayName, str(localNo)])
 
-            symbol = orderinfo['contract_name']
-            order.orderTime = orderinfo['create_date']
-            date, time = self.generateDateTime(orderinfo['create_date'])
-            ss = date+' '+time
-            ordertime_temp = datetime.strptime(ss, '%Y%m%d %H:%M:%S.%f')
+                symbol = str.lower(orderinfo['contract_name'])
+                date, time = self.generateDateTime(orderinfo['create_date'])
+                order.orderTime = date + ' ' + time
+                ordertime_temp = datetime.strptime(order.orderTime, '%Y%m%d %H:%M:%S.%f')
 
-            cc = '2018'+symbol[3:]+' 16:00:00'
-            contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
+                cc = '2018'+symbol[3:]+' 16:00:00'
+                contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
 
-            delta_datetime = (contract_temp - ordertime_temp).days
+                delta_datetime = (contract_temp - ordertime_temp).days
 
-            if delta_datetime < 7:
-                vtSymbol = symbol[:3] + '_this_week'
-            elif delta_datetime > 14:
-                vtSymbol = symbol[:3] + '_quarter'
-            else:
-                vtSymbol = symbol[:3] + '_next_week'
+                if delta_datetime < 7:
+                    vtSymbol = symbol[:3] + '_this_week'
+                elif delta_datetime > 14:
+                    vtSymbol = symbol[:3] + '_quarter'
+                else:
+                    vtSymbol = symbol[:3] + '_next_week'
 
-            order.symbol = vtSymbol
-            order.vtSymbol = vtSymbol + self.gatewayName
-            order.totalVolume = orderinfo['amount']
-            order.tradedVolume = orderinfo['deal_amount']
-            order.status = statusMap[orderinfo['status']]
-            order.price = orderinfo['price']
-            order.price_avg = orderinfo['price_avg']
-            order.direction,order.offset = futurepriceTypeMap[str(orderinfo['type'])]
-            self.gateway.onOrder(copy(order))
+                order.symbol = vtSymbol
+                order.vtSymbol = vtSymbol + self.gatewayName
+                order.totalVolume = orderinfo['amount']
+                order.tradedVolume = orderinfo['deal_amount']
+                order.status = statusMap[orderinfo['status']]
+                order.price = orderinfo['price']
+                order.price_avg = orderinfo['price_avg']
+                order.direction,order.offset = futurepriceTypeMap[str(orderinfo['type'])]
+                order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                self.gateway.onOrder(copy(order))
+        except KeyError:
+            return
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)
