@@ -30,6 +30,8 @@ STATUS_ALLTRADED = 'filled'
 STATUS_CANCELLED = 'cancelled'
 STATUS_REJECTED = 'rejected'
 STATUS_UNKNOWN = 'unknown'
+STATUS_CANCELINPROGRESS = 'processing cancel order'
+STATUS_CANCELLING = 'cancelling'
 
 # 合约类型常量
 PRODUCT_EQUITY = 'equity'
