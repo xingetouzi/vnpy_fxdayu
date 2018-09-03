@@ -20,7 +20,7 @@ from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGate
 # 加载上层应用
 from vnpy.trader.app import (riskManager, 
                             ctaStrategy,
-                            algoTrading,
+                            #algoTrading,
                             # dataRecorder,
                             # spreadTrading,
                             # optionMaster,
@@ -50,7 +50,7 @@ def main():
     # 添加上层应用
     me.addApp(riskManager)
     me.addApp(ctaStrategy)
-    me.addApp(algoTrading)
+    #me.addApp(algoTrading)
     # me.addApp(dataRecorder)
     # me.addApp(spreadTrading)
     # me.addApp(optionMaster)
