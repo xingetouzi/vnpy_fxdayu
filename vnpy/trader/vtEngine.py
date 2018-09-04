@@ -119,6 +119,7 @@ class MainEngine(object):
             return self.gatewayDict[gatewayName]
         else:
             self.writeLog(text.GATEWAY_NOT_EXIST.format(gateway=gatewayName))
+            self.writeLog(gatewayName)
             return None
         
     #----------------------------------------------------------------------
@@ -464,7 +465,7 @@ class DataEngine(object):
         order = event.dict_['data']        
         self.orderDict[order.vtOrderID] = order
         
-        print('vtEngine---%s,%s'%(order.vtOrderID,self.orderDict[order.vtOrderID].status))
+        print('vtEngine--processOrderEvent--%s,%s'%(order.vtOrderID,self.orderDict[order.vtOrderID].status))
         
         # 如果订单的状态是全部成交或者撤销，则需要从workingOrderDict中移除
         if order.status in self.FINISHED_STATUS:

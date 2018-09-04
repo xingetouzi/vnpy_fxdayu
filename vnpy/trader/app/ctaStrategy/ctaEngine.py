@@ -364,28 +364,28 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[trade.vtOrderID]
 
             # 计算策略持仓
-            # if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
-            #     posName = trade.vtSymbol + "_LONG"
-            #     strategy.posDict[str(posName)] += trade.volume
-            # elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_CLOSE:
-            #     posName = trade.vtSymbol + "_SHORT"
-            #     strategy.posDict[str(posName)] -= trade.volume
-            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_CLOSE:
-            #     posName = trade.vtSymbol + "_LONG"
-            #     strategy.posDict[str(posName)] -= trade.volume
-            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
-            #     posName = trade.vtSymbol + "_SHORT"
-            #     strategy.posDict[str(posName)] += trade.volume
-            # elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
-            #     posName = trade.vtSymbol
-            #     strategy.posDict[str(posName)] += trade.volume
-            # elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
-            #     posName = trade.vtSymbol
-            #     strategy.posDict[str(posName)] -= trade.volume
+            if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
+                posName = trade.vtSymbol + "_LONG"
+                strategy.posDict[str(posName)] += trade.volume
+            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_CLOSE:
+                posName = trade.vtSymbol + "_SHORT"
+                strategy.posDict[str(posName)] -= trade.volume
+            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_CLOSE:
+                posName = trade.vtSymbol + "_LONG"
+                strategy.posDict[str(posName)] -= trade.volume
+            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
+                posName = trade.vtSymbol + "_SHORT"
+                strategy.posDict[str(posName)] += trade.volume
+            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
+                posName = trade.vtSymbol
+                strategy.posDict[str(posName)] += trade.volume
+            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
+                posName = trade.vtSymbol
+                strategy.posDict[str(posName)] -= trade.volume
 
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
     #----------------------------------
-    def processPositionEvent(self, event):
+    def processPositionEvent(self, event):           # nearly abandon
         """处理持仓推送"""
         pos = event.dict_['data']
 

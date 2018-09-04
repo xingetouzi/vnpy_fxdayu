@@ -14,10 +14,10 @@ import ssl
 import websocket    
 
 # 常量定义
-# OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket'
-# OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi'
-OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket'
-OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi'
+OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket'
+OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi'
+# OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket'
+# OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi'
 
 SPOT_CURRENCY = ["usdt",
                  "btc",
@@ -695,9 +695,9 @@ class OkexFuturesApi(OkexApi):
             data["match_price"] = match_price
         if lever_rate != None:
             data["lever_rate"] = lever_rate
-        print(data,"********api******")
+        print(data,"********send order api******")
         url = self._post_url_func("future_trade")
-        print(url)
+        # print(url)
         r = requests.post(url, data=data, timeout=60)
         return r.json()
 
@@ -706,7 +706,7 @@ class OkexFuturesApi(OkexApi):
         print(params)
         url = self._get_url_func("future_kline", params=params)
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, timeout=10)
-        print(r)
+        # print(r)
         text = eval(r.text)
         df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
         df["datetime"] = df["datetime"].map(

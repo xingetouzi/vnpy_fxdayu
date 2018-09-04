@@ -529,8 +529,8 @@ class TradeMonitor(BasicMonitor):
         #d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
         d['offset'] = {'chinese':vtText.OFFSET, 'cellType':BasicCell}
-        d['price'] = {'chinese':vtText.PRICE, 'cellType':BasicCell}
-        d['volume'] = {'chinese':vtText.VOLUME, 'cellType':BasicCell}
+        d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
+        d['volume'] = {'chinese':vtText.VOLUME, 'cellType':NumCell}
         d['tradeTime'] = {'chinese':vtText.TRADE_TIME, 'cellType':BasicCell}
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         self.setHeaderDict(d)
@@ -560,12 +560,13 @@ class OrderMonitor(BasicMonitor):
         #d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
         d['offset'] = {'chinese':vtText.OFFSET, 'cellType':BasicCell}
-        d['price'] = {'chinese':vtText.PRICE, 'cellType':BasicCell}
-        d['totalVolume'] = {'chinese':vtText.ORDER_VOLUME, 'cellType':BasicCell}
-        d['tradedVolume'] = {'chinese':vtText.TRADED_VOLUME, 'cellType':BasicCell}
+        d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
+        d['totalVolume'] = {'chinese':vtText.ORDER_VOLUME, 'cellType':NumCell}
+        d['tradedVolume'] = {'chinese':vtText.TRADED_VOLUME, 'cellType':NumCell}
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
         d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}
         d['rejectedInfo'] = {'chinese':vtText.ORDER_REJECTED_INFO, 'cellType':BasicCell}
+        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
         d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
         d['bystrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}        
         # d['cancelTime'] = {'chinese':vtText.CANCEL_TIME, 'cellType':BasicCell}    
@@ -616,10 +617,10 @@ class PositionMonitor(BasicMonitor):
         d['symbol'] = {'chinese':vtText.CONTRACT_SYMBOL, 'cellType':BasicCell}
         # d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
-        d['position'] = {'chinese':vtText.POSITION, 'cellType':BasicCell}
+        d['position'] = {'chinese':vtText.POSITION, 'cellType':NumCell}
         d['ydPosition'] = {'chinese':vtText.YD_POSITION, 'cellType':BasicCell}
-        d['frozen'] = {'chinese':vtText.FROZEN, 'cellType':BasicCell}
-        d['price'] = {'chinese':vtText.PRICE, 'cellType':BasicCell}
+        d['frozen'] = {'chinese':vtText.FROZEN, 'cellType':NumCell}
+        d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
         d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':PnlCell}
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         self.setHeaderDict(d)
@@ -646,13 +647,13 @@ class AccountMonitor(BasicMonitor):
         d['accountID'] = {'chinese':vtText.ACCOUNT_ID, 'cellType':BasicCell}
         d['coinSymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
         d['preBalance'] = {'chinese':vtText.PRE_BALANCE, 'cellType':BasicCell}
-        d['balance'] = {'chinese':vtText.BALANCE, 'cellType':BasicCell}
-        d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':BasicCell}
-        d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':BasicCell}
+        d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
+        d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':NumCell}
+        d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
         d['commission'] = {'chinese':vtText.COMMISSION, 'cellType':BasicCell}
         d['margin'] = {'chinese':vtText.MARGIN, 'cellType':BasicCell}
         d['closeProfit'] = {'chinese':vtText.CLOSE_PROFIT, 'cellType':BasicCell}
-        d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':BasicCell}
+        d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':PnlCell}
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         self.setHeaderDict(d)
         if not d['coinSymbol']:
@@ -899,7 +900,7 @@ class TradingWidget(QtWidgets.QFrame):
         buttonCancelAll = QtWidgets.QPushButton(vtText.CANCEL_ALL)
         
         size = buttonSendOrder.sizeHint()
-        buttonSendOrder.setMinimumHeight(size.height())   # 把按钮高度设为默认两倍
+        buttonSendOrder.setMinimumHeight(size.height())  
         buttonCancelAll.setMinimumHeight(size.height())
 
         # 整合布局

@@ -684,19 +684,19 @@ class BacktestingEngine(object):
             symbol = strategy.symbolList[i]
             if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
                 if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.posDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.posDict[symbol+"_LONG"] = 0
+                    strategy.posDict[symbol+"_SHORT"] = 0
                 if 'eveningDict' in strategy.syncList:
-                    strategy.eveningDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.eveningDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.eveningDict[symbol+"_LONG"] = 0
+                    strategy.eveningDict[symbol+"_SHORT"] = 0
                 if 'bondDict' in strategy.syncList:
-                    strategy.bondDict[symbol.replace(".","_")+"_LONG"] = 0
-                    strategy.bondDict[symbol.replace(".","_")+"_SHORT"] = 0
+                    strategy.bondDict[symbol+"_LONG"] = 0
+                    strategy.bondDict[symbol+"_SHORT"] = 0
             else:
                 if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[symbol.replace(".","_")] = 0
+                    strategy.accountDict[symbol] = 0
                 if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol.replace(".","_")] = 0
+                    strategy.posDict[symbol] = 0
 
                 
     #------------------------------------------------

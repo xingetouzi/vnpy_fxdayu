@@ -1281,14 +1281,17 @@ class FuturesApi(OkexFuturesApi):
             order.user_id = rawData['user_id']
             order.gatewayName = self.gatewayName
             order.orderTime = rawData['create_date_str']
-            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.deliverTime = datetime.now()
             order.status = statusMap[rawData['status']] 
+            order.fee = rawData['fee']
+            # contract_id_ = rawData['contract_id']
+            # self.contract_id[str(contract_id_)] = rawData['contract_type']
             self.orderDict[order.vtOrderID] = order   #更新order信息
             self.writeLog(u'gw_onFuturesOrderInfo_updateorder_localNo:%s, orderId:%s, status:%s, exchangeID:%s'%(localNo, orderId,order.status,self.exchangeOrderDict[str(orderId)]))
         except KeyError:
             order = VtOrderData()
             self.exchangeOrderDict[str(orderId)] = "wait"
-            self.writeLog(u'****-*---*-*-*-*-*-exception order====ws信息先于rest返回，不会到onorder--%s*-*-%s*-*-'%(self.exchangeOrderDict[str(orderId)],orderId))
+            self.writeLog(u'-*-*-gw_onFuturesOrderInfo====ws先于rest返回，不会到onorder--%s*-*-%s*-*-'%(self.exchangeOrderDict[str(orderId)],orderId))
             name = rawData['contract_name'][:3]
             order.contractType = rawData['contract_type']
             order.symbol = str.lower(name) + '_' + order.contractType
@@ -1301,10 +1304,12 @@ class FuturesApi(OkexFuturesApi):
             order.totalVolume = rawData['amount']
             order.exchangeOrderID = orderId        
             order.user_id = rawData['user_id']
-            
+            # contract_id_ = rawData['contract_id']
+            # self.contract_id[str(contract_id_)] = rawData['contract_type']
             order.orderTime = rawData['create_date_str']
-            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.deliverTime = datetime.now()
             order.status = statusMap[rawData['status']] 
+            order.fee = rawData['fee']
             order.thisTradedVolume = 0
             self.orderDict[orderId] = order   #更新order信息
             return
@@ -1313,7 +1318,6 @@ class FuturesApi(OkexFuturesApi):
         order.tradedVolume = float(rawData['deal_amount'])
         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
         self.gateway.onOrder(copy(order))
-
         
         # 成交信息
         if order.tradedVolume > lastTradedVolume:
@@ -1326,7 +1330,7 @@ class FuturesApi(OkexFuturesApi):
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
             trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
-            print("gw_trade_orderid",order.orderID,order.exchangeOrderID)
+            print("gw_trade_orderid",order.orderID," exchangeid ",order.exchangeOrderID)
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.exchangeOrderID = order.exchangeOrderID
@@ -1353,7 +1357,7 @@ class FuturesApi(OkexFuturesApi):
         if rawData['result']:
             orderId = str(rawData['order_id'])  
         else:
-            print("下单报错信息",rawData['error_code'])
+            print("下单报错信息:",rawData['error_code'])
     #----------------------------------------------------------------------
         
     def onSubFuturesBalance(self, data):
@@ -1400,26 +1404,29 @@ class FuturesApi(OkexFuturesApi):
         symbol = data['data']['symbol']
         position = data['data']['positions']
         contract_id_ = position[0]['contract_id']
-
-        date_one = datetime(int(contract_id_/100000000000), int(contract_id_/1000000000)%100, int(contract_id_/10000000)%100)
-        date_temp = datetime.now()
-        date_two = datetime(date_temp.year,date_temp.month,date_temp.day)
-        delta_datetime=(date_one - date_two).days
-
-        if delta_datetime<7:
-            vtSymbol = symbol[:3] + '_this_week'
-        elif delta_datetime>14:
-            vtSymbol = symbol[:3] + '_quarter'
-        else:
-            vtSymbol = symbol[:3] + '_next_week'
-            
-        self.contract_id[str(contract_id_)] = vtSymbol
         pos = VtPositionData()
-        pos.gatewayName = self.gatewayName
-        pos.symbol = vtSymbol
-        pos.exchange = EXCHANGE_OKEX
-        pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
+        try:
+            pos.vtSymbol = self.contract_id[str(contract_id_)]
+        except KeyError:
+            date_one = datetime(int(contract_id_/100000000000), int(contract_id_/1000000000)%100, int(contract_id_/10000000)%100)
+            date_temp = datetime.now()
+            date_two = datetime(date_temp.year,date_temp.month,date_temp.day)
+            delta_datetime=(date_one - date_two).days
+            if delta_datetime<7:
+                vtSymbol = symbol[:3] + '_this_week'
+            elif delta_datetime>14:
+                vtSymbol = symbol[:3] + '_quarter'
+            else:
+                vtSymbol = symbol[:3] + '_next_week'
+                
+            self.contract_id[str(contract_id_)] = vtSymbol
+            pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
 
+        
+        pos.gatewayName = self.gatewayName
+        pos.symbol = pos.vtSymbol
+        pos.exchange = EXCHANGE_OKEX
+        
         longPos = copy(pos)
         longPos.direction = DIRECTION_LONG
         # 多头仓位
@@ -1505,8 +1512,8 @@ class FuturesApi(OkexFuturesApi):
             order.offset = req.offset
             order.price = req.price
             order.totalVolume = req.volume
-            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.orderTime = datetime.now()
+            order.deliverTime = datetime.now()
             self.gateway.onOrder(copy(order))
             return vtOrderID
         
@@ -1530,8 +1537,8 @@ class FuturesApi(OkexFuturesApi):
             order.offset = req.offset
             order.price = req.price
             order.totalVolume = req.volume
-            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.orderTime = datetime.now()
+            order.deliverTime = datetime.now()
             self.gateway.onOrder(copy(order))
             return vtOrderID        
         
@@ -1558,8 +1565,8 @@ class FuturesApi(OkexFuturesApi):
             order.offset= req.offset
             order.price = req.price
             order.totalVolume = req.volume
-            order.orderTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            order.orderTime = datetime.now()
+            order.deliverTime = datetime.now()
             self.gateway.onOrder(copy(order))
             return vtOrderID
         
@@ -1571,10 +1578,11 @@ class FuturesApi(OkexFuturesApi):
                 order.orderID = self.localNo
                 order.vtOrderID = vtOrderID
                 order.bystrategy = req.bystrategy
-                self.writeLog('order_gw_debug--%s'%order)
+                order.gatewayName = self.gatewayName
+                order.deliverTime = datetime.now()
                 del self.orderDict[str(order_id)]
                 self.orderDict[vtOrderID] = order   #更新order信息
-                self.writeLog(u'---sendorder_try_gw---,%s,%s,%s,%s,%s'%(req.symbol,vtOrderID,order_id,order,self.orderDict[vtOrderID]))
+                self.writeLog(u'---sendorder_try_gw---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
                 self.gateway.onOrder(copy(order))
 
         except KeyError:   # 如果rest先收到未成交回报
@@ -1593,6 +1601,7 @@ class FuturesApi(OkexFuturesApi):
             order.offset = req.offset
             order.price = req.price
             order.totalVolume = req.volume
+            order.deliverTime = datetime.now()
             order.bystrategy = req.bystrategy
             self.orderDict[str(vtOrderID)] = order #更新order信息
 
@@ -1604,7 +1613,7 @@ class FuturesApi(OkexFuturesApi):
     def cancelOrder(self, req):
         """撤单"""
         localNo = str(req.orderID)
-        self.writeLog(u'cancelOrder localNo:%s'%(localNo))
+        self.writeLog(u'gw_cancelOrder localNo:%s'%(localNo))
         if localNo in self.localNoDict:
             orderID = self.localNoDict[localNo]
             self.writeLog(u'---cancelorder-gw---,%s,%s,%s,%s'%(req.symbol,localNo,orderID,req.contractType))
@@ -1613,7 +1622,7 @@ class FuturesApi(OkexFuturesApi):
             # 如果在系统委托号返回前客户就发送了撤单请求，则保存
             # 在cancelDict字典中，等待返回后执行撤单任务
             self.cancelDict[localNo] = req
-            self.writeLog(u'Not in localNoDict')
+            self.writeLog(u'gw_Not in localNoDict')
 
     #----------------------------------------------------------------------
     def generateDateTime(self, s):
@@ -1691,7 +1700,7 @@ class FuturesApi(OkexFuturesApi):
             pos1.price =  position['buy_price_avg']
             pos1.frozen = pos1.position - position['buy_available']
             print('***RESTFUL_initposition***',pos1.vtPositionName,pos1.position,pos1.frozen)
-            self.gateway.onPosition(pos1)
+            # self.gateway.onPosition(pos1)
 
             pos2 = copy(pos)
             pos2.direction = DIRECTION_SHORT
@@ -1703,7 +1712,7 @@ class FuturesApi(OkexFuturesApi):
             pos2.price =  position['sell_price_avg']
             pos2.frozen = pos2.position - position['sell_available']
             print('***RESTFUL_initposition***',pos2.vtPositionName,pos2.position,pos1.frozen)
-            self.gateway.onPosition(pos2)
+            # self.gateway.onPosition(pos2)
             # # 遍历推送
             # for pos in list(self.posDict.values()):
             #     self.gateway.onPosition(pos)
@@ -1731,7 +1740,7 @@ class FuturesApi(OkexFuturesApi):
                     "status":"0",
                     "symbol":"ltc_usd",
                     "type":"1",
-                    "unit_amount":100,
+                    "unit_amount":10,
                     "lever_rate":10
                 }
             ],
@@ -1742,30 +1751,33 @@ class FuturesApi(OkexFuturesApi):
         print(data,"*******rest_order_callback***********")
         try:
             localNo = self.exchangeOrderDict[str(order_id)]
+            order = self.orderDict[str(order_id)]
             if data['result']:
                 orderinfo = data['orders'][0]
-                order = VtOrderData()
-                order.vtOrderID = ':'.join([self.gatewayName, str(localNo)])
+                # order = VtOrderData()
+                # order.orderID = localNo
+                # order.vtOrderID = ':'.join([self.gatewayName, str(localNo)])
+                # order.gatewayName = self.gatewayName
 
-                symbol = str.lower(orderinfo['contract_name'])
-                date, time = self.generateDateTime(orderinfo['create_date'])
-                order.orderTime = date + ' ' + time
-                ordertime_temp = datetime.strptime(order.orderTime, '%Y%m%d %H:%M:%S.%f')
+                # symbol = str.lower(orderinfo['contract_name'])
+                # date, time = self.generateDateTime(orderinfo['create_date'])
+                # order.orderTime = date + ' ' + time
+                # ordertime_temp = datetime.strptime(order.orderTime, '%Y%m%d %H:%M:%S.%f')
 
-                cc = '2018'+symbol[3:]+' 16:00:00'
-                contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
+                # cc = '2018'+symbol[3:]+' 16:00:00'
+                # contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
 
-                delta_datetime = (contract_temp - ordertime_temp).days
+                # delta_datetime = (contract_temp - ordertime_temp).days
 
-                if delta_datetime < 7:
-                    vtSymbol = symbol[:3] + '_this_week'
-                elif delta_datetime > 14:
-                    vtSymbol = symbol[:3] + '_quarter'
-                else:
-                    vtSymbol = symbol[:3] + '_next_week'
+                # if delta_datetime < 7:
+                #     vtSymbol = symbol[:3] + '_this_week'
+                # elif delta_datetime > 14:
+                #     vtSymbol = symbol[:3] + '_quarter'
+                # else:
+                #     vtSymbol = symbol[:3] + '_next_week'
 
-                order.symbol = vtSymbol
-                order.vtSymbol = vtSymbol + self.gatewayName
+                # order.symbol = vtSymbol
+                # order.vtSymbol = ':'.join([vtSymbol,self.gatewayName])
                 order.totalVolume = orderinfo['amount']
                 order.tradedVolume = orderinfo['deal_amount']
                 order.status = statusMap[orderinfo['status']]
@@ -1773,6 +1785,7 @@ class FuturesApi(OkexFuturesApi):
                 order.price_avg = orderinfo['price_avg']
                 order.direction,order.offset = futurepriceTypeMap[str(orderinfo['type'])]
                 order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                order.fee = rawData['fee']
                 self.gateway.onOrder(copy(order))
         except KeyError:
             return
