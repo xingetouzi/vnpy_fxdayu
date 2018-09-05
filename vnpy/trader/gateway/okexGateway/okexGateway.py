@@ -1338,6 +1338,7 @@ class FuturesApi(OkexFuturesApi):
             trade.offset = order.offset
             trade.price = order.price
             trade.price_avg = order.price_avg
+            trade.fee = order.fee
             trade.volume = order.tradedVolume - lastTradedVolume
             trade.tradeTime = order.deliverTime
             self.gateway.onTrade(trade)
@@ -1798,7 +1799,7 @@ class FuturesApi(OkexFuturesApi):
                     self.gateway.onTrade(trade)
                 if order.status == STATUS_CANCELLED or order.status == STATUS_CANCELINPROGRESS or order.status == STATUS_CANCELLING:
                     self.gateway.onOrder(copy(order))
-                    print("gw_rest_order_findout_cancelled,<3<3",order.symbol,order.vtOrderID," exchangeid ",order.exchangeOrderID)
+                    print("gw_rest_order_findout_cancelled,<3<3",order.symbol,order.vtOrderID," exchangeid: ",order.exchangeOrderID,"status:",order.status)
                 print("gw_rest_order_no_new_update:",order.symbol,order.vtOrderID,order.status,order.tradedVolume)
 
         except KeyError:
