@@ -133,7 +133,8 @@ class VtTradeData(VtBaseData):
         self.price = EMPTY_FLOAT                # 成交价格
         self.volume = EMPTY_FLOAT               # 成交数量
         self.tradeTime = EMPTY_STRING           # 成交时间
-        self.contractType=EMPTY_STRING
+        self.price_avg=EMPTY_FLOAT              # 成交均价
+        self.fee=EMPTY_FLOAT                    # 成交手续费
 
    
 

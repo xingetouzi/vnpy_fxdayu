@@ -730,13 +730,14 @@ class CtaEngine(object):
         d = copy(flt)
         for key in strategy.syncList:
             d[key] = strategy.__getattribute__(key)
+            result.append('\n')
             result.append(key)
             result.append(d[key])
 
         self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.name,
                                     d, flt, True)
 
-        content = u'策略%s: 同步数据保存成功,当前仓位状态\n%s' %(strategy.name,result)
+        content = u'策略%s: 同步数据保存成功,当前仓位状态:%s' %(strategy.name,result)
         self.writeCtaLog(content)
 
     def saveVarData(self, strategy):

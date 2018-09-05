@@ -121,27 +121,27 @@ class CtaTemplate(object):
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
-    def buy(self, vtSymbol, price, volume, marketPrice=0, levelRate = 10, stop=False):
+    def buy(self, vtSymbol, price, volume, marketPrice=0, levelRate = 0, stop=False):
         """买开"""
         return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sell(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
+    def sell(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
         """卖平"""
         return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def short(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
+    def short(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
         """卖开"""
         return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def cover(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
+    def cover(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
         """买平"""
         return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice=0,  levelRate = 10, stop=False):
+    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
         """发送委托"""
         if self.trading:
             # 如果stop为True，则意味着发本地停止单

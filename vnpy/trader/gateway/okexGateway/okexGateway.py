@@ -1336,7 +1336,8 @@ class FuturesApi(OkexFuturesApi):
             trade.exchangeOrderID = order.exchangeOrderID
             trade.direction = order.direction
             trade.offset = order.offset
-            trade.price = float(rawData['price_avg'])
+            trade.price = order.price
+            trade.price_avg = order.price_avg
             trade.volume = order.tradedVolume - lastTradedVolume
             trade.tradeTime = order.deliverTime
             self.gateway.onTrade(trade)
@@ -1616,8 +1617,9 @@ class FuturesApi(OkexFuturesApi):
         self.writeLog(u'gw_cancelOrder localNo:%s'%(localNo))
         if localNo in self.localNoDict:
             orderID = self.localNoDict[localNo]
-            self.writeLog(u'---cancelorder-gw---,%s,%s,%s,%s'%(req.symbol,localNo,orderID,req.contractType))
-            self.futuresCancelOrder(req.symbol, orderID, req.contractType)
+            symbol = req.symbol[:3]+"_usd"
+            self.futuresCancelOrder(symbol, orderID, req.contractType)
+            self.writeLog(u'---cancelorder-gw---,%s,%s,%s,%s'%(symbol,localNo,orderID,req.contractType))
         else:
             # 如果在系统委托号返回前客户就发送了撤单请求，则保存
             # 在cancelDict字典中，等待返回后执行撤单任务
@@ -1666,7 +1668,10 @@ class FuturesApi(OkexFuturesApi):
     #Restful 配置
 
     def rest_futures_position(self, symbol,contractType):
-        data = self.future_position(symbol,contractType)
+        try:
+            data = self.future_position(symbol,contractType)
+        except:
+            return ''
         """
         {'result': True, 
         'holding': [
@@ -1747,46 +1752,55 @@ class FuturesApi(OkexFuturesApi):
         "result":true
         }
         """
-        data = self.future_order_info(symbol,contractType,order_id,status)
-        print(data,"*******rest_order_callback***********")
+        try:
+            data = self.future_order_info(symbol,contractType,order_id,status)
+        except ConnectionError as e:
+            self.writeCtaLog(u'qry_rest_order出错：%s' %e)
+            return
+
         try:
             localNo = self.exchangeOrderDict[str(order_id)]
             order = self.orderDict[str(order_id)]
             if data['result']:
                 orderinfo = data['orders'][0]
-                # order = VtOrderData()
-                # order.orderID = localNo
-                # order.vtOrderID = ':'.join([self.gatewayName, str(localNo)])
-                # order.gatewayName = self.gatewayName
-
-                # symbol = str.lower(orderinfo['contract_name'])
-                # date, time = self.generateDateTime(orderinfo['create_date'])
-                # order.orderTime = date + ' ' + time
-                # ordertime_temp = datetime.strptime(order.orderTime, '%Y%m%d %H:%M:%S.%f')
-
-                # cc = '2018'+symbol[3:]+' 16:00:00'
-                # contract_temp = datetime.strptime(cc,"%Y%m%d %H:%M:%S")
-
-                # delta_datetime = (contract_temp - ordertime_temp).days
-
-                # if delta_datetime < 7:
-                #     vtSymbol = symbol[:3] + '_this_week'
-                # elif delta_datetime > 14:
-                #     vtSymbol = symbol[:3] + '_quarter'
-                # else:
-                #     vtSymbol = symbol[:3] + '_next_week'
-
-                # order.symbol = vtSymbol
-                # order.vtSymbol = ':'.join([vtSymbol,self.gatewayName])
-                order.totalVolume = orderinfo['amount']
-                order.tradedVolume = orderinfo['deal_amount']
                 order.status = statusMap[orderinfo['status']]
+                lastTradedVolume = order.tradedVolume
+                order.tradedVolume = orderinfo['deal_amount']
+                order.thisTradedVolume = order.tradedVolume - lastTradedVolume
                 order.price = orderinfo['price']
                 order.price_avg = orderinfo['price_avg']
-                order.direction,order.offset = futurepriceTypeMap[str(orderinfo['type'])]
-                order.deliverTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                order.deliverTime = datetime.now()
                 order.fee = rawData['fee']
-                self.gateway.onOrder(copy(order))
+
+                if order.tradedVolume > lastTradedVolume:
+                    self.gateway.onOrder(copy(order))
+                    print("gw_rest_order_update",order.vtOrderID," exchangeid ",order.exchangeOrderID)
+                    trade = VtTradeData()
+                    trade.gatewayName = self.gatewayName
+                    trade.symbol = order.symbol
+                    trade.exchange = order.exchange
+                    trade.vtSymbol = order.vtSymbol
+                    
+                    self.tradeID += 1
+                    trade.tradeID = str(self.tradeID)
+                    trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                    
+                    trade.orderID = order.orderID
+                    trade.vtOrderID = order.vtOrderID
+                    trade.exchangeOrderID = order.exchangeOrderID
+                    trade.direction = order.direction
+                    trade.offset = order.offset
+                    trade.price = order.price
+                    trade.price_avg = order.price_avg
+                    trade.volume = order.tradedVolume - lastTradedVolume
+                    trade.tradeTime = order.deliverTime
+                    trade.fee = order.fee
+                    self.gateway.onTrade(trade)
+                if order.status == STATUS_CANCELLED or order.status == STATUS_CANCELINPROGRESS or order.status == STATUS_CANCELLING:
+                    self.gateway.onOrder(copy(order))
+                    print("gw_rest_order_findout_cancelled,<3<3",order.symbol,order.vtOrderID," exchangeid ",order.exchangeOrderID)
+                print("gw_rest_order_no_new_update:",order.symbol,order.vtOrderID,order.status,order.tradedVolume)
+
         except KeyError:
             return
 
