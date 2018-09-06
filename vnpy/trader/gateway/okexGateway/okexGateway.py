@@ -1543,7 +1543,7 @@ class FuturesApi(OkexFuturesApi):
             order.symbol= req.symbol
 
             order.vtSymbol = req.vtSymbol
-            order.status = STATUS_REJECTED
+            order.status = STATUS_UNKNOWN
             order.gatewayName = self.gatewayName
             order.rejectedInfo = 'RESTFUL REQUEST ERROR'
             order.bystrategy = req.bystrategy

@@ -64,10 +64,12 @@ class BacktestingEngine(object):
         self.endDate = ''
 
         self.capital = 1000000      # 回测时的起始本金（默认100万）
+        self.balance = 0            # 回测判断是否可以下单的资金变量
         self.slippage = 0           # 回测时假设的滑点
         self.rate = 0               # 回测时假设的佣金比例（适用于百分比佣金）
         self.size = 1               # 合约大小，默认为1    
         self.priceTick = 0          # 价格最小变动 
+        self.levelRate = 0          # 杠杆率
         
         self.dbClient = None        # 数据库客户端
         self.dbCursor = None        # 数据库指针
@@ -180,16 +182,23 @@ class BacktestingEngine(object):
     def setPriceTick(self, priceTick):
         """设置价格最小变动"""
         self.priceTick = priceTick
-    
+
     #------------------------------------------------
     # 数据回放相关
     #------------------------------------------------
-
     def parseData(self, dataClass, dataDict):
         data = dataClass()
         data.__dict__ = dataDict
         return data
-
+        """
+        "data.__dict__"  sample:
+        {'close': 2374.4, 'date': '20170701', 'datetime': Timestamp('2017-07-01 10:44:00'), 'exchange': 'bitfinex', 
+        'gatewayName': '', 'high': 2374.4, 'low': 2374.1, 'open': 2374.1, 'openInterest': 0, 'rawData': None,
+        'symbol': 'tBTCUSD', 'time': '10:44:00.000000', 'volume': 12.18062789, 'vtSymbol': 'tBTCUSD:bitfinex'}
+        
+        """
+    
+    #-------------------------------------------------
     def setCachePath(self, path):
         self.cachePath = path
 
@@ -232,24 +241,30 @@ class BacktestingEngine(object):
 
         # 从mongodb下载数据，并缓存到本地
         self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
-        for symbol in symbolList:
-            if len(symbols_no_data[symbol])>0:
-                collection = self.dbClient[self.dbName][symbol]
-                Cursor = collection.find({"date": {"$in":symbols_no_data[symbol]}})
-                data_df = pd.DataFrame(list(Cursor))
-                if data_df.size > 0:
-                    del data_df["_id"]
-                dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df.iterrows()]
-                # 缓存到本地文件
-                if data_df.size>0:
-                    save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
-                    if not os.path.isdir(save_path):
-                        os.makedirs(save_path)
-                    for date in symbols_no_data[symbol]:
-                        file_data = data_df[data_df["date"]==date]
-                        if file_data.size>0:
-                            file_path = os.path.join(save_path, "%s.h5" % (date,))
-                            file_data.to_hdf(file_path, key="d")
+        try:            
+            for symbol in symbolList:
+                if symbol in self.dbClient[self.dbName].collection_names():
+                    if len(symbols_no_data[symbol])>0:
+                        collection = self.dbClient[self.dbName][symbol]
+                        Cursor = collection.find({"date": {"$in":symbols_no_data[symbol]}})
+                        data_df = pd.DataFrame(list(Cursor))
+                        if data_df.size > 0:
+                            del data_df["_id"]
+                        dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df.iterrows()]
+                        # 缓存到本地文件
+                        if data_df.size>0:
+                            save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
+                            if not os.path.isdir(save_path):
+                                os.makedirs(save_path)
+                            for date in symbols_no_data[symbol]:
+                                file_data = data_df[data_df["date"]==date]
+                                if file_data.size>0:
+                                    file_path = os.path.join(save_path, "%s.h5" % (date,))
+                                    file_data.to_hdf(file_path, key="d")
+                else:
+                    self.output("we don\'t have this symbol in database")
+        except:
+            self.output('no Mongo connection, attempt using local data')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: (x.datetime))
@@ -339,7 +354,12 @@ class BacktestingEngine(object):
         """
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
+        self.strategy.symbolList = setting['symbolList']
         self.strategy.posDict = {}
+        self.strategy.eveningDict = {}
+        self.strategy.bondDict ={}
+        self.strategy.accountDict = {}
+        self.strategy.frozenDict = {}
         self.initPosition(self.strategy)
 
     #----------------------------------------------------------------------
@@ -390,32 +410,34 @@ class BacktestingEngine(object):
                     trade.vtOrderID = order.orderID
                     trade.direction = order.direction
                     trade.offset = order.offset
-                    longposName = order.vtSymbol.replace('.','_')+"_LONG"
-                    shortposName = order.vtSymbol.replace('.','_')+"_SHORT"
-                    spotPosName = order.vtSymbol.replace('.','_')
+
                     # 以买入为例：
                     # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
                     # 2. 假设在上一根K线结束(也是当前K线开始)的时刻，策略发出的委托为限价105
                     # 3. 则在实际中的成交价会是100而不是105，因为委托发出时市场的最优价格是100
                     if buyCross and trade.offset == OFFSET_OPEN:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[longposName] += order.totalVolume
+                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
                     elif buyCross and trade.offset == OFFSET_CLOSE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[shortposName] -= order.totalVolume
+                        self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
+                        self.strategy.eveningDict[symbol+"_SHORT"] -= order.totalVolume
                     elif sellCross and trade.offset == OFFSET_OPEN:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[shortposName] += order.totalVolume
+                        self.strategy.posDict[symbol+"_SHORT"] += order.totalVolume
+                        self.strategy.eveningDict[symbol+"_SHORT"] += order.totalVolume
                     elif sellCross and trade.offset == OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[longposName] -= order.totalVolume
+                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.eveningDict[symbol+"_LONG"] -= order.totalVolume
 
                     elif buyCross and trade.offset == OFFSET_NONE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[spotPosName] += order.totalVolume
+                        # self.strategy.posDict[symbol] += order.totalVolume
                     elif sellCross and trade.offset == OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[spotPosName] -= order.totalVolume
+                        # self.strategy.posDict[symbol] -= order.totalVolume
                     
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%H:%M:%S')
@@ -472,28 +494,24 @@ class BacktestingEngine(object):
                     trade.tradeID = tradeID
                     trade.vtTradeID = tradeID
 
-                    longposName = so.vtSymbol.replace('.','_')+"_LONG"
-                    shortposName = so.vtSymbol.replace('.','_')+"_SHORT"
-                    spotPosName = order.vtSymbol.replace('.','_')
-
                     if buyCross and so.offset == OFFSET_OPEN: # 买开
-                        self.strategy.posDict[longposName] += so.volume
+                        self.strategy.posDict[symbol+"_LONG"] += so.volume
                         trade.price = max(bestCrossPrice, so.price)
                     elif buyCross and so.offset == OFFSET_CLOSE: # 买平
-                        self.strategy.posDict[shortposName] -= so.volume
+                        self.strategy.posDict[symbol+"_SHORT"] -= so.volume
                         trade.price = max(bestCrossPrice, so.price)
                     elif sellCross and so.offset == OFFSET_OPEN: # 卖开
-                        self.strategy.posDict[shortposName] += so.volume
+                        self.strategy.posDict[symbol+"_SHORT"] += so.volume
                         trade.price = min(bestCrossPrice, so.price)
                     elif sellCross and so.offset == OFFSET_CLOSE: # 卖平
-                        self.strategy.posDict[longposName] -= so.volume
+                        self.strategy.posDict[symbol+"_LONG"] -= so.volume
                         trade.price = min(bestCrossPrice, so.price)
 
                     elif buyCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[spotPosName] += so.volume
+                        self.strategy.posDict[symbol] += so.volume
                         trade.price = max(bestCrossPrice, so.price)
                     elif sellCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[spotPosName] -= so.volume
+                        self.strategy.posDict[symbol] -= so.volume
                         trade.price = min(bestCrossPrice, so.price)
                     
                     self.limitOrderCount += 1
@@ -536,9 +554,10 @@ class BacktestingEngine(object):
     #------------------------------------------------      
 
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, levelRate, strategy):
         """发单"""
         self.limitOrderCount += 1
+        self.levelRate = levelRate
         orderID = str(self.limitOrderCount)
         
         order = VtOrderData()
@@ -563,7 +582,24 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE     
-        
+        # if 'week' in vtSymbol or 'quarter' in vtSymbol:
+        if levelRate:
+            if order.offset == OFFSET_OPEN and (self.balance < (self.size /levelRate * order.totalVolume)):
+                order.status = STATUS_REJECTED
+                order.rejectedInfo = "INSUFFICIENT FUND"
+            elif order.offset == OFFSET_OPEN and (self.balance > (self.size /levelRate * order.totalVolume)):
+                self.balance -= self.size /levelRate * order.totalVolume
+        try:
+            if order.offset == OFFSET_CLOSE and order.direction == DIRECTION_SHORT and strategy.eveningDict[vtSymbol+"_LONG"]<order.totalVolume:
+                order.status = STATUS_REJECTED
+                order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
+            elif order.offset == OFFSET_CLOSE and order.direction == DIRECTION_LONG and strategy.eveningDict[vtSymbol+"_SHORT"]<order.totalVolume:
+                order.status = STATUS_REJECTED
+                order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
+        except:
+            pass
+
+
         # 保存到限价单字典中
         self.workingLimitOrderDict[orderID] = order
         self.limitOrderDict[orderID] = order
@@ -682,22 +718,25 @@ class BacktestingEngine(object):
     def initPosition(self,strategy):
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
-            if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
-                if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol+"_LONG"] = 0
-                    strategy.posDict[symbol+"_SHORT"] = 0
-                if 'eveningDict' in strategy.syncList:
-                    strategy.eveningDict[symbol+"_LONG"] = 0
-                    strategy.eveningDict[symbol+"_SHORT"] = 0
-                if 'bondDict' in strategy.syncList:
-                    strategy.bondDict[symbol+"_LONG"] = 0
-                    strategy.bondDict[symbol+"_SHORT"] = 0
-            else:
-                if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[symbol] = 0
-                if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol] = 0
-
+            # if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
+            if 'posDict' in strategy.syncList:
+                # setattr(strategy,'posDict')
+                strategy.posDict[symbol+"_LONG"] = 0
+                strategy.posDict[symbol+"_SHORT"] = 0
+            if 'eveningDict' in strategy.syncList:
+                # setattr(strategy,'eveningDict')
+                strategy.eveningDict[symbol+"_LONG"] = 0
+                strategy.eveningDict[symbol+"_SHORT"] = 0
+            if 'bondDict' in strategy.syncList:
+                # setattr(strategy,'bondDict')
+                strategy.bondDict[symbol+"_LONG"] = 0
+                strategy.bondDict[symbol+"_SHORT"] = 0
+            
+            if 'accountDict' in strategy.syncList:
+                strategy.accountDict[symbol] = 0
+            if 'frozenDict' in strategy.syncList:
+                strategy.frozenDict[symbol] = 0
+        print("仓位字典构造完成","\n初始仓位:",strategy.posDict,"\n可平仓量:",strategy.eveningDict)
                 
     #------------------------------------------------
     # 结果计算相关
@@ -739,7 +778,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
-                                               -closedVolume, self.rate, self.slippage, self.size)
+                                               -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
                         
                         posList.extend([-1,0])
@@ -783,7 +822,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
-                                               closedVolume, self.rate, self.slippage, self.size)
+                                               closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
                         
                         posList.extend([1,0])
@@ -821,7 +860,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
-                                       trade.volume, self.rate, self.slippage, self.size)
+                                       trade.volume, self.rate, self.slippage, self.size,self.levelRate)
                 resultList.append(result)
 
         for tradeList in shortTrade.values():
@@ -833,7 +872,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
-                                       -trade.volume, self.rate, self.slippage, self.size)
+                                       -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
                 resultList.append(result)
         # 检查是否有交易
         if not resultList:
@@ -973,7 +1012,8 @@ class BacktestingEngine(object):
             
             
         else:
-            print("交易记录没有达到10笔！")
+            self.output("交易记录没有达到10笔！")
+            return
         plt.show()
     #----------------------------------------------------------------------
     def clearBacktestingResult(self):
@@ -1101,7 +1141,7 @@ class BacktestingEngine(object):
                 dailyResult.previousClose = previousClose
                 previousClose = dailyResult.closePrice
 
-                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage )
+                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage, self.levelRate )
                 openPosition = dailyResult.closePosition
 
             # 生成DataFrame
@@ -1262,7 +1302,7 @@ class TradingResult(object):
 
     #----------------------------------------------------------------------
     def __init__(self, entryPrice, entryDt, exitPrice, 
-                 exitDt, volume, rate, slippage, size):
+                 exitDt, volume, rate, slippage, size, levelRate = 0):
         """Constructor"""
         self.entryPrice = entryPrice    # 开仓价格
         self.exitPrice = exitPrice      # 平仓价格
@@ -1270,13 +1310,26 @@ class TradingResult(object):
         self.entryDt = entryDt          # 开仓时间datetime    
         self.exitDt = exitDt            # 平仓时间
         
-        self.volume = volume    # 交易数量（+/-代表方向）
-        
-        self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
-        self.commission = self.turnover*rate                                # 手续费成本
-        self.slippage = slippage*2*size*abs(volume)                         # 滑点成本
-        self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
+        self.volume = volume        # 交易数量（+/-代表方向）
+        if levelRate:
+            self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
+        else:
+            self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
+
+
+        self.commission = self.turnover*rate                                # 手续费成本   
+        self.slippage = slippage*2*size*abs(volume)                       # 滑点成本
+
+
+        if levelRate:
+            self.pnl = ((self.exitPrice - self.entryPrice) / self.entryPrice * volume * size
+                    - self.commission - self.slippage)
+            
+        else:
+            self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
+        
+        print("单笔盈亏：",self.pnl,"开仓：",entryDt, ", ",self.entryPrice,"平仓:",exitDt,", ",self.exitPrice,"交易数量：",volume,"合约面值：",size,"滑点：",self.slippage,"手续费：",self.commission)
 
 
 ########################################################################
@@ -1300,6 +1353,7 @@ class DailyResult(object):
         self.tradingPnl = 0             # 交易盈亏
         self.positionPnl = 0            # 持仓盈亏
         self.totalPnl = 0               # 总盈亏
+        self.levelRate = 0
         
         self.turnover = 0               # 成交量
         self.commission = 0             # 手续费
@@ -1312,7 +1366,7 @@ class DailyResult(object):
         self.tradeList.append(trade)
 
     #----------------------------------------------------------------------
-    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0):
+    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0, levelRate = 0):
         """
         计算盈亏
         size: 合约乘数
@@ -1321,6 +1375,10 @@ class DailyResult(object):
         """
         # 持仓部分
         self.openPosition = openPosition
+        self.levelRate = levelRate
+        # if self.levelRate:
+        #     self.positionPnl = self.openPosition * ((self.closePrice - self.previousClose)/self.previousClose) * size
+        # else:
         self.positionPnl = self.openPosition * (self.closePrice - self.previousClose) * size
         self.closePosition = self.openPosition
         
@@ -1332,13 +1390,18 @@ class DailyResult(object):
                 posChange = trade.volume
             else:
                 posChange = -trade.volume
-                
+            
+            # if self.levelRate:
+            #     self.tradingPnl += posChange * ((self.closePrice - trade.price)/trade.price) * size
+            #     self.turnover += trade.volume * size / self.levelRate
+            # else: 
             self.tradingPnl += posChange * (self.closePrice - trade.price) * size
-            self.closePosition += posChange
             self.turnover += trade.price * trade.volume * size
+            self.closePosition += posChange
+
             self.commission += trade.price * trade.volume * size * rate
             self.slippage += trade.volume * size * slippage
-        
+
         # 汇总
         self.totalPnl = self.tradingPnl + self.positionPnl
         self.netPnl = self.totalPnl - self.commission - self.slippage
