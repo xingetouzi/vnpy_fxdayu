@@ -304,10 +304,13 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 40 and tick.datetime.minute != self.minute_temp:
+                    if tick.datetime.second == 45 and tick.datetime.minute != self.minute_temp:
                         self.minute_temp = tick.datetime.minute
                         self.qryOrder(strategy.name)
-
+                    elif tick.datetime.second == 15 and tick.datetime.minute != self.minute_temp:
+                        self.minute_temp = tick.datetime.minute
+                        self.qryOrder(strategy.name)
+                    
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
         """处理委托推送"""

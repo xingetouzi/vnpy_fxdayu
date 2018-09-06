@@ -877,7 +877,6 @@ class FuturesApi(OkexFuturesApi):
         self.cbDict = {}
         self.tickDict = {}
         self.orderDict = {}
-        # self.posDict = {}
         self.channelSymbolMap = {}
         self.channelcontractTypeMap = {}
         
@@ -924,9 +923,9 @@ class FuturesApi(OkexFuturesApi):
     def onOpen(self):       
         """连接成功"""
         self.gateway.connected = True
-        self.writeLog(u'期货服务器连接成功')
         
         self.login()
+        self.writeLog(u'期货服务器连接成功')
         
         # 推送合约数据
         for symbol in self.contracts:
@@ -971,7 +970,7 @@ class FuturesApi(OkexFuturesApi):
         # self.cbDict['ok_futureusd_trade'] = self.onSubFuturesOrderError 
         self.cbDict['ok_sub_futureusd_trades'] = self.onFuturesOrderInfo
         # self.cbDict['ok_futureusd_order'] = self.onFuturesOrder
-        # self.cbDict['ok_futureusd_cancel_order'] = self.onFuturesCancelOrder
+        self.cbDict['ok_futureusd_cancel_order'] = self.onFuturesCancelOrder
         self.cbDict['ok_sub_futureusd_positions'] = self.onSubFuturesPosition
         # self.cbDict['ok_sub_futureusd_userinfo'] = self.subscribeFuturesUserInfo
         self.cbDict['login'] = self.onLogin
@@ -988,7 +987,7 @@ class FuturesApi(OkexFuturesApi):
             contractType = symbol[4:]
             symbol = symbol[:3]
             self.subscribe(symbol,contractType)
-            self.rest_futures_position(symbol,contractType)  # 使用restful查询持仓信息
+            self.rest_futures_position(symbol,contractType)  # 初始化后使用restful查询持仓信息
 
         self.writeLog(u'期货服务器登录成功')
     #----------------------------------------------------------------------
@@ -1002,7 +1001,7 @@ class FuturesApi(OkexFuturesApi):
         # print('gw on tick',datetime.now(),data['data']['last'])
         symbol = self.channelSymbolMap[channel]
         contractType = self.channelcontractTypeMap[channel]
-        symbol = symbol+'_'+contractType
+        symbol = symbol+'_'+contractType                         # 从回报获取品种名称
 
         if symbol not in self.tickDict:
 
@@ -1022,7 +1021,7 @@ class FuturesApi(OkexFuturesApi):
         tick.lowPrice = float(d['low'])
         tick.lastPrice = float(d['last'])
         tick.volume = float(d['vol'].replace(',', ''))
-        tick.volumeChange = 0
+        tick.volumeChange = 0                                   # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
 
         if tick.bidPrice1 and tick.lastVolume:
@@ -1122,7 +1121,7 @@ class FuturesApi(OkexFuturesApi):
         tick.askVolume10 = float(tick.askVolume10)   
 
         tick.date, tick.time = self.generateDateTime(d['timestamp'])
-        tick.volumeChange = 0
+        tick.volumeChange = 0                                    # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
         if tick.lastPrice and tick.lastVolume:
             newtick = copy(tick)
@@ -1164,7 +1163,7 @@ class FuturesApi(OkexFuturesApi):
             tick.lastVolume = float(d[2])
             tick.time = d[3]+".000000"
             tick.type = d[4]
-            tick.volumeChange = 1
+            tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
             if tick.bidPrice1:
                 newtick = copy(tick)
@@ -1206,7 +1205,7 @@ class FuturesApi(OkexFuturesApi):
 
             try:
                 balance= float(fund['account_rights'])
-                if balance:   ##过滤掉没有持仓的币种
+                if balance:                   ##过滤掉没有持仓的币种
                     account = VtAccountData()
                     account.coinSymbol = symbol
                     account.gatewayName = self.gatewayName
@@ -1223,7 +1222,7 @@ class FuturesApi(OkexFuturesApi):
                 
             except:
                 balance= float(fund['balance'])
-                if balance:   ##过滤掉没有持仓的币种
+                if balance:                     ##过滤掉没有持仓的币种
                     account = VtAccountData()
                     account.coinSymbol = symbol
                     account.gatewayName = self.gatewayName
@@ -1287,11 +1286,9 @@ class FuturesApi(OkexFuturesApi):
             # contract_id_ = rawData['contract_id']
             # self.contract_id[str(contract_id_)] = rawData['contract_type']
             self.orderDict[order.vtOrderID] = order   #更新order信息
-            self.writeLog(u'gw_onFuturesOrderInfo_updateorder_localNo:%s, orderId:%s, status:%s, exchangeID:%s'%(localNo, orderId,order.status,self.exchangeOrderDict[str(orderId)]))
         except KeyError:
             order = VtOrderData()
             self.exchangeOrderDict[str(orderId)] = "wait"
-            self.writeLog(u'-*-*-gw_onFuturesOrderInfo====ws先于rest返回，不会到onorder--%s*-*-%s*-*-'%(self.exchangeOrderDict[str(orderId)],orderId))
             name = rawData['contract_name'][:3]
             order.contractType = rawData['contract_type']
             order.symbol = str.lower(name) + '_' + order.contractType
@@ -1311,13 +1308,18 @@ class FuturesApi(OkexFuturesApi):
             order.status = statusMap[rawData['status']] 
             order.fee = rawData['fee']
             order.thisTradedVolume = 0
+            order.tradedVolume = float(rawData['deal_amount'])
             self.orderDict[orderId] = order   #更新order信息
+            self.writeLog(u'gw_Order_ws先于rest返回，去sendorder等待--校验订单字典：%s===%s'%(self.exchangeOrderDict[str(orderId)],orderId))
             return
         
         lastTradedVolume = order.tradedVolume
         order.tradedVolume = float(rawData['deal_amount'])
         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
+        if order.thisTradedVolume ==0 and order.status!= STATUS_CANCELLED:
+            self.writeLog(u'thistradedvolume=0:CHECK %s,%s,%s,此次成交 %s,上次成交 %s'%(order.vtOrderID,order.symbol,order.status,order.tradedVolume,lastTradedVolume))
         self.gateway.onOrder(copy(order))
+        self.writeLog(u'gw_Order_updateorder_localNo:%s, orderId:%s, status:%s, exchangeID:%s'%(localNo, orderId,order.status,self.exchangeOrderDict[str(orderId)]))
         
         # 成交信息
         if order.tradedVolume > lastTradedVolume:
@@ -1330,7 +1332,6 @@ class FuturesApi(OkexFuturesApi):
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
             trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
-            print("gw_trade_orderid",order.orderID," exchangeid ",order.exchangeOrderID)
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.exchangeOrderID = order.exchangeOrderID
@@ -1341,6 +1342,7 @@ class FuturesApi(OkexFuturesApi):
             trade.fee = order.fee
             trade.volume = order.tradedVolume - lastTradedVolume
             trade.tradeTime = order.deliverTime
+            self.writeLog(u'gw_trade_detail: %s ,%s ,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
             self.gateway.onTrade(trade)
         
         # # 撤单
@@ -1351,15 +1353,26 @@ class FuturesApi(OkexFuturesApi):
             del self.cancelDict[localNo]  
 
     #----------------------------------------------------------------------  
-    def onSubFuturesOrderError(self, data):
-        """ 下单报错信息"""
+    # def onSubFuturesOrderError(self, data):
+    #     """ 下单报错信息"""
+    #     if self.checkDataError(data):
+    #         return
+    #     rawData = data["data"]
+    #     if rawData['result']:
+    #         orderId = str(rawData['order_id'])  
+    #     else:
+    #         print("下单报错信息:",rawData['error_code'])
+    #----------------------------------------------------------------------
+    def onFuturesCancelOrder(self,data):
+        """撤单回调"""
         if self.checkDataError(data):
             return
-        rawData = data["data"]
-        if rawData['result']:
-            orderId = str(rawData['order_id'])  
-        else:
-            print("下单报错信息:",rawData['error_code'])
+        # rawData = data["data"]
+        print(data)
+        # if rawData['result']:
+        #     orderId = str(rawData['order_id'])  
+        # else:
+        #     print("下单报错信息:",rawData['error_code'])
     #----------------------------------------------------------------------
         
     def onSubFuturesBalance(self, data):
@@ -1561,7 +1574,7 @@ class FuturesApi(OkexFuturesApi):
             order.vtSymbol = req.vtSymbol
             order.gatewayName = self.gatewayName
             order.status = STATUS_REJECTED
-            order.rejectedInfo = str(error_code)
+            order.rejectedInfo = str(error_code) +':'+ sendOrderErrorMap[str(error_code)]
             order.bystrategy = req.bystrategy
             order.direction = req.direction
             order.offset= req.offset
@@ -1584,12 +1597,12 @@ class FuturesApi(OkexFuturesApi):
                 order.deliverTime = datetime.now()
                 del self.orderDict[str(order_id)]
                 self.orderDict[vtOrderID] = order   #更新order信息
-                self.writeLog(u'---sendorder_try_gw---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
+                self.writeLog(u'--gw-sendorder_update_order---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
                 self.gateway.onOrder(copy(order))
 
         except KeyError:   # 如果rest先收到未成交回报
             order = VtOrderData()
-            self.writeLog(u'---sendorder_except_gw---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
+            self.writeLog(u'--gw-sendorder_generate_order---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
             self.exchangeOrderDict[str(order_id)] = str(self.localNo)
             order.gatewayName = self.gatewayName
             order.exchangeOrderID = order_id
@@ -1615,12 +1628,11 @@ class FuturesApi(OkexFuturesApi):
     def cancelOrder(self, req):
         """撤单"""
         localNo = str(req.orderID)
-        self.writeLog(u'gw_cancelOrder localNo:%s'%(localNo))
         if localNo in self.localNoDict:
             orderID = self.localNoDict[localNo]
             symbol = req.symbol[:3]+"_usd"
             self.futuresCancelOrder(symbol, orderID, req.contractType)
-            self.writeLog(u'---cancelorder-gw---,%s,%s,%s,%s'%(symbol,localNo,orderID,req.contractType))
+            self.writeLog(u'--gw-cancelorder---,%s,%s,%s,%s'%(symbol,localNo,orderID,req.contractType))
         else:
             # 如果在系统委托号返回前客户就发送了撤单请求，则保存
             # 在cancelDict字典中，等待返回后执行撤单任务
@@ -1775,7 +1787,7 @@ class FuturesApi(OkexFuturesApi):
 
                 if order.tradedVolume > lastTradedVolume:
                     self.gateway.onOrder(copy(order))
-                    print("gw_rest_order_update",order.vtOrderID," exchangeid ",order.exchangeOrderID)
+                    self.writeCtaLog(u'gw_rest_order_update,%s ,thisvolume: %s'%(order.vtOrderID,order.thisTradedVolume))
                     trade = VtTradeData()
                     trade.gatewayName = self.gatewayName
                     trade.symbol = order.symbol
@@ -1799,8 +1811,8 @@ class FuturesApi(OkexFuturesApi):
                     self.gateway.onTrade(trade)
                 if order.status == STATUS_CANCELLED or order.status == STATUS_CANCELINPROGRESS or order.status == STATUS_CANCELLING:
                     self.gateway.onOrder(copy(order))
-                    print("gw_rest_order_findout_cancelled,<3<3",order.symbol,order.vtOrderID," exchangeid: ",order.exchangeOrderID,"status:",order.status)
-                print("gw_rest_order_no_new_update:",order.symbol,order.vtOrderID,order.status,order.tradedVolume)
+                    self.writeCtaLog(u'gw_rest_order_findout_cancelled,<3<3 %s,%s,status:%s'%(order.symbol,order.vtOrderID,order.status))
+                self.writeCtaLog(u'gw_rest_order_no_new_update:%s,%s status:%s thisvolume:%s'%(order.symbol,order.vtOrderID,order.status,order.tradedVolume))
 
         except KeyError:
             return
