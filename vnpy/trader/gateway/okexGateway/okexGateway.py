@@ -1307,10 +1307,9 @@ class FuturesApi(OkexFuturesApi):
             order.deliverTime = datetime.now()
             order.status = statusMap[rawData['status']] 
             order.fee = rawData['fee']
-            order.thisTradedVolume = 0
             order.tradedVolume = float(rawData['deal_amount'])
             self.orderDict[orderId] = order   #更新order信息
-            self.writeLog(u'gw_Order_ws先于rest返回，去sendorder等待--校验订单字典：%s===%s'%(self.exchangeOrderDict[str(orderId)],orderId))
+            self.writeLog(u'gw_Order_ws先于rest返回，状态：%s，去sendorder等待--校验订单字典：%s===%s'%(order.status,self.exchangeOrderDict[str(orderId)],orderId))
             return
         
         lastTradedVolume = order.tradedVolume
@@ -1587,18 +1586,43 @@ class FuturesApi(OkexFuturesApi):
         
 
         try:
-            if self.exchangeOrderDict[str(order_id)]=="wait":  # 如果ws先收到了未成交回报
+            if self.exchangeOrderDict[str(order_id)]=="wait":  # 如果ws先收到了未成交回报,或者网络不好时先收到了成交回报
                 self.exchangeOrderDict[str(order_id)] = str(self.localNo)
                 order = self.orderDict[str(order_id)]
                 order.orderID = self.localNo
                 order.vtOrderID = vtOrderID
                 order.bystrategy = req.bystrategy
-                order.gatewayName = self.gatewayName
                 order.deliverTime = datetime.now()
                 del self.orderDict[str(order_id)]
+                order.thisTradedVolume = order.tradedVolume
+
                 self.orderDict[vtOrderID] = order   #更新order信息
                 self.writeLog(u'--gw-sendorder_update_order---,%s,%s,%s'%(req.symbol,vtOrderID,order_id))
                 self.gateway.onOrder(copy(order))
+                if order.status == STATUS_PARTTRADED or order.status == STATUS_ALLTRADED:
+                    trade = VtTradeData()
+                    trade.gatewayName = self.gatewayName
+                    trade.symbol = order.symbol
+                    trade.exchange = order.exchange
+                    trade.vtSymbol = order.vtSymbol
+                    
+                    self.tradeID += 1
+                    trade.tradeID = str(self.tradeID)
+                    trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                    trade.orderID = order.orderID
+                    trade.vtOrderID = order.vtOrderID
+                    trade.exchangeOrderID = order.exchangeOrderID
+                    trade.direction = order.direction
+                    trade.offset = order.offset
+                    trade.price = order.price
+                    trade.price_avg = order.price_avg
+                    trade.fee = order.fee
+                    trade.volume = order.tradedVolume - lastTradedVolume
+                    trade.tradeTime = order.deliverTime
+                    self.writeLog(u'restful request exchangeid too slow,received alltraded in advance')
+                    self.writeLog(u'gw_trade_detail: %s ,%s ,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
+                    self.gateway.onTrade(trade)
+
 
         except KeyError:   # 如果rest先收到未成交回报
             order = VtOrderData()
