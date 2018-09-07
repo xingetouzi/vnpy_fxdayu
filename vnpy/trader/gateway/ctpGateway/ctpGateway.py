@@ -1436,6 +1436,11 @@ class CtpTdApi(TdApi):
         req['VolumeTotalOriginal'] = orderReq.volume
         
         # 下面如果由于传入的类型本接口不支持，则会返回空字符串
+        if orderReq.priceType:
+            orderReq.priceType = PRICETYPE_MARKETPRICE
+        else:
+            orderReq.priceType = PRICETYPE_LIMITPRICE
+
         req['OrderPriceType'] = priceTypeMap.get(orderReq.priceType, '')
         req['Direction'] = directionMap.get(orderReq.direction, '')
         req['CombOffsetFlag'] = offsetMap.get(orderReq.offset, '')

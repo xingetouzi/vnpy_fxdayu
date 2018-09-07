@@ -1557,32 +1557,37 @@ class FuturesApi(OkexFuturesApi):
             return vtOrderID        
         
         # 下单判断状态 3 ： 发单正常，下单成功，返回下单信息
-        result= data['result']
-        if result:
-            order_id = data['order_id']
-            self.writeLog(u'gw_sendorder_下单成功,exchangeorderid:%s' %order_id)
-        # 下单判断状态 4 ： 发单正常，下单失败，返回报错信息
-        else:
-            # {'result': False, 'error_code': 20008}
-            error_code = data['error_code']
-            self.writeLog(u'gw_sendorder_下单失败，ErrorCode:%s 原因：%s' %(error_code,sendOrderErrorMap[str(error_code)]))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
-            order.vtSymbol = req.vtSymbol
-            order.gatewayName = self.gatewayName
-            order.status = STATUS_REJECTED
-            order.rejectedInfo = str(error_code) +':'+ sendOrderErrorMap[str(error_code)]
-            order.bystrategy = req.bystrategy
-            order.direction = req.direction
-            order.offset= req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.gateway.onOrder(copy(order))
-            return vtOrderID
+        try:
+            result= data['result']
+
+            if result:
+                order_id = data['order_id']
+                self.writeLog(u'gw_sendorder_下单成功,exchangeorderid:%s' %order_id)
+            # 下单判断状态 4 ： 发单正常，下单失败，返回报错信息
+            else:
+                # {'result': False, 'error_code': 20008}
+                error_code = data['error_code']
+                self.writeLog(u'gw_sendorder_下单失败，ErrorCode:%s 原因：%s' %(error_code,sendOrderErrorMap[str(error_code)]))
+                order = VtOrderData()
+                order.vtOrderID = vtOrderID
+                order.orderID = self.localNo
+                order.symbol= req.symbol
+                order.vtSymbol = req.vtSymbol
+                order.gatewayName = self.gatewayName
+                order.status = STATUS_REJECTED
+                order.rejectedInfo = str(error_code) +':'+ sendOrderErrorMap[str(error_code)]
+                order.bystrategy = req.bystrategy
+                order.direction = req.direction
+                order.offset= req.offset
+                order.price = req.price
+                order.totalVolume = req.volume
+                order.orderTime = datetime.now()
+                order.deliverTime = datetime.now()
+                self.gateway.onOrder(copy(order))
+                return vtOrderID
+        except KeyError:
+            self.writeLog(u'gw_sendorder_obtain_data:%s'%data)
+            
         
 
         try:

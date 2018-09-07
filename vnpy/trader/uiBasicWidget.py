@@ -435,7 +435,7 @@ class MarketMonitor(BasicMonitor):
         # 设置表头有序字典
         d = OrderedDict()
         d['symbol'] = {'chinese':vtText.CONTRACT_SYMBOL, 'cellType':BasicCell}
-        #d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
+        d['vtSymbol'] = {'chinese':vtText.CONTRACT_NAME, 'cellType':NameCell}
         d['lastPrice'] = {'chinese':vtText.LAST_PRICE, 'cellType':BasicCell}
         d['preClosePrice'] = {'chinese':vtText.PRE_CLOSE_PRICE, 'cellType':BasicCell}
         d['volume'] = {'chinese':vtText.VOLUME, 'cellType':BasicCell}
