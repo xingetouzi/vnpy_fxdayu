@@ -1869,7 +1869,7 @@ class FuturesApi(OkexFuturesApi):
                 
                 self.orderDict[vtOrderID] = order   #更新order信息
         else:
-            self.writeLog('qryOrder: we don\'t have this order in record, attention!! id = %s'%order_id)
+            self.writeLog('qryOrder: we don\'t have this order in record, attention!!  id = %s'%order_id)
             return
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
