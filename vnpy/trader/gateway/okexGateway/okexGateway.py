@@ -1598,17 +1598,16 @@ class FuturesApi(OkexFuturesApi):
                 order.price = order2.price
                 order.price_avg = order2.price_avg
                 order.tradedVolume = order2.tradedVolume
-                order.thisTradedVolume = order2.thisTradedVolume
+                order.thisTradedVolume = order.tradedVolume - order2.tradedVolume
                 self.orderDict[str(order.vtOrderID)] = order
                 self.gateway.onOrder(order)
-                del self.wsOrderDict[str(order.exchangeOrderID)]
                 return True
             else:
                 self.writeLog('rest quicker in order_arb_sendorder, waiting wsonorder id:%s'%orderinfo.exchangeOrderID)
                 return False
 
         elif source == 'onorder':
-            if orderinfo.exchangeOrderID in self.sendOrderDict.keys():
+            if str(orderinfo.exchangeOrderID) in self.sendOrderDict.keys():
                 order2 = self.sendOrderDict[str(order.exchangeOrderID)]
                 order.orderID = order2.orderID
                 order.vtOrderID = order2.vtOrderID
@@ -1648,7 +1647,7 @@ class FuturesApi(OkexFuturesApi):
                 return True
             elif len(self.orphanDict)==1:
                 self.writeLog('found orphanOrder,id:%s,vt should be:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for ophanorder in self.orphanDict.values():
+                for orphanOrder in self.orphanDict.values():
                     if order.vtSymbol == orphanOrder.vtSymbol:
                         order.vtOrderID = orphanOrder.vtOrderID
                         order.orderID = orphanOrder.orderID
@@ -1663,7 +1662,7 @@ class FuturesApi(OkexFuturesApi):
 
             elif len(self.orphanDict)>1:
                 self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for ophanorder in self.orphanDict.values():
+                for orphanOrder in self.orphanDict.values():
                     if order.vtSymbol == orphanOrder.vtSymbol:
                         if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
                             order.vtOrderID = orphanOrder.vtOrderID
