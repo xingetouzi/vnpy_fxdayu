@@ -240,6 +240,9 @@ class CtaTemplate(object):
     def onRestore(self):
         """恢复策略（必须由用户继承实现）"""
         raise NotImplementedError
+    def mail(self,my_context,name):
+        """邮件发送模块"""
+        return self.ctaEngine.mail(my_context,name)
 
 
 ########################################################################

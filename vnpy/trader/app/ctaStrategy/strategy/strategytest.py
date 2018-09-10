@@ -1,6 +1,5 @@
 # coding: utf-8
 from vnpy.trader.vtConstant import *
-from vnpy.trader.app.ctaStrategy.mail import mail
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
                                                      BarGenerator,
                                                      ArrayManager)
@@ -129,7 +128,7 @@ class TestStrategy(CtaTemplate):
         """收到委托变化推送（必须由用户继承实现）"""
 
         content = u'stg_onorder收到的订单状态, statu:%s, id:%s, dealamount:%s'%(order.status, order.vtOrderID, order.tradedVolume)
-        # mail('xxxx@xxx.com',content)   # 邮件模块可以将信息发送给策略师，第一个参数为收件人邮件地址，第二个参数为邮件正文
+        # mail('xxxx@xxx.com',content)   # 邮件模块可以将信息发送给策略师，第一个参数为邮件正文，第二个参数为策略name
 
         self.putEvent()
 

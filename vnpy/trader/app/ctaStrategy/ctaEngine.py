@@ -30,6 +30,9 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
+import smtplib
+from email.mime.text import MIMEText
+from email.utils import formataddr
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -713,15 +716,16 @@ class CtaEngine(object):
                 func()
         except Exception:
             # 停止策略，修改状态为未初始化
-            self.saveSyncData(strategy)
-            self.saveVarData(strategy)
-            strategy.trading = False
-            strategy.inited = False
-
-            # 发出日志
-            content = '\n'.join([u'策略%s：触发异常已停止, 当前状态已保存' %strategy.name,
+            self.stopStrategy(strategy.name)
+            content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
+            
+            if not strategy.mailAdd:
+                self.writeCtaLog(u'you will receive an email notification for this func_error if you fill your email address in the ctaSetting.json')
+            else:
+                self.mail(content,strategy.name)
             self.writeCtaLog(content)
+            
 
     #----------------------------------------------------------------------------------------
     def saveSyncData(self, strategy):    #改为posDict
@@ -733,7 +737,6 @@ class CtaEngine(object):
         d = copy(flt)
         for key in strategy.syncList:
             d[key] = strategy.__getattribute__(key)
-            result.append('\n')
             result.append(key)
             result.append(d[key])
 
@@ -939,3 +942,45 @@ class CtaEngine(object):
                 self.writeCtaLog(u'策略%s： 恢复策略状态成功' %name)
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
+    
+    def mail(self,my_context,name):
+        if name in self.strategyDict:
+            strategy = self.strategyDict[name]
+            if strategy.mailAdd:
+                if len(strategy.mailAdd)>1:
+                    to_receiver = strategy.mailAdd[0]
+                    cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
+                    cc_receiver = ",".join(cc_receiver)
+                    my_receiver = ",".join([to_receiver,cc_receiver])
+                else:
+                    to_receiver = my_receiver = strategy.mailAdd[0]
+            else:
+                self.writeCtaLog(u"Please write email address in ctaSetting.json")
+                return False
+        else:
+            self.writeCtaLog(u"Strategy not found under the name given: %s"%name)
+            return False
+
+        
+        if not my_context:
+            self.writeCtaLog(u"Please write email context: %s"%name)
+            return False
+
+        ret=True
+        try:
+            msg=MIMEText(my_context,'html','utf-8')
+            msg['From']=formataddr(['VNPY_CryptoCurrency','trade-msg@yandex.com'])
+            msg['To']=formataddr(["收件人昵称",to_receiver])
+            if cc_receiver:
+                msg['Cc']=formataddr(["CC收件人昵称",cc_receiver])
+            msg['Subject'] = '策略信息播报'
+    
+            server=smtplib.SMTP_SSL("smtp.yandex.com",465)
+            server.login('trade-msg@yandex.com', 'zaq!1234')
+            server.sendmail('trade-msg@yandex.com',[my_receiver,],msg.as_string())
+            server.quit()
+            self.writeCtaLog(u"%s: Send successfully ..."%name)
+        except Exception:
+            ret=False
+            self.writeCtaLog(u"%s: Send email failed ..."%name)
+        return ret
