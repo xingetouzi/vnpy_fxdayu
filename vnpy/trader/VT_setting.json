@@ -14,5 +14,9 @@
 	"logConsole": true,
 	"logFile": true,
 
-	"tdPenalty": ["IF", "IH", "IC"]
+	"tdPenalty": ["IF", "IH", "IC"],
+	"mailAccount":"",
+	"mailPass":"",
+	"mailServer":"",
+	"mailPort":""	
 }

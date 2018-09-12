@@ -30,6 +30,7 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
+from vnpy.trader.vtGlobal import globalSetting
 import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -509,6 +510,7 @@ class CtaEngine(object):
             name = setting['name']
             className = setting['className']
             vtSymbolset=setting['symbolList']
+            mailAdd = setting['mailAdd']
 
         except Exception as e:
             self.writeCtaLog(u'载入策略%s出错：%s' %e)
@@ -530,6 +532,7 @@ class CtaEngine(object):
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
             strategy.symbolList = vtSymbolset
+            strategy.mailAdd = mailAdd
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -554,9 +557,6 @@ class CtaEngine(object):
                 req.symbol = contract.symbol
                 req.vtSymbol = contract.vtSymbol
                 req.exchange = contract.exchange
-
-                if contract.contractType:         # 如果该品种是OKEX期货
-                    req.contractType = contract.contractType
                 
                 # 对于IB接口订阅行情时所需的货币和产品类型，从策略属性中获取
                 req.currency = strategy.currency
@@ -723,9 +723,8 @@ class CtaEngine(object):
             if not strategy.mailAdd:
                 self.writeCtaLog(u'you will receive an email notification for this func_error if you fill your email address in the ctaSetting.json')
             else:
-                self.mail(content,strategy.name)
+                self.mail(content,strategy)
             self.writeCtaLog(content)
-            
 
     #----------------------------------------------------------------------------------------
     def saveSyncData(self, strategy):    #改为posDict
@@ -921,11 +920,12 @@ class CtaEngine(object):
 
     def qryOrder(self,name,status=None):
         s = self.strategyOrderDict[name]
-        for vtOrderID in list(s):
-            if STOPORDERPREFIX not in vtOrderID:
-                order = self.mainEngine.getOrder(vtOrderID)
-                if order:
-                    self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+        if len(list(s)):
+            for vtOrderID in list(s):
+                if STOPORDERPREFIX not in vtOrderID:
+                    order = self.mainEngine.getOrder(vtOrderID)
+                    if order:
+                        self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
 
     def restoreStrategy(self, name):
         """恢复策略"""
@@ -943,44 +943,49 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
-    def mail(self,my_context,name):
-        if name in self.strategyDict:
-            strategy = self.strategyDict[name]
-            if strategy.mailAdd:
-                if len(strategy.mailAdd)>1:
-                    to_receiver = strategy.mailAdd[0]
-                    cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
-                    cc_receiver = ",".join(cc_receiver)
-                    my_receiver = ",".join([to_receiver,cc_receiver])
-                else:
-                    to_receiver = my_receiver = strategy.mailAdd[0]
-            else:
-                self.writeCtaLog(u"Please write email address in ctaSetting.json")
-                return False
-        else:
-            self.writeCtaLog(u"Strategy not found under the name given: %s"%name)
-            return False
+    def mail(self,my_context,strategy):
+        mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
+        mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
+        if "" in [mailaccount,mailpass,mailserver,mailport]:
+            return self.writeCtaLog(u'Please fill sender\'s mail info in vtSetting.json')
 
+
+        if strategy.mailAdd:
+            if len(strategy.mailAdd)>1:
+                to_receiver = strategy.mailAdd[0]
+                cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
+                cc_receiver = ",".join(cc_receiver)
+                my_receiver = ",".join([to_receiver,cc_receiver])
+            elif len(strategy.mailAdd)==1:
+                to_receiver = my_receiver = strategy.mailAdd[0]
+                cc_receiver = ""
+        else:
+            self.writeCtaLog(u"Please fill email address in ctaSetting.json")
+            return False
         
         if not my_context:
-            self.writeCtaLog(u"Please write email context: %s"%name)
+            self.writeCtaLog(u"Please write email context: %s"%strategy.name)
             return False
 
         ret=True
         try:
+            my_context = my_context +"<br><br> from strategy: "+ strategy.name
             msg=MIMEText(my_context,'html','utf-8')
-            msg['From']=formataddr(['VNPY_CryptoCurrency','trade-msg@yandex.com'])
-            msg['To']=formataddr(["收件人昵称",to_receiver])
+            msg['From']=formataddr(['VNPY_CryptoCurrency',mailaccount])
+            msg['To']=to_receiver#formataddr(["收件人昵称",to_receiver])
             if cc_receiver:
-                msg['Cc']=formataddr(["CC收件人昵称",cc_receiver])
+                msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
             msg['Subject'] = '策略信息播报'
     
-            server=smtplib.SMTP_SSL("smtp.yandex.com",465)
-            server.login('trade-msg@yandex.com', 'zaq!1234')
-            server.sendmail('trade-msg@yandex.com',[my_receiver,],msg.as_string())
+            server=smtplib.SMTP_SSL(mailserver, mailport)
+            server.login(mailaccount, mailpass)
+            if cc_receiver:
+                server.sendmail(mailaccount,[to_receiver,cc_receiver],msg.as_string())
+            else:
+                server.sendmail(mailaccount,[to_receiver],msg.as_string())
             server.quit()
-            self.writeCtaLog(u"%s: Send successfully ..."%name)
+            self.writeCtaLog(u"%s: Send email successfully ..."%strategy.name)
         except Exception:
             ret=False
-            self.writeCtaLog(u"%s: Send email failed ..."%name)
+            self.writeCtaLog(u"%s: Send email failed ..."%strategy.name)
         return ret

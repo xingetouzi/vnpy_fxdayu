@@ -34,8 +34,6 @@ class CtaTemplate(object):
     productClass = EMPTY_STRING  # 产品类型（只有IB接口需要）
     currency = EMPTY_STRING  # 货币（只有IB接口需要）
 
-    KlinePeriod = ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
-
     # 策略的基本变量，由引擎管理
     inited = False  # 是否进行了初始化
     trading = False  # 是否启动交易，由引擎管理
@@ -79,14 +77,15 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
+        self.bgDict = self.bg(1)
         raise NotImplementedError
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
         raise NotImplementedError
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
         raise NotImplementedError
@@ -94,6 +93,7 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送（必须由用户继承实现）"""
+        self.bgDict[tick.vtSymbol].updateTick(tick)
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
@@ -104,10 +104,6 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def onTrade(self, trade):
         """收到成交推送（必须由用户继承实现）"""
-        raise NotImplementedError
-
-    def oninitPos(self,pos):
-        """收到总持仓推送（必须由用户继承实现）"""
         raise NotImplementedError
 
     #-----------------------------------------------------
@@ -125,7 +121,7 @@ class CtaTemplate(object):
         """买开"""
         return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, levelRate, stop)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def sell(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
         """卖平"""
         return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, levelRate, stop)
@@ -166,11 +162,11 @@ class CtaTemplate(object):
         else:
             self.ctaEngine.cancelOrder(vtOrderID)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def cancelAll(self):
         """全部撤单"""
         self.ctaEngine.cancelAll(self.name)
-
+        #---------
     def cancelAllStopOrder(self):
         self.ctaEngine.cancelAllStopOrder(self.name)
 
@@ -179,7 +175,7 @@ class CtaTemplate(object):
         """向数据库中插入tick数据"""
         self.ctaEngine.insertData(self.tickDbName, self.vtSymbol, tick)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def insertBar(self, bar):
         """向数据库中插入bar数据"""
         self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
@@ -189,7 +185,7 @@ class CtaTemplate(object):
         """读取tick数据"""
         return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, days)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def loadBar(self, days):
         """读取bar数据"""
         return self.ctaEngine.loadBar(self.barDbName, self.symbolList, days)
@@ -214,7 +210,7 @@ class CtaTemplate(object):
         """保存同步数据到数据库"""
         if self.trading:
             self.ctaEngine.saveSyncData(self)
-            
+        #-----    
     def loadSyncData(self):
         """从数据库读取同步数据"""
         self.ctaEngine.loadSyncData(self)
@@ -226,11 +222,11 @@ class CtaTemplate(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
-        if type_ in self.KlinePeriod:
+        if type_ in ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]:
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
             return data
         else:
-            self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数%s，同时size不得大于2000'%self.KlinePeriod)
+            self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]，同时size不得大于2000')
             return
         
     def qryOrder(self, vtSymbol, status= None):
@@ -240,9 +236,49 @@ class CtaTemplate(object):
     def onRestore(self):
         """恢复策略（必须由用户继承实现）"""
         raise NotImplementedError
-    def mail(self,my_context,name):
+    def mail(self,my_context):
         """邮件发送模块"""
-        return self.ctaEngine.mail(my_context,name)
+        return self.ctaEngine.mail(my_context,self)
+    #-----------------------------------------------------
+    def onSecondBar(self,secondBar):
+        """收到秒级Bar推送（必须由用户继承实现）"""
+        raise NotImplementedError
+
+    # def on15minBar(self,bar):
+    # def on30minBar(self,bar):
+    # def bg(self,min = 15):
+    #     if min = 1:
+    #         self.bgDict = {
+    #                 sym: BarGenerator(self.onBar)
+    #                 for sym in self.symbolList
+    #                 }
+    #         return self.bgDict 
+
+    #     elif min = 5:
+    #         self.bg5Dict = {
+    #                 sym: BarGenerator(self.onBar, 5, self.on5MinBar)
+    #                 for sym in self.symbolList
+    #                 }
+    #         return self.bg5Dict 
+    #     elif min = 10:
+    #         self.bg15Dict = {
+    #                 sym: BarGenerator(self.onBar, 10, self.on10MinBar)
+    #                 for sym in self.symbolList
+    #                 }
+    #         return self.bg10Dict 
+    #     elif min = 15:
+    #         self.bg15Dict = {
+    #                 sym: BarGenerator(self.onBar, 15, self.on15MinBar)
+    #                 for sym in self.symbolList
+    #                 }
+    #         return self.bg15Dict 
+    #     elif min = 30:
+    #         self.bg30Dict = {
+    #                 sym: BarGenerator(self.onBar, 30, self.on30MinBar)
+    #                 for sym in self.symbolList
+    #                 }
+    #         return self.bg30Dict 
+
 
 
 ########################################################################
@@ -376,7 +412,7 @@ class BarGenerator(object):
     """
 
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None):
+    def __init__(self, onBar, xmin=0, onXminBar=None):#, Xxmin = 0):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -385,26 +421,36 @@ class BarGenerator(object):
         self.xmin = xmin  # X的值
         self.onXminBar = onXminBar  # X分钟K线的回调函数
 
+        # self.xXminBar = None
+        # self.Xxmin = Xxmin
+        # self.onXxminBar = onXxminBar
+
         self.lastTick = None  # 上一TICK缓存对象
 
     # ----------------------------------------------------------------------
     def updateTick(self, tick):
         """TICK更新"""
         newMinute = False  # 默认不是新的一分钟
+        newSecond = False  # 新的10秒
 
         # 尚未创建对象
         if not self.bar:
             self.bar = VtBarData()
+            self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            self.bar.date = self.bar.datetime.strftime('%Y%m%d')
+            self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
             newMinute = True
+
         # 新的一分钟
         elif self.bar.datetime.minute != tick.datetime.minute and tick.datetime.second < 50:
             # 生成上一分钟K线的时间戳
-            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.bar.date = self.bar.datetime.strftime('%Y%m%d')
-            self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
+            # self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            # self.bar.date = self.bar.datetime.strftime('%Y%m%d')
+            # self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
 
             # 推送已经结束的上一分钟K线
             self.onBar(self.bar)
+
 
             # 创建新的K线对象
             self.bar = VtBarData()
@@ -462,6 +508,7 @@ class BarGenerator(object):
         self.xminBar.datetime = bar.datetime
         self.xminBar.openInterest = bar.openInterest
         self.xminBar.volume += int(bar.volume)
+        
         # X分钟已经走完
         if not bar.datetime.minute % self.xmin:  # 可以用X整除
             # 生成上一X分钟K线的时间戳
@@ -474,6 +521,29 @@ class BarGenerator(object):
 
             # 清空老K线缓存对象
             self.xminBar = None
+
+        # if not self.xXminBar:
+        #     self.xXminBar = VtBarData()
+        #     self.xXminBar.vtSymbol = bar.vtSymbol
+        #     self.xXminBar.symbol = bar.symbol
+        #     self.xXminBar.exchange = bar.exchange
+
+        #     self.xXminBar.open = bar.open
+        #     self.xXminBar.high = bar.high
+        #     self.xXminBar.low = bar.low
+
+        #     # 累加老K线
+        # else:
+        #     self.xXminBar.high = max(self.xXminBar.high, bar.high)
+        #     self.xXminBar.low = min(self.xXminBar.low, bar.low)
+
+        # # 通用部分
+        # self.xminBar.close = bar.close
+        # self.xminBar.datetime = bar.datetime
+        # self.xminBar.openInterest = bar.openInterest
+        # self.xminBar.volume += int(bar.volume)
+
+        # if not xminBar.datetime
 #
 #
 # ########################################################################

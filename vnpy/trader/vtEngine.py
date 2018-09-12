@@ -483,7 +483,7 @@ class DataEngine(object):
     def processTradeEvent(self, event):
         """处理成交事件"""
         trade = event.dict_['data']
-    
+
         self.tradeDict[trade.vtTradeID] = trade    
         # 更新到持仓细节中
         detail = self.getPositionDetail(trade.vtSymbol)
@@ -679,7 +679,10 @@ class LogEngine(object):
         if not self.fileHandler:
             filename = 'vt_' + datetime.now().strftime('%Y%m%d') + '.log'
             filepath = getTempPath(filename)
-            self.fileHandler = logging.FileHandler(filepath)
+            # self.fileHandler = logging.FileHandler(filepath) # 引擎原有的handler
+            # 限制日志文件大小为20M，一天最多 400 MB
+            self.fileHandler = logging.handlers.RotatingFileHandler(
+                filepath,maxBytes = 20971520,backupCount = 20) 
             self.fileHandler.setLevel(self.level)
             self.fileHandler.setFormatter(self.formatter)
             self.logger.addHandler(self.fileHandler)

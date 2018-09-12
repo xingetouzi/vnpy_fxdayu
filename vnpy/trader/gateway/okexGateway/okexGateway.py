@@ -1531,7 +1531,7 @@ class FuturesApi(OkexFuturesApi):
                 return vtOrderID
         else:
             self.writeLog(u'gw_sendorder_error_obtain_data:%s'%data)
-            return
+            return ''
 
         order = VtOrderData()
         self.writeLog(u'--gw-sendorder_generate_order---,%s,%s,exid(%s)'%(req.symbol,vtOrderID,order_id))
@@ -1822,51 +1822,52 @@ class FuturesApi(OkexFuturesApi):
         if order_id in self.exchangeOrderDict.keys():
             vtOrderID = self.exchangeOrderDict[order_id]
             order = self.orderDict[vtOrderID]
-            if data['result']:
-                orderinfo = data['orders'][0]
-                order.status = statusMap[orderinfo['status']]
-                lastTradedVolume = order.tradedVolume
-                order.tradedVolume = orderinfo['deal_amount']
-                order.thisTradedVolume = order.tradedVolume - lastTradedVolume
-                order.price = orderinfo['price']
-                order.price_avg = orderinfo['price_avg']
-                order.deliverTime = datetime.now()
-                order.fee = orderinfo['fee']
-                self.sendOrderDict[order_id] = order  
+            if 'result' in data.keys():
+                if data['result']:
+                    orderinfo = data['orders'][0]
+                    order.status = statusMap[orderinfo['status']]
+                    lastTradedVolume = order.tradedVolume
+                    order.tradedVolume = orderinfo['deal_amount']
+                    order.thisTradedVolume = order.tradedVolume - lastTradedVolume
+                    order.price = orderinfo['price']
+                    order.price_avg = orderinfo['price_avg']
+                    order.deliverTime = datetime.now()
+                    order.fee = orderinfo['fee']
+                    self.sendOrderDict[order_id] = order  
 
-                if order.tradedVolume > lastTradedVolume:
-                    self.gateway.onOrder(copy(order))
-                    self.writeLog(u'gw_rest_order_update,%s ,thisvolume: %s'%(
-                        order.vtOrderID,order.thisTradedVolume))
-                    trade = VtTradeData()
-                    trade.gatewayName = self.gatewayName
-                    trade.symbol = order.symbol
-                    trade.exchange = order.exchange
-                    trade.vtSymbol = order.vtSymbol
-                    
-                    self.tradeID += 1
-                    trade.tradeID = str(self.tradeID)
-                    trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
-                    
-                    trade.orderID = order.orderID
-                    trade.vtOrderID = order.vtOrderID
-                    trade.exchangeOrderID = order_id
-                    trade.direction = order.direction
-                    trade.offset = order.offset
-                    trade.price = order.price
-                    trade.price_avg = order.price_avg
-                    trade.volume = order.tradedVolume - lastTradedVolume
-                    trade.tradeTime = order.deliverTime
-                    trade.fee = order.fee
-                    self.gateway.onTrade(trade)
-                if order.status in [STATUS_CANCELLED,STATUS_CANCELINPROGRESS,STATUS_CANCELLING]:
-                    self.gateway.onOrder(copy(order))
-                    self.writeLog(u'gw_rest_order_findout_cancelled,<3<3 %s,%s,status:%s'%(
-                        order.symbol,order.vtOrderID,order.status))
-                self.writeLog(u'gw_rest_order_no_new_update:%s,%s status:%s thisvolume:%s'%(
-                    order.symbol,order.vtOrderID,order.status,order.tradedVolume))
+                    if order.tradedVolume > lastTradedVolume:
+                        self.gateway.onOrder(copy(order))
+                        self.writeLog(u'gw_rest_order_update,%s ,thisvolume: %s'%(
+                            order.vtOrderID,order.thisTradedVolume))
+                        trade = VtTradeData()
+                        trade.gatewayName = self.gatewayName
+                        trade.symbol = order.symbol
+                        trade.exchange = order.exchange
+                        trade.vtSymbol = order.vtSymbol
+                        
+                        self.tradeID += 1
+                        trade.tradeID = str(self.tradeID)
+                        trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                        
+                        trade.orderID = order.orderID
+                        trade.vtOrderID = order.vtOrderID
+                        trade.exchangeOrderID = order_id
+                        trade.direction = order.direction
+                        trade.offset = order.offset
+                        trade.price = order.price
+                        trade.price_avg = order.price_avg
+                        trade.volume = order.tradedVolume - lastTradedVolume
+                        trade.tradeTime = order.deliverTime
+                        trade.fee = order.fee
+                        self.gateway.onTrade(trade)
+                    if order.status in [STATUS_CANCELLED,STATUS_CANCELINPROGRESS,STATUS_CANCELLING]:
+                        self.gateway.onOrder(copy(order))
+                        self.writeLog(u'gw_rest_order_findout_cancelled,<3<3 %s,%s,status:%s'%(
+                            order.symbol,order.vtOrderID,order.status))
+                    self.writeLog(u'gw_rest_order_no_new_update:%s,%s status:%s thisvolume:%s'%(
+                        order.symbol,order.vtOrderID,order.status,order.tradedVolume))
                 
-                self.orderDict[vtOrderID] = order   #更新order信息
+                    self.orderDict[vtOrderID] = order   #更新order信息
         else:
             self.writeLog('qryOrder: we don\'t have this order in record, attention!!  id = %s'%order_id)
             return

@@ -9,15 +9,16 @@ from threading import Thread, Event, Timer
 from time import sleep
 import pandas as  pd
 import requests
+from urllib.error import HTTPError
 import datetime
 import ssl
 import websocket    
 
 # 常量定义
-OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket'
-OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi'
-# OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket'
-# OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi'
+# OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket'
+# OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi'
+OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket'
+OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi'
 
 SPOT_CURRENCY = ["usdt",
                  "btc",
@@ -506,37 +507,37 @@ class OkexFuturesApi(OkexApi):
         self.sendRequest(channel)
         
     #----------------------------------------------------------------------
-    def futuresTrade(self, symbol, contractType, type_, price, amount, matchPrice='0', leverRate='10'):
-        """期货委托"""
-        """
-        1、委托id
-            [{'binary': 0, 'channel': 'ok_futureusd_trade', 
-            'data': {'result': True, 'order_id': 978694110346240}}]
-        2、委托详情
-            [{'binary': 0, 'channel': 'ok_sub_futureusd_trades', 
-            'data': {'lever_rate': 10.0, 'amount': 1.0, 'orderid': 978694110346240, 'contract_id': 201806290050065, 
-            'fee': -6.23e-06, 'contract_name': 'BCH0629', 'unit_amount': 10.0, 'price_avg': 802.254, 'type': 1, 
-            'deal_amount': 1.0, 'contract_type': 'this_week', 'user_id': 8182562, 'system_type': 0, 'price': 802.254, 
-            'create_date_str': '2018-06-22 20:14:47', 'create_date': 1529669687000, 'status': 2}}]
+    # def futuresTrade(self, symbol, contractType, type_, price, amount, matchPrice='0', leverRate='10'):
+    #     """期货委托"""
+    #     """
+    #     1、委托id
+    #         [{'binary': 0, 'channel': 'ok_futureusd_trade', 
+    #         'data': {'result': True, 'order_id': 978694110346240}}]
+    #     2、委托详情
+    #         [{'binary': 0, 'channel': 'ok_sub_futureusd_trades', 
+    #         'data': {'lever_rate': 10.0, 'amount': 1.0, 'orderid': 978694110346240, 'contract_id': 201806290050065, 
+    #         'fee': -6.23e-06, 'contract_name': 'BCH0629', 'unit_amount': 10.0, 'price_avg': 802.254, 'type': 1, 
+    #         'deal_amount': 1.0, 'contract_type': 'this_week', 'user_id': 8182562, 'system_type': 0, 'price': 802.254, 
+    #         'create_date_str': '2018-06-22 20:14:47', 'create_date': 1529669687000, 'status': 2}}]
         
-        # amount(double): 委托数量，deal_amount(double): 成交数量，unit_amount(double):合约面值
-        # status(int): 订单状态(0等待成交 1部分成交 2全部成交 -1撤单 4撤单处理中)
-        # type(int): 订单类型 1：开多 2：开空 3：平多 4：平空
-        # system_type(int):订单类型 0:普通 1:交割 2:强平 4:全平 5:系统反单
-        """
-        params = {}
-        params['symbol'] = str(symbol)
-        params['contract_type'] = str(contractType)
-        params['price'] = str(price)
-        params['amount'] = str(amount)
-        params['type'] = type_                # 1:开多 2:开空 3:平多 4:平空
-        params['match_price'] = matchPrice    # 是否为市场价： 0:不是 1:是 当取值为1时,price无效
-        params['lever_rate'] = leverRate
+    #     # amount(double): 委托数量，deal_amount(double): 成交数量，unit_amount(double):合约面值
+    #     # status(int): 订单状态(0等待成交 1部分成交 2全部成交 -1撤单 4撤单处理中)
+    #     # type(int): 订单类型 1：开多 2：开空 3：平多 4：平空
+    #     # system_type(int):订单类型 0:普通 1:交割 2:强平 4:全平 5:系统反单
+    #     """
+    #     params = {}
+    #     params['symbol'] = str(symbol)
+    #     params['contract_type'] = str(contractType)
+    #     params['price'] = str(price)
+    #     params['amount'] = str(amount)
+    #     params['type'] = type_                # 1:开多 2:开空 3:平多 4:平空
+    #     params['match_price'] = matchPrice    # 是否为市场价： 0:不是 1:是 当取值为1时,price无效
+    #     params['lever_rate'] = leverRate
         
-        channel = 'ok_futureusd_trade'
-        print("dingdong",channel, params)
-        self.sendRequest(channel, params)
-        return True
+    #     channel = 'ok_futureusd_trade'
+    #     print("dingdong",channel, params)
+    #     self.sendRequest(channel, params)
+    #     return True
 
     #----------------------------------------------------------------------
     def futuresCancelOrder(self, symbol, orderid, contractType):
@@ -670,7 +671,11 @@ class OkexFuturesApi(OkexApi):
         url = self._post_url_func("future_position")
         # print(url)
         r = requests.post(url, data=data, timeout=60)
-        return r.json()
+
+        if r.status_code==200:
+            return r.json()
+        else:
+            return {'result':False,'text':r.status_code()}
     
     def future_order_info(self, symbol, contract_type, order_id, status=None, current_page=None, page_length=None):
         api_key = self.apiKey
@@ -683,9 +688,14 @@ class OkexFuturesApi(OkexApi):
         if page_length:
             data["page_length"] = page_length
         url = self._post_url_func("future_order_info")
+        print(data,"*****qry_order*****")
         # print(url)
+        
         r = requests.post(url, data=data, timeout=60)
-        return r.json()
+        if r.status_code==200:
+            return r.json()
+        else:
+            return {'error':r.status_code()}
 
     def future_trade(self, symbol, contract_type, price, amount, type, match_price=None, lever_rate=None):
         api_key = self.apiKey
@@ -698,8 +708,10 @@ class OkexFuturesApi(OkexApi):
         print(data,"********send order api******")
         url = self._post_url_func("future_trade")
         # print(url)
-        r = requests.post(url, data=data, timeout=60)
-        return r.json()
+        if r.status_code==200:
+            return r.json()
+        else:
+            return {'error':r.status_code()}
 
     def futureKline(self, symbol, type, contract_type, size=None, since=None):
         params = self._chg_dic_to_str(locals())
