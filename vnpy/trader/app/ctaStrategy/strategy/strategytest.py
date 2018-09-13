@@ -119,7 +119,7 @@ class TestStrategy(CtaTemplate):
             self.sell(self.activeSymbol,
                     999,  # 市价单价格无效
                     self.posDict[self.activeSymbol+'_LONG'],
-                    marketPrice = 1,
+                    priceType = PRICETYPE_LIMITPRICE,
                     levelRate = 10)
         self.putEvent()
         
