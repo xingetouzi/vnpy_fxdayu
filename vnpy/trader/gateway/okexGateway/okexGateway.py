@@ -26,18 +26,19 @@ from vnpy.trader.vtFunction import getJsonPath
 # 价格类型映射
 # 买卖类型： 限价单（buy/sell） 市价单（buy_market/sell_market）
 priceTypeMap = {}
-futurepriceTypeMap = {}
 priceTypeMap['buy'] = (DIRECTION_LONG, PRICETYPE_LIMITPRICE)
 priceTypeMap['buy_market'] = (DIRECTION_LONG, PRICETYPE_MARKETPRICE)
 priceTypeMap['sell'] = (DIRECTION_SHORT, PRICETYPE_LIMITPRICE)
 priceTypeMap['sell_market'] = (DIRECTION_SHORT, PRICETYPE_MARKETPRICE)  ###原版现货下单映射
-
-futurepriceTypeMap['1'] = (DIRECTION_LONG,OFFSET_OPEN)               ##买开
-futurepriceTypeMap['2'] = (DIRECTION_SHORT,OFFSET_OPEN)             ##卖开
-futurepriceTypeMap['3'] = (DIRECTION_SHORT,OFFSET_CLOSE)              #卖平  
-futurepriceTypeMap['4'] = (DIRECTION_LONG,OFFSET_CLOSE)               #买平
 priceTypeMapReverse = {v: k for k, v in priceTypeMap.items()} 
-futurepriceTypeMapReverse = {v: k for k, v in futurepriceTypeMap.items()} 
+
+futureOrderTypeMap = {}
+futureOrderTypeMap['1'] = (DIRECTION_LONG,OFFSET_OPEN)               ##买开
+futureOrderTypeMap['2'] = (DIRECTION_SHORT,OFFSET_OPEN)             ##卖开
+futureOrderTypeMap['3'] = (DIRECTION_SHORT,OFFSET_CLOSE)              #卖平  
+futureOrderTypeMap['4'] = (DIRECTION_LONG,OFFSET_CLOSE)               #买平
+
+futureOrderTypeMapReverse = {v: k for k, v in futureOrderTypeMap.items()} 
 
 # 委托状态印射
 statusMap = {}
@@ -49,44 +50,44 @@ statusMap[4] = STATUS_CANCELINPROGRESS
 statusMap[5] = STATUS_CANCELLING
 
 # Restful 下单返回错误映射
-sendOrderErrorMap = {}
-sendOrderErrorMap['20001'] = u"用户不存在"
-sendOrderErrorMap['20002'] = u"用户被冻结"
-sendOrderErrorMap['20003'] = u"用户被爆仓冻结"
-sendOrderErrorMap['20004'] = u"合约账户被冻结"
-sendOrderErrorMap['20005'] = u"用户合约账户不存在"
-sendOrderErrorMap['20006'] = u"必填参数为空"
-sendOrderErrorMap['20007'] = u"参数错误"
-sendOrderErrorMap['20008'] = u"合约账户余额为空"
-sendOrderErrorMap['20009'] = u"虚拟合约状态错误"
-sendOrderErrorMap['20010'] = u"合约风险率信息不存在"
-sendOrderErrorMap['20011'] = u"10倍/20倍杠杆开BTC前保证金率低于90%/80%，10倍/20倍杠杆开LTC前保证金率低于80%/60%"
-sendOrderErrorMap['20012'] = u"10倍/20倍杠杆开BTC后保证金率低于90%/80%，10倍/20倍杠杆开LTC后保证金率低于80%/60%"
-sendOrderErrorMap['20013'] = u"暂无对手价"
-sendOrderErrorMap['20014'] = u"系统错误"
-sendOrderErrorMap['20015'] = u"订单信息不存在"
-sendOrderErrorMap['20016'] = u"平仓数量是否大于同方向可用持仓数量"
-sendOrderErrorMap['20017'] = u"非本人操作"
-sendOrderErrorMap['20018'] = u"下单价格高于前一分钟的103%或低于97%"
-sendOrderErrorMap['20019'] = u"该IP限制不能请求该资源"
-sendOrderErrorMap['20020'] = u"密钥不存在"
-sendOrderErrorMap['20021'] = u"指数信息不存在"
-sendOrderErrorMap['20022'] = u"接口调用错误（全仓模式调用全仓接口，逐仓模式调用逐仓接口）"
-sendOrderErrorMap['20023'] = u"逐仓用户"
-sendOrderErrorMap['20024'] = u"sign签名不匹配"
-sendOrderErrorMap['20025'] = u"杠杆比率错误"
-sendOrderErrorMap['20026'] = u"API鉴权错误"
-sendOrderErrorMap['20027'] = u"无交易记录"
-sendOrderErrorMap['20028'] = u"合约不存在"
-sendOrderErrorMap['20029'] = u"转出金额大于可转金额"
-sendOrderErrorMap['20030'] = u"账户存在借款"
-sendOrderErrorMap['20038'] = u"根据相关法律，您所在的国家或地区不能使用该功能。"
-sendOrderErrorMap['20049'] = u"用户请求接口过于频繁"
-sendOrderErrorMap['20061'] = u"合约相同方向只支持一个杠杆，若有10倍多单，就不能再下20倍多单"
-sendOrderErrorMap['21020'] = u"合约交割中，无法下单"
-sendOrderErrorMap['21021'] = u"合约清算中，无法下单"
-sendOrderErrorMap['HTTP错误码403'] = u"用户请求过快，IP被屏蔽"
-sendOrderErrorMap['Ping不通'] = u"用户请求过快，IP被屏蔽"
+orderErrorMap = {}
+orderErrorMap['20001'] = u"用户不存在"
+orderErrorMap['20002'] = u"用户被冻结"
+orderErrorMap['20003'] = u"用户被爆仓冻结"
+orderErrorMap['20004'] = u"合约账户被冻结"
+orderErrorMap['20005'] = u"用户合约账户不存在"
+orderErrorMap['20006'] = u"必填参数为空"
+orderErrorMap['20007'] = u"参数错误"
+orderErrorMap['20008'] = u"合约账户余额为空"
+orderErrorMap['20009'] = u"虚拟合约状态错误"
+orderErrorMap['20010'] = u"合约风险率信息不存在"
+orderErrorMap['20011'] = u"10倍/20倍杠杆开BTC前保证金率低于90%/80%，10倍/20倍杠杆开LTC前保证金率低于80%/60%"
+orderErrorMap['20012'] = u"10倍/20倍杠杆开BTC后保证金率低于90%/80%，10倍/20倍杠杆开LTC后保证金率低于80%/60%"
+orderErrorMap['20013'] = u"暂无对手价"
+orderErrorMap['20014'] = u"系统错误"
+orderErrorMap['20015'] = u"订单信息不存在"
+orderErrorMap['20016'] = u"平仓数量是否大于同方向可用持仓数量"
+orderErrorMap['20017'] = u"非本人操作"
+orderErrorMap['20018'] = u"下单价格高于前一分钟的103%或低于97%"
+orderErrorMap['20019'] = u"该IP限制不能请求该资源"
+orderErrorMap['20020'] = u"密钥不存在"
+orderErrorMap['20021'] = u"指数信息不存在"
+orderErrorMap['20022'] = u"接口调用错误（全仓模式调用全仓接口，逐仓模式调用逐仓接口）"
+orderErrorMap['20023'] = u"逐仓用户"
+orderErrorMap['20024'] = u"sign签名不匹配"
+orderErrorMap['20025'] = u"杠杆比率错误"
+orderErrorMap['20026'] = u"API鉴权错误"
+orderErrorMap['20027'] = u"无交易记录"
+orderErrorMap['20028'] = u"合约不存在"
+orderErrorMap['20029'] = u"转出金额大于可转金额"
+orderErrorMap['20030'] = u"账户存在借款"
+orderErrorMap['20038'] = u"根据相关法律，您所在的国家或地区不能使用该功能。"
+orderErrorMap['20049'] = u"用户请求接口过于频繁"
+orderErrorMap['20061'] = u"合约相同方向只支持一个杠杆，若有10倍多单，就不能再下20倍多单"
+orderErrorMap['21020'] = u"合约交割中，无法下单"
+orderErrorMap['21021'] = u"合约清算中，无法下单"
+orderErrorMap['HTTP错误码403'] = u"用户请求过快，IP被屏蔽"
+orderErrorMap['Ping不通'] = u"用户请求过快，IP被屏蔽"
 
 KlinePeriodMap = {}
 KlinePeriodMap['1min'] = '1min'
@@ -771,11 +772,6 @@ class SpotApi(OkexSpotApi):
     #----------------------------------------------------------------------
     def sendOrder(self, req):
         """发单"""
-        if req.priceType == 0:
-            req.priceType = PRICETYPE_LIMITPRICE
-        else:
-            req.priceType = PRICETYPE_MARKETPRICE
-
         type_ = priceTypeMapReverse[(req.direction, req.priceType)]
         result = self.spotOrder(req.symbol, type_, str(req.price), str(req.volume))
         # 若请求失败，则返回空字符串委托号
@@ -802,8 +798,6 @@ class SpotApi(OkexSpotApi):
         order.totalVolume = req.volume
         
         self.localOrderDict[str(self.localNo)] = order
-        
-        # self.localNoDict[str(self.localNo)]
         return vtOrderID
     
     #----------------------------------------------------------------------
@@ -888,12 +882,11 @@ class FuturesApi(OkexFuturesApi):
         self.cancelDict = {}            # key为本地委托号，value为撤单请求
         self.strategyDict = {}
 
-        self.wsOrderDict = {}           
-        self.sendOrderDict = {}
-        self.exchangeOrderDict = {}
-        self.contractidDict = {}       # 用于持仓信息中, 对应rest查询的合约和ws查询的合约
-        self.orphanDict ={}
-
+        self.wsOrderDict = {}           # 存储ws返回的订单信息
+        self.sendOrderDict = {}         # 存储rest返回的订单信息
+        self.exchangeOrderDict = {}     # 存储交易所返回的id和本地id映射
+        self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
+        self.orphanDict ={}             # 存储丢单信息
 
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
@@ -1275,7 +1268,7 @@ class FuturesApi(OkexFuturesApi):
         order.exchange = EXCHANGE_OKEX
         order.price = rawData['price']
         order.price_avg = rawData['price_avg']
-        order.direction, order.offset = futurepriceTypeMap[str(rawData['type'])]
+        order.direction, order.offset = futureOrderTypeMap[str(rawData['type'])]
         order.totalVolume = rawData['amount']    
         order.exchangeOrderID = orderId        
         order.user_id = rawData['user_id']
@@ -1435,13 +1428,10 @@ class FuturesApi(OkexFuturesApi):
         vtOrderID = ':'.join([self.gatewayName, str(self.localNo)])
         # self.localNoQueue.put(str(self.localNo))
 
-        type_ = futurepriceTypeMapReverse[(req.direction, req.offset)]
+        type_ = futureOrderTypeMapReverse[(req.direction, req.offset)]
 
-        if req.priceType == PRICETYPE_LIMITPRICE:
-            req.priceType = 0
-        elif req.priceType == PRICETYPE_MARKETPRICE:
-            req.priceType = 1
         symbol = req.symbol[:3] + "_usd"
+        contract_type = req.symbol[4:]
 
         # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
         if not self.gateway.connected:
@@ -1506,6 +1496,8 @@ class FuturesApi(OkexFuturesApi):
             if result:
                 # 下单判断状态 3 ： 发单正常，下单成功，返回下单信息
                 order_id = str(data['order_id'])
+                self.exchangeOrderDict[order_id]= vtOrderID
+                self.localNoDict[str(self.localNo)] = order_id
             
             else:
                 # 下单判断状态 4 ： 发单正常，下单失败，返回报错信息
@@ -1518,7 +1510,7 @@ class FuturesApi(OkexFuturesApi):
                 order.vtSymbol = req.vtSymbol
                 order.gatewayName = self.gatewayName
                 order.status = STATUS_REJECTED
-                order.rejectedInfo = str(error_code) +':'+ sendOrderErrorMap[str(error_code)]
+                order.rejectedInfo = str(error_code) +':'+ orderErrorMap[str(error_code)]
                 order.bystrategy = req.bystrategy
                 order.direction = req.direction
                 order.offset= req.offset
@@ -1558,17 +1550,15 @@ class FuturesApi(OkexFuturesApi):
 
         validate = self.order_arbitration(order,source = 'sendorder')
 
-        if validate:
+        if not validate:
             # self.localOrderDict[str(self.localNo)] = order
             # self.localNoDict[str(self.localNo)] = vtOrderID
-            self.localNoDict[str(self.localNo)] = str(order.exchangeOrderID)
-        else:
             self.rest_qry_orders(symbol,req.contractType,order_id)
          
         # self.localOrderDict[str(self.localNo)] = order
         # self.localNoDict[str(self.localNo)] = vtOrderID
-        self.localNoDict[str(self.localNo)] = str(order.exchangeOrderID)
-        self.exchangeOrderDict[order_id]= vtOrderID
+        
+        
         return vtOrderID
     #---------------------------------------------------------------------------
     def cancelOrder(self, req):
@@ -1645,24 +1635,10 @@ class FuturesApi(OkexFuturesApi):
                     del self.exchangeOrderDict[str(order.exchangeOrderID)]
                     self.writeLog('gw_remove_finished(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
-            elif len(self.orphanDict)==1:
-                self.writeLog('found orphanOrder,id:%s,vt should be:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in self.orphanDict.values():
-                    if order.vtSymbol == orphanOrder.vtSymbol:
-                        order.vtOrderID = orphanOrder.vtOrderID
-                        order.orderID = orphanOrder.orderID
-                        order.bystrategy = orphanOrder.bystrategy
-                        self.gateway.onOrder(order)
-                        del self.orphanDict[order.vtOrderID]
-                    else:
-                        symbol = order.symbol[:3]+ '_usd'
-                        contract_type = order.symbol[4:]
-                        self.rest_qry_orders(symbol,contract_type,order.exchangeOrderID)
-                        self.writeLog('only one in orphandict, orphanorder mismatch, go rest try again')
 
-            elif len(self.orphanDict)>1:
+            elif len(self.orphanDict)>0:
                 self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in self.orphanDict.values():
+                for orphanOrder in self.orphanDict:
                     if order.vtSymbol == orphanOrder.vtSymbol:
                         if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
                             order.vtOrderID = orphanOrder.vtOrderID
@@ -1794,7 +1770,7 @@ class FuturesApi(OkexFuturesApi):
         "orders":
             [
                 {
-                    "amount":111,
+                    "amount":1,
                     "contract_name":"LTC0815",
                     "create_date":1408076414000,
                     "deal_amount":1,
@@ -1813,7 +1789,9 @@ class FuturesApi(OkexFuturesApi):
         }
         """
         try:
-            data = self.future_order_info(symbol,contractType,order_id,status)
+            data = self.future_order_info(
+                symbol,contractType,order_id,status)
+
         except ConnectionError as e:
             self.writeLog(u'qry_rest_order出错：%s' %e)
             return
@@ -1837,8 +1815,9 @@ class FuturesApi(OkexFuturesApi):
 
                     if order.tradedVolume > lastTradedVolume:
                         self.gateway.onOrder(copy(order))
-                        self.writeLog(u'gw_rest_order_update,%s ,thisvolume: %s'%(
+                        self.writeLog(u'gw_qry_order_update,%s ,thisvolume: %s'%(
                             order.vtOrderID,order.thisTradedVolume))
+
                         trade = VtTradeData()
                         trade.gatewayName = self.gatewayName
                         trade.symbol = order.symbol
@@ -1869,7 +1848,8 @@ class FuturesApi(OkexFuturesApi):
                 
                     self.orderDict[vtOrderID] = order   #更新order信息
         else:
-            self.writeLog('qryOrder: we don\'t have this order in record, attention!!  id = %s'%order_id)
+            self.writeLog(
+                'qryOrder: we don\'t have this order in record, attention!!  id = %s'%order_id)
             return
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):

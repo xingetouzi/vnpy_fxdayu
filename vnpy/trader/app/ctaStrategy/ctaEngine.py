@@ -98,14 +98,13 @@ class CtaEngine(object):
         self.registerEvent()
 
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, levelRate, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
         """发单"""
         
         contract = self.mainEngine.getContract(vtSymbol)
         req = VtOrderReq()
         
         req.symbol = contract.symbol
-        req.contractType = req.symbol[4:]
         req.exchange = contract.exchange
         req.vtSymbol = contract.vtSymbol
         req.price = self.roundToPriceTick(contract.priceTick, price)
@@ -118,13 +117,8 @@ class CtaEngine(object):
         # 设计为CTA引擎发出的委托只允许使用限价单
         # req.priceType = PRICETYPE_LIMITPRICE
 
-        req.priceType = marketPrice    #OKEX 用number作priceType
+        req.priceType = priceType
         req.levelRate = str(levelRate)
-
-        if marketPrice:
-            type_shown = PRICETYPE_MARKETPRICE
-        else:
-            type_shown = PRICETYPE_LIMITPRICE
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -142,6 +136,7 @@ class CtaEngine(object):
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
             req.offset = OFFSET_CLOSE
+
         # 委托转换
         reqList = self.mainEngine.convertOrderReq(req)
         vtOrderIDList = []
@@ -153,7 +148,7 @@ class CtaEngine(object):
             self.strategyOrderDict[strategy.name].add(vtOrderID)                         # 添加到策略委托号集合中
             vtOrderIDList.append(vtOrderID)
         self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
-                         %(strategy.name,type_shown,vtOrderID, vtSymbol, orderType, volume, price ))
+                         %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
 
         return vtOrderIDList
 
@@ -176,8 +171,6 @@ class CtaEngine(object):
                 req = VtCancelOrderReq()
                 req.vtSymbol = order.vtSymbol
                 req.symbol = order.symbol
-
-                req.contractType = order.contractType
                 req.exchange = order.exchange
                 req.frontID = order.frontID
                 req.sessionID = order.sessionID
@@ -186,22 +179,21 @@ class CtaEngine(object):
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.bystrategy, vtOrderID, order.vtSymbol))
 
     #----------------------------------------------------------------------
-    def sendStopOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
+    def sendStopOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发停止单（本地实现）"""
         self.stopOrderCount += 1
         stopOrderID = STOPORDERPREFIX + str(self.stopOrderCount)
 
         so = StopOrder()
         so.vtSymbol = vtSymbol
-        contractType = vtSymbol.split('.')[0]
-        so.contractType = contractType[4:]
         so.orderType = orderType
         so.price = price
-        so.priceType = marketPrice
+        so.priceType = priceType
         so.volume = volume
         so.strategy = strategy
         so.stopOrderID = stopOrderID
         so.status = STOPORDER_WAITING
+        so.bystrategy = strategy.name
 
         if orderType == CTAORDER_BUY:
             so.direction = DIRECTION_LONG
@@ -271,7 +263,7 @@ class CtaEngine(object):
                             price = tick.lowerLimit
 
                         # 发出市价委托
-                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.marketPrice, so.strategy)
+                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.priceType, so.strategy)
 
                         # 从活动停止单字典中移除该停止单
                         del self.workingStopOrderDict[so.stopOrderID]
@@ -533,6 +525,7 @@ class CtaEngine(object):
             self.strategyDict[name] = strategy
             strategy.symbolList = vtSymbolset
             strategy.mailAdd = mailAdd
+            strategy.name = name
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -720,10 +713,7 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            if not strategy.mailAdd:
-                self.writeCtaLog(u'you will receive an email notification for this func_error if you fill your email address in the ctaSetting.json')
-            else:
-                self.mail(content,strategy)
+            self.mail(content,strategy)
             self.writeCtaLog(content)
 
     #----------------------------------------------------------------------------------------
@@ -948,7 +938,6 @@ class CtaEngine(object):
         mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
         if "" in [mailaccount,mailpass,mailserver,mailport]:
             return self.writeCtaLog(u'Please fill sender\'s mail info in vtSetting.json')
-
 
         if strategy.mailAdd:
             if len(strategy.mailAdd)>1:

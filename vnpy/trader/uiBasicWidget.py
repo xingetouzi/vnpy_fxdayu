@@ -1086,10 +1086,6 @@ class TradingWidget(QtWidgets.QFrame):
         req.volume = volume
         req.direction = text_type(self.comboDirection.currentText())
         req.priceType = text_type(self.comboPriceType.currentText())
-        if req.priceType == PRICETYPE_LIMITPRICE:
-            req.priceType = 0
-        elif req.priceType == PRICETYPE_MARKETPRICE:
-            req.priceType = 1
         req.offset = text_type(self.comboOffset.currentText())
         req.currency = currency
         req.productClass = productClass
