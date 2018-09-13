@@ -780,9 +780,9 @@ class SpotApi(OkexSpotApi):
         
         # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
         self.localNo += 1
-        self.localNo = '_spot_' +str(self.localNo)
-        self.localNoQueue.put(str(self.localNo))
-        vtOrderID = ':'.join([self.gatewayName, str(self.localNo)])
+        self.localid = '_spot_' +str(self.localNo)
+        self.localNoQueue.put(str(self.localid))
+        vtOrderID = ':'.join([self.gatewayName, str(self.localid)])
         # 缓存委托信息
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -790,14 +790,14 @@ class SpotApi(OkexSpotApi):
         order.exchange = EXCHANGE_OKEX
         order.contractType = None
         order.vtSymbol = req.vtSymbol
-        order.orderID= str(self.localNo)
+        order.orderID= str(self.localid)
         order.vtOrderID = vtOrderID
         order.direction = req.direction
         order.offset = req.offset
         order.price = req.price
         order.totalVolume = req.volume
         
-        self.localOrderDict[str(self.localNo)] = order
+        self.localOrderDict[str(self.localid)] = order
         return vtOrderID
     
     #----------------------------------------------------------------------
