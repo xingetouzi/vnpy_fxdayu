@@ -74,7 +74,11 @@ class RpcObject(object):
     #----------------------------------------------------------------------
     def __picklePack(self, data):
         """使用cPickle打包"""
-        return pDumps(data)
+        try:
+            return pDumps(data)
+        except:
+            data[1] = list(data[1])
+            return pDumps(data)
     
     #----------------------------------------------------------------------
     def __pickleUnpack(self, data):
