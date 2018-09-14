@@ -63,7 +63,7 @@ class RsClient(RpcClient):
         self.eventEngine = eventEngine  # 绑定事件引擎对象
         
         self.usePickle()                # 使用cPickle序列化
-        self.subscribeTopic('')         # 订阅全部主题推送
+        self.subscribeTopic(b'')         # 订阅全部主题推送
         self.start()                    # 启动
 
 

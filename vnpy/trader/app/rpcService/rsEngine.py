@@ -83,7 +83,7 @@ class RsEngine(object):
     #----------------------------------------------------------------------
     def processEvent(self, event):
         """处理事件推送"""
-        self.server.publish('', event)
+        self.server.publish(b'', event)
     
     #----------------------------------------------------------------------
     def stop(self):
