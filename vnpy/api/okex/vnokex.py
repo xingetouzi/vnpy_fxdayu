@@ -707,6 +707,7 @@ class OkexFuturesApi(OkexApi):
             data["lever_rate"] = lever_rate
         print(data,"********send order api******")
         url = self._post_url_func("future_trade")
+        r = requests.post(url, data=data, timeout=60)
         # print(url)
         if r.status_code==200:
             return r.json()

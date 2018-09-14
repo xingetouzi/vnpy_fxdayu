@@ -112,7 +112,7 @@ class CtaEngine(object):
 
         req.productClass = strategy.productClass
         req.currency = strategy.currency
-        req.bystrategy = strategy.name
+        req.byStrategy = strategy.name
 
         # 设计为CTA引擎发出的委托只允许使用限价单
         # req.priceType = PRICETYPE_LIMITPRICE
@@ -176,7 +176,7 @@ class CtaEngine(object):
                 req.sessionID = order.sessionID
                 req.orderID = order.orderID
                 self.mainEngine.cancelOrder(req, order.gatewayName)
-                self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.bystrategy, vtOrderID, order.vtSymbol))
+                self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
 
     #----------------------------------------------------------------------
     def sendStopOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
@@ -193,7 +193,7 @@ class CtaEngine(object):
         so.strategy = strategy
         so.stopOrderID = stopOrderID
         so.status = STOPORDER_WAITING
-        so.bystrategy = strategy.name
+        so.byStrategy = strategy.name
 
         if orderType == CTAORDER_BUY:
             so.direction = DIRECTION_LONG
@@ -805,7 +805,7 @@ class CtaEngine(object):
             'totalVolume':order.totalVolume,
             'status':order.status,
             'createTime':order.orderTime,
-            'orderby':order.bystrategy
+            'orderby':order.byStrategy
             }
 
         self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
