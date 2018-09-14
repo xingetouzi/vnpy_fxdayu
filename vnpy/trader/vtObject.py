@@ -169,7 +169,7 @@ class VtOrderData(VtBaseData):
         self.orderTime = EMPTY_STRING           # 发单时间
         self.cancelTime = EMPTY_STRING          # 撤单时间
         self.exchangeOrderID = EMPTY_STRING     # 
-        self.bystrategy = EMPTY_STRING
+        self.byStrategy = EMPTY_STRING
         self.deliverTime = EMPTY_STRING
         self.rejectedInfo = EMPTY_STRING
         self.fee = EMPTY_FLOAT
@@ -205,7 +205,7 @@ class VtPositionData(VtBaseData):
         self.ydPosition = EMPTY_FLOAT           # 昨持仓
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
         self.amount = EMPTY_FLOAT
-        self.bystrategy = EMPTY_STRING
+        self.byStrategy = EMPTY_STRING
 
 
 ########################################################################
@@ -328,7 +328,7 @@ class VtOrderReq(object):
         self.priceType = EMPTY_STRING           # 价格类型
         self.direction = EMPTY_STRING           # 买卖
         self.offset = EMPTY_STRING              # 开平
-        self.bystrategy =EMPTY_STRING
+        self.byStrategy =EMPTY_STRING
         self.levelRate = EMPTY_INT
         
         # 以下为IB相关

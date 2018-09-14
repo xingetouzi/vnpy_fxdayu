@@ -195,6 +195,12 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
+
+        if orderReq.priceType == PRICETYPE_LIMITPRICE:
+            orderReq.priceType = 0
+        elif orderReq.priceType == PRICETYPE_MARKETPRICE:
+            orderReq.priceType =1
+
         if 'quarter' in orderReq.vtSymbol or 'week' in orderReq.vtSymbol:
             return self.futuresApi.sendOrder(orderReq)
         else:
@@ -1445,7 +1451,7 @@ class FuturesApi(OkexFuturesApi):
             order.status = STATUS_REJECTED
             order.gatewayName = self.gatewayName
             order.rejectedInfo = 'BAD NETWORK'
-            order.bystrategy = req.bystrategy
+            order.byStrategy = req.byStrategy
             order.direction = req.direction
             order.offset = req.offset
             order.price = req.price
@@ -1461,7 +1467,7 @@ class FuturesApi(OkexFuturesApi):
             # req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
         try:
             data = self.future_trade(
-                symbol, req.contractType ,req.price, req.volume, type_, req.priceType ,req.levelRate)  # restful
+                symbol, contract_type ,req.price, req.volume, type_, req.priceType ,req.levelRate)  # restful
         
         except:
             self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
@@ -1474,7 +1480,7 @@ class FuturesApi(OkexFuturesApi):
             order.status = STATUS_UNKNOWN
             order.gatewayName = self.gatewayName
             order.rejectedInfo = 'RESTFUL REQUEST ERROR'
-            order.bystrategy = req.bystrategy
+            order.byStrategy = req.byStrategy
             order.direction = req.direction
             order.offset = req.offset
             order.price = req.price
@@ -1511,7 +1517,7 @@ class FuturesApi(OkexFuturesApi):
                 order.gatewayName = self.gatewayName
                 order.status = STATUS_REJECTED
                 order.rejectedInfo = str(error_code) +':'+ orderErrorMap[str(error_code)]
-                order.bystrategy = req.bystrategy
+                order.byStrategy = req.byStrategy
                 order.direction = req.direction
                 order.offset= req.offset
                 order.price = req.price
@@ -1541,7 +1547,7 @@ class FuturesApi(OkexFuturesApi):
         order.totalVolume = req.volume
         order.orderTime = datetime.now()
         order.deliverTime = datetime.now()
-        order.bystrategy = req.bystrategy
+        order.byStrategy = req.byStrategy
         order.status = STATUS_UNKNOWN
         self.orderDict[vtOrderID] = order #更新order信息
         self.sendOrderDict[str(order_id)] = order
@@ -1601,7 +1607,7 @@ class FuturesApi(OkexFuturesApi):
                 order2 = self.sendOrderDict[str(order.exchangeOrderID)]
                 order.orderID = order2.orderID
                 order.vtOrderID = order2.vtOrderID
-                order.bystrategy = order2.bystrategy
+                order.byStrategy = order2.byStrategy
                 order.thisTradedVolume = order.tradedVolume - order2.tradedVolume
                 self.orderDict[order.vtOrderID] = order
                 self.gateway.onOrder(order)
@@ -1643,7 +1649,7 @@ class FuturesApi(OkexFuturesApi):
                         if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
                             order.vtOrderID = orphanOrder.vtOrderID
                             order.orderID = orphanOrder.orderID
-                            order.bystrategy = orphanOrder.bystrategy
+                            order.byStrategy = orphanOrder.byStrategy
                             self.gateway.onOrder(order)
                             del self.orphanDict[order.vtOrderID]
                     else:

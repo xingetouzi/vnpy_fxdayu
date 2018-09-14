@@ -290,6 +290,8 @@ class CtaEngine(object):
             try:
                 # 添加datetime字段
                 if not tick.datetime:
+                    if len(tick.time.split('.'))>1:
+                        tick.time = tick.time[:-2]
                     tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
             except ValueError:
                 self.writeCtaLog(traceback.format_exc())
@@ -692,7 +694,10 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：' + name)
             return None
-
+    #-----------------------------------
+    def getStrategyNames(self):
+        """查询所有策略名称"""
+        return self.strategyDict.keys()  
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
         """触发策略状态变化事件（通常用于通知GUI更新）"""
@@ -905,11 +910,12 @@ class CtaEngine(object):
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
-            contract = self.mainEngine.getContract(vtSymbol)
-            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
+            gatewayName = vtSymbol.split(':')[0]
+            self.mainEngine.initPosition(vtSymbol, gatewayName)
 
     def qryOrder(self,name,status=None):
         s = self.strategyOrderDict[name]
+        
         if len(list(s)):
             for vtOrderID in list(s):
                 if STOPORDERPREFIX not in vtOrderID:
