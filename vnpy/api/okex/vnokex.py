@@ -672,10 +672,7 @@ class OkexFuturesApi(OkexApi):
         # print(url)
         r = requests.post(url, data=data, timeout=60)
 
-        if r.status_code==200:
-            return r.json()
-        else:
-            return {'result':False,'text':r.status_code()}
+        return r.json()
     
     def future_order_info(self, symbol, contract_type, order_id, status=None, current_page=None, page_length=None):
         api_key = self.apiKey
@@ -692,10 +689,7 @@ class OkexFuturesApi(OkexApi):
         # print(url)
         
         r = requests.post(url, data=data, timeout=60)
-        if r.status_code==200:
-            return r.json()
-        else:
-            return {'error':r.status_code()}
+        return r.json()
 
     def future_trade(self, symbol, contract_type, price, amount, type, match_price=None, lever_rate=None):
         api_key = self.apiKey
@@ -709,10 +703,7 @@ class OkexFuturesApi(OkexApi):
         url = self._post_url_func("future_trade")
         r = requests.post(url, data=data, timeout=60)
         # print(url)
-        if r.status_code==200:
-            return r.json()
-        else:
-            return {'error':r.status_code()}
+        return r.json()
 
     def futureKline(self, symbol, type, contract_type, size=None, since=None):
         params = self._chg_dic_to_str(locals())

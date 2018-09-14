@@ -182,9 +182,10 @@ class MainEngine(object):
             gateway.qryPosition()
             
     #------------------------------------------------
-    def initPosition(self, vtSymbol, gatewayName):
+    def initPosition(self, vtSymbol):
         """策略初始化时查询特定接口的持仓"""
-        gateway = self.getGateway(gatewayName)
+        gatewayName = vtSymbol.split(':')
+        gateway = self.getGateway(gatewayName[1])
         if gateway:
             gateway.initPosition(vtSymbol)
 

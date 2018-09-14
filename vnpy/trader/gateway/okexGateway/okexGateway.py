@@ -1644,7 +1644,7 @@ class FuturesApi(OkexFuturesApi):
 
             elif len(self.orphanDict)>0:
                 self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in self.orphanDict:
+                for orphanOrder in list(self.orphanDict.values()):
                     if order.vtSymbol == orphanOrder.vtSymbol:
                         if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
                             order.vtOrderID = orphanOrder.vtOrderID

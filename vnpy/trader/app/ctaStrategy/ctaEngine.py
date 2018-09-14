@@ -910,8 +910,7 @@ class CtaEngine(object):
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
-            gatewayName = vtSymbol.split(':')[0]
-            self.mainEngine.initPosition(vtSymbol, gatewayName)
+            self.mainEngine.initPosition(vtSymbol)
 
     def qryOrder(self,name,status=None):
         s = self.strategyOrderDict[name]
