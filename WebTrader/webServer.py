@@ -511,6 +511,33 @@ class CtaStrategyStop(Resource):
         return {'result_code':'success','data':''}
 
 
+class CtaStrategyRestore(Resource):
+    """恢复策略"""
+
+    # ----------------------------------------------------------------------
+    def __init__(self):
+        """初始化"""
+        self.parser = reqparse.RequestParser()
+        self.parser.add_argument('name')
+        self.parser.add_argument('token')
+        super(CtaStrategyRestore, self).__init__()
+
+        # ----------------------------------------------------------------------
+
+    def post(self):
+        """订阅"""
+        args = self.parser.parse_args()
+        token = args['token']
+        if token != TOKEN:
+            return {'result_code': 'error', 'message': 'token error'}
+
+        name = args['name']
+
+        engine = me.getApp('CtaStrategy')
+        engine.restoreStrategy(name)
+        return {'result_code': 'success', 'data': ''}
+
+
 ########################################################################
 class CtaStrategyName(Resource):
     """»ñÈ¡²ßÂÔÃû"""
@@ -637,6 +664,7 @@ api.add_resource(CtaStrategyLoad, '/ctastrategy/load')
 api.add_resource(CtaStrategyInit, '/ctastrategy/init')
 api.add_resource(CtaStrategyStart, '/ctastrategy/start')
 api.add_resource(CtaStrategyStop, '/ctastrategy/stop')
+api.add_resource(CtaStrategyRestore, '/ctastrategy/restore')
 api.add_resource(CtaStrategyParam, '/ctastrategy/param')
 api.add_resource(CtaStrategyVar, '/ctastrategy/var')
 api.add_resource(CtaStrategyName, '/ctastrategy/name')

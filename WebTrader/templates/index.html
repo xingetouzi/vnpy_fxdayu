@@ -320,6 +320,7 @@
                                     <el-button size="mini" :id="item.name" round @click="doAction(item.name,'init')">初始化</el-button>
                                     <el-button size="mini" round @click="doAction(item.name,'start')">启动</el-button>
                                     <el-button size="mini" round @click="doAction(item.name,'stop')">停止</el-button>
+                                    <el-button size="mini" round @click="doAction(item.name,'restore')">恢复</el-button>
                                     <template>
                                         <el-table :data="[item.par]" stripe style="width: 100%;    margin-bottom: 12px;">
                                             <el-table-column :pro="subindex" :label="subindex" v-for="(subitem, subindex) in item.par" width="120">
@@ -365,6 +366,7 @@
 var host = window.location;
 var socket = io.connect(host + "", { transports: ['websocket'] });
 var _strategy = new Object()
+var strategyNames = new Object()
 function sortTime(a, b) {
     return b.logTime.replace(/:/g,"") - a.logTime.replace(/:/g,"")
 }
@@ -454,12 +456,12 @@ new Vue({
                         that.$message({ message: '已登录', type: 'success' });
                         that.config.token = res.data.data
                         that.LoginFormVisible = false
-                        that.onLoadInfo('account', 'account')
-                        that.onLoadInfo('trades', 'trade')
-                        that.onLoadInfo('position', 'position')
-                        that.onLoadInfo('order', 'order')
-                        that.onLoadInfo('log', 'log')
-                        that.onLoadInfo('error', 'error')
+                        //that.onLoadInfo('account', 'account')
+                        //that.onLoadInfo('trades', 'trade')
+                        //that.onLoadInfo('position', 'position')
+                        //that.onLoadInfo('order', 'order')
+                        //that.onLoadInfo('log', 'log')
+                        //that.onLoadInfo('error', 'error')
                     } else {
                         that.$notify({ title: '警告', message: 'token获取失败，用户名或密码错误', type: 'warning', duration: 0, });
                     }
@@ -495,6 +497,9 @@ new Vue({
                 case "start":
                     info = "启动"
                     break;
+                case "restore":
+                    info = "恢复"
+                    break;
             }
 
             axios.post(host + "/ctastrategy/" + type, {
@@ -510,6 +515,17 @@ new Vue({
                     } else {
                         that.$message({ message: name + info + '成功', type: 'fail' });
                     }
+                    if(name == '') {
+                        strategyNames.forEach((item) => {
+                            _strategy[item] = {name: item};
+                        that.gParams(item)
+                        that.gVar(item)
+                        })
+                    } else {
+                            that.gParams(name)
+                            that.gVar(name)
+                        }
+
                 })
                 .catch(res => {
                     that.$message({ message: name + info + '成功', type: 'fail' });
@@ -539,8 +555,8 @@ new Vue({
                         that.$notify({ title: '警告', message: 'ctastrategy/load接口报错', type: 'warning', duration: 0, });
                         return;
                     } else {
-                        let strategy = res.data.data;
-                        strategy.forEach((item) => {
+                        strategyNames = res.data.data;
+                        strategyNames.forEach((item) => {
                             _strategy[item] = { name: item };
                             that.gParams(item)
                             that.gVar(item)
