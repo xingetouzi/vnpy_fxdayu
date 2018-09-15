@@ -17,8 +17,8 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
 
     # 设置回测用的数据起始日期
-    engine.setStartDate('20130616',initDays=1)               # 设置回测用的数据起始日期
-    engine.setEndDate('20160702')
+    engine.setStartDate('20170616 09:00',initHours=1)               # 设置回测用的数据起始日期
+    engine.setEndDate('20170702 00:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
     engine.setRate(0.3/10000)   # 万0.3
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     engine.setDatabase(MINUTE_DB_NAME)
     
     # 在引擎中创建策略对象
-    d = {'vtSymbol':'IF0000'}
+    d = {'symbolList':['IF0000','IH0000']}
     engine.initStrategy(MultiSignalStrategy, d)
     
     # 开始跑回测

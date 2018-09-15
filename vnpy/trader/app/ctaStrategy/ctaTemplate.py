@@ -508,14 +508,14 @@ class BarGenerator(object):
         self.xminBar.datetime = bar.datetime
         self.xminBar.openInterest = bar.openInterest
         self.xminBar.volume += int(bar.volume)
+
+        # 生成上一X分钟K线的时间戳
+        self.xminBar.datetime = self.xminBar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+        self.xminBar.date = self.xminBar.datetime.strftime('%Y%m%d')
+        self.xminBar.time = self.xminBar.datetime.strftime('%H:%M:%S.%f')
         
         # X分钟已经走完
         if not bar.datetime.minute % self.xmin:  # 可以用X整除
-            # 生成上一X分钟K线的时间戳
-            self.xminBar.datetime = self.xminBar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.xminBar.date = self.xminBar.datetime.strftime('%Y%m%d')
-            self.xminBar.time = self.xminBar.datetime.strftime('%H:%M:%S.%f')
-
             # 推送
             self.onXminBar(self.xminBar)
 

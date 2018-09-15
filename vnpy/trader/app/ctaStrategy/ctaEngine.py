@@ -881,7 +881,7 @@ class CtaEngine(object):
         # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
-            if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
+            if 'week' in  symbol or 'quarter' in symbol:
                 if 'posDict' in strategy.syncList:
                     strategy.posDict[symbol+"_LONG"] = 0
                     strategy.posDict[symbol+"_SHORT"] = 0

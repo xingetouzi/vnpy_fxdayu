@@ -21,8 +21,8 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
 
     # 设置回测用的数据起始日期
-    engine.setStartDate('20130616',initDays=1)               # 设置回测用的数据起始日期
-    engine.setEndDate('20130702')
+    engine.setStartDate('20170616 09:00',initHours=1)               # 设置回测用的数据起始日期
+    engine.setEndDate('20170702 00:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
     engine.setRate(0.3/10000)   # 万0.3
@@ -38,7 +38,7 @@ if __name__ == '__main__':
     setting.addParameter('lmaPeriod', 12, 20, 2)    # 增加第一个优化参数atrLength，起始12，结束20，步进2
     setting.addParameter('cciPeriod', 20, 30, 5)        # 增加第二个优化参数atrMa，起始20，结束30，步进5
     setting.addParameter('rsiEntry', 5)            # 增加一个固定数值的参数
-    setting.addParameter('vtSymbol','IF0000')
+    setting.addParameter('symbolList':['IF0000','IH0000'])
     
     # 性能测试环境：I7-3770，主频3.4G, 8核心，内存16G，Windows 7 专业版
     # 测试时还跑着一堆其他的程序，性能仅供参考
