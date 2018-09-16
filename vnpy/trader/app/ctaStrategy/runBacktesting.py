@@ -1,15 +1,12 @@
 # encoding: UTF-8
-
 """
 展示如何执行策略回测。
 """
-
 from __future__ import division
 from ctaBacktesting import BacktestingEngine, MINUTE_DB_NAME
 
-
 if __name__ == '__main__':
-    from strategy.MultiSignal import MultiSignalStrategy
+    from strategy.strategytest import TestStrategy
     
     # 创建回测引擎
     engine = BacktestingEngine()
@@ -17,8 +14,8 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
 
     # 设置回测用的数据起始日期
-    engine.setStartDate('20170616 09:00',initHours=1)               # 设置回测用的数据起始日期
-    engine.setEndDate('20170702 00:00')
+    engine.setStartDate('20180729 06:00',initHours=1)               # 设置回测用的数据起始日期
+    engine.setEndDate('20180801 08:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
     engine.setRate(0.3/10000)   # 万0.3
@@ -29,12 +26,19 @@ if __name__ == '__main__':
     engine.setDatabase(MINUTE_DB_NAME)
     
     # 在引擎中创建策略对象
-    d = {'symbolList':['IF0000','IH0000']}
-    engine.initStrategy(MultiSignalStrategy, d)
+    d = {'symbolList':['tBTCUSD:bitfinex']}
+    engine.initStrategy(TestStrategy, d)
     
     # 开始跑回测
     engine.runBacktesting()
-    
+    # 输出策略的回测日志
+    import pandas as pd
+    from datetime import datetime
+    import os 
+    log = engine.logList
+    dataframe = pd.DataFrame(log)
+    filename = os.path.join(os.path.expanduser("~"), "Desktop/") + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
+    dataframe.to_csv(filename,index=False,sep=',')    
     # 显示回测结果
     engine.showBacktestingResult()
     engine.showDailyResult()

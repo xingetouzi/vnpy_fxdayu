@@ -963,7 +963,7 @@ class CtaEngine(object):
 
         ret=True
         try:
-            my_context = my_context +"<br><br> from strategy: "+ strategy.name
+            my_context = my_context +"<br><br> from strategy: "+ strategy.name+"<br><br>Good Luck<br>"+ datetime.now().strftime("%Y%m%d %H:%M:%S")
             msg=MIMEText(my_context,'html','utf-8')
             msg['From']=formataddr(['VNPY_CryptoCurrency',mailaccount])
             msg['To']=to_receiver#formataddr(["收件人昵称",to_receiver])

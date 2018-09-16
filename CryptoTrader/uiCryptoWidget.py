@@ -502,7 +502,6 @@ class LogMonitor(BasicMonitor):
         self.setItem(0, 2, cellLogContent)
 
 
-
 ########################################################################
 class TradeMonitor(BasicMonitor):
     """成交监控"""
@@ -519,8 +518,9 @@ class TradeMonitor(BasicMonitor):
         d['symbol'] = {'chinese':vtText.CONTRACT_SYMBOL, 'cellType':BasicCell}
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
         d['offset'] = {'chinese':vtText.OFFSET, 'cellType':BasicCell}
-        d['price'] = {'chinese':vtText.PRICE, 'cellType':BasicCell}
-        d['volume'] = {'chinese':vtText.VOLUME, 'cellType':BasicCell}
+        d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
+        d['price_avg'] = {'chinese':vtText.PRICE_AVG, 'cellType':NumCell}
+        d['volume'] = {'chinese':vtText.VOLUME, 'cellType':NumCell}
         d['tradeTime'] = {'chinese':vtText.TRADE_TIME, 'cellType':BasicCell}
         self.setHeaderDict(d)
         
@@ -532,9 +532,8 @@ class TradeMonitor(BasicMonitor):
         self.initTable()
         self.registerEvent()
 
-        self.setFixedHeight(200)
+        # self.setFixedHeight(200)
         
-
 ########################################################################
 class OrderMonitor(BasicMonitor):
     """委托监控"""
@@ -555,8 +554,11 @@ class OrderMonitor(BasicMonitor):
         d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
         d['totalVolume'] = {'chinese':vtText.ORDER_VOLUME, 'cellType':NumCell}
         d['tradedVolume'] = {'chinese':vtText.TRADED_VOLUME, 'cellType':NumCell}
-        d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
+        d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}        
+        d['rejectedInfo'] = {'chinese':vtText.ORDER_REJECTED_INFO, 'cellType':BasicCell}
+        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
+        d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
         d['byStrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}
         self.setHeaderDict(d)
         
@@ -631,6 +633,7 @@ class AccountMonitor(BasicMonitor):
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         d['accountID'] = {'chinese':vtText.ACCOUNT_ID, 'cellType':BasicCell}
         d['coinSymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
+        d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':NumCell}
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
         d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
         self.setHeaderDict(d)
@@ -914,8 +917,8 @@ class TradingWidget(QtWidgets.QFrame):
         self.depthMonitor = DepthMonitor(self.mainEngine, self.eventEngine)
 
         # 发单按钮
-        buttonBuy = QtWidgets.QPushButton(u'买入')
-        buttonSell = QtWidgets.QPushButton(u'卖出')
+        buttonBuy = QtWidgets.QPushButton(u'买/多')
+        buttonSell = QtWidgets.QPushButton(u'卖/空')
         buttonCancelAll = QtWidgets.QPushButton(vtText.CANCEL_ALL)
         
         size = buttonBuy.sizeHint()
