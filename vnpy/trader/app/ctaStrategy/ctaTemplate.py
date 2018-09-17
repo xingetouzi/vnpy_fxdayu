@@ -3,7 +3,6 @@
 '''
 本文件包含了CTA引擎中的策略开发用模板，开发策略时需要继承CtaTemplate类。
 '''
-
 import numpy as np
 import pandas as  pd
 import datetime
@@ -14,7 +13,6 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtBarData
 
 from .ctaBase import *
-
 
 ########################################################################
 class CtaTemplate(object):
@@ -40,11 +38,6 @@ class CtaTemplate(object):
     symbolList = []  # 策略的标的列表
     barsList = []
     ticksList = []
-    posDict = {}
-    eveningDict = {}
-    bondDict = {}
-    accountDict = {}
-    frozenDict = {}
 
     # 参数列表，保存了参数的名称
     paramList = ['name',
@@ -77,7 +70,6 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
-        self.bgDict = self.bg(1)
         raise NotImplementedError
 
         # ----------------------------------------------------------------------
@@ -93,7 +85,6 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送（必须由用户继承实现）"""
-        self.bgDict[tick.vtSymbol].updateTick(tick)
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
@@ -181,14 +172,14 @@ class CtaTemplate(object):
         self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
 
     # ----------------------------------------------------------------------
-    def loadTick(self, days):
+    def loadTick(self, hours=1):
         """读取tick数据"""
-        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, days)
+        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
 
         # ----------------------------------------------------------------------
-    def loadBar(self, days):
+    def loadBar(self, hours=1):
         """读取bar数据"""
-        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, days)
+        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
 
     # ----------------------------------------------------------------------
     def writeCtaLog(self, content):
@@ -205,12 +196,14 @@ class CtaTemplate(object):
     def getEngineType(self):
         """查询当前运行的环境"""
         return self.ctaEngine.engineType
+
     #----------------------------------------------------------------------
     def saveSyncData(self):
         """保存同步数据到数据库"""
         if self.trading:
             self.ctaEngine.saveSyncData(self)
-        #-----    
+
+        #--------------------------------------------------    
     def loadSyncData(self):
         """从数据库读取同步数据"""
         self.ctaEngine.loadSyncData(self)
@@ -226,7 +219,8 @@ class CtaTemplate(object):
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
             return data
         else:
-            self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]，同时size不得大于2000')
+            self.writeCtaLog(
+                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]，同时size不得大于2000')
             return
         
     def qryOrder(self, vtSymbol, status= None):
@@ -239,45 +233,37 @@ class CtaTemplate(object):
         
     def mail(self,my_context):
         """邮件发送模块"""
-        return self.ctaEngine.mail(my_context,self)
+        self.ctaEngine.mail(my_context,self)
 
-    # def on15minBar(self,bar):
-    # def on30minBar(self,bar):
-    # def bg(self,min = 15):
-    #     if min = 1:
-    #         self.bgDict = {
-    #                 sym: BarGenerator(self.onBar)
-    #                 for sym in self.symbolList
-    #                 }
-    #         return self.bgDict 
+    def initBacktesingData(self):
+        if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+            initdata = self.loadBar()
+            for bar in initdata:
+                self.onBar(bar)  # 将历史数据直接推送到onBar
+    
+    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
+        if xmin: 
+            variable = "bg%sDict"%xmin
+            variable2 = "am%sDict"%xmin
+        else:
+            variable = "bgDict"
+            variable2 = "amDict"
 
-    #     elif min = 5:
-    #         self.bg5Dict = {
-    #                 sym: BarGenerator(self.onBar, 5, self.on5MinBar)
-    #                 for sym in self.symbolList
-    #                 }
-    #         return self.bg5Dict 
-    #     elif min = 10:
-    #         self.bg15Dict = {
-    #                 sym: BarGenerator(self.onBar, 10, self.on10MinBar)
-    #                 for sym in self.symbolList
-    #                 }
-    #         return self.bg10Dict 
-    #     elif min = 15:
-    #         self.bg15Dict = {
-    #                 sym: BarGenerator(self.onBar, 15, self.on15MinBar)
-    #                 for sym in self.symbolList
-    #                 }
-    #         return self.bg15Dict 
-    #     elif min = 30:
-    #         self.bg30Dict = {
-    #                 sym: BarGenerator(self.onBar, 30, self.on30MinBar)
-    #                 for sym in self.symbolList
-    #                 }
-    #         return self.bg30Dict 
+        bgDict= {
+            sym: BarGenerator(onBar,xmin,onXminBar)
+            for sym in self.symbolList }
+        
+        amDict = {
+            sym: ArrayManager(size)
+            for sym in self.symbolList }
 
+        setattr(self, variable, bgDict)
+        setattr(self, variable2, amDict)
 
-
+    def generateHFBar(self,xSecond):
+        self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond)
+                        for sym in self.symbolList}
+            
 ########################################################################
 class TargetPosTemplate(CtaTemplate):
     """
@@ -344,9 +330,8 @@ class TargetPosTemplate(CtaTemplate):
     def setTargetPos(self, targetPos):
         """设置目标仓位"""
         self.targetPos = targetPos
-        
         self.trade()
-        
+    
     #----------------------------------------------------------------------
     def trade(self):
         """执行交易"""
@@ -415,7 +400,6 @@ class TargetPosTemplate(CtaTemplate):
                 else:
                     l = self.short(shortPrice, abs(posChange))
             self.orderList.extend(l)
-    
 #
 # ########################################################################
 class BarGenerator(object):
@@ -424,7 +408,6 @@ class BarGenerator(object):
     1. 基于Tick合成1分钟K线
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
-
     # ----------------------------------------------------------------------
     def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0):
         """Constructor"""
@@ -436,7 +419,7 @@ class BarGenerator(object):
         self.onXminBar = onXminBar  # X分钟K线的回调函数
 
         self.hfBar = None  # 高频K线对象
-        self.onhfBar = onBar
+        self.onHFBar = onBar
         self.xSecond = xSecond
         self.lastSecond = 0
 
@@ -487,7 +470,7 @@ class BarGenerator(object):
         self.bar.openInterest = tick.openInterest
 
         # if self.lastTick:
-            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量
+            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
         if tick.volumeChange:
             self.bar.volume += tick.lastVolume
 
@@ -508,7 +491,7 @@ class BarGenerator(object):
             elif not (self.hfBar.datetime.second) % self.xSecond:
                 if (self.hfBar.datetime.second != self.lastSecond) and tick.datetime.second > 10:
                     # 推送已经结束的上一分钟K线
-                    self.onhfBar(self.hfBar)
+                    self.onHFBar(self.hfBar)
                     self.lastSecond = self.hfBar.datetime.second
 
                     # 创建新的K线对象
@@ -535,7 +518,7 @@ class BarGenerator(object):
             self.hfBar.openInterest = tick.openInterest
 
             # if self.lastTick:
-                # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量
+                # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
             if tick.volumeChange:
                 self.hfBar.volume += tick.lastVolume
     # ----------------------------------------------------------------------
@@ -567,45 +550,6 @@ class BarGenerator(object):
         # self.xminBar.datetime = bar.datetime
         self.xminBar.openInterest = bar.openInterest
         self.xminBar.volume += int(bar.volume)
-
-        
-        
-        # X分钟已经走完
-        if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
-            # 推送
-            self.onXminBar(self.xminBar)
-
-            # 清空老K线缓存对象
-            self.xminBar = None
-
-        # 尚未创建对象
-        if not self.hfBar:
-            self.hfBar = VtBarData()
-
-            self.hfBar.vtSymbol = bar.vtSymbol
-            self.hfBar.symbol = bar.symbol
-            self.hfBar.exchange = bar.exchange
-
-            self.hfBar.open = bar.open
-            self.hfBar.high = bar.high
-            self.hfBar.low = bar.low
-            # 生成上一X分钟K线的时间戳
-            self.hfBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.hfBar.date = bar.datetime.strftime('%Y%m%d')
-            self.hfBar.time = bar.datetime.strftime('%H:%M:%S.%f')
-
-            # 累加老K线
-        else:
-            self.xminBar.high = max(self.xminBar.high, bar.high)
-            self.xminBar.low = min(self.xminBar.low, bar.low)
-
-        # 通用部分
-        self.xminBar.close = bar.close
-        # self.xminBar.datetime = bar.datetime
-        self.xminBar.openInterest = bar.openInterest
-        self.xminBar.volume += int(bar.volume)
-
-        
         
         # X分钟已经走完
         if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
@@ -620,8 +564,6 @@ class BarGenerator(object):
         """手动强制立即完成K线合成"""
         self.onBar(self.bar)
         self.bar = None
-
-
 #
 # ########################################################################
 class ArrayManager(object):
@@ -762,8 +704,7 @@ class ArrayManager(object):
 
         return up, down
 
-        # ----------------------------------------------------------------------
-
+    # ----------------------------------------------------------------------
     def keltner(self, n, dev, array=False):
         """肯特纳通道"""
         mid = self.sma(n, array)

@@ -129,7 +129,7 @@ class BacktestingEngine(object):
     #------------------------------------------------
     
     #----------------------------------------------------------------------
-    def setStartDate(self, startDate='20100416 1:1', initHours=10):
+    def setStartDate(self, startDate='20100416 1:1', initHours=0):
         """设置回测的启动日期"""
         self.startDate = startDate
         self.initHours = initHours
@@ -224,7 +224,8 @@ class BacktestingEngine(object):
 
         start = startDate.strftime("%Y%m%d %H:%M")
         end = endDate.strftime("%Y%m%d %H:%M")
-        # date_list = get_date_list(start=startDate, end=endDate)    # 按日回测
+
+        # date_list = get_date_list(start=startDate, end=endDate)    # 原版的按日回测
         datetime_list = get_time_list(start=startDate, end=endDate)
         datetime_list = [d.strftime("%Y%m%d %H:%M") for d in datetime_list]
 
@@ -249,7 +250,7 @@ class BacktestingEngine(object):
                     except:
                         continue
                     
-                    dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<=end)].iterrows()]                    
+                    dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]                    
                     symbols_no_data[symbol].remove(file.replace(".h5",""))
 
         # 从mongodb下载数据，并缓存到本地
@@ -257,16 +258,17 @@ class BacktestingEngine(object):
         try:            
             for symbol in symbolList:
                 if symbol in self.dbClient[self.dbName].collection_names():
+
                     if len(symbols_no_data[symbol])>0:
+                        
                         collection = self.dbClient[self.dbName][symbol]
                         Cursor = collection.find({"date": {"$in":symbols_no_data[symbol]}})   # 按日回测检索
-                        # start_temp =  datetime.strptime(symbols_no_data[symbol][0], '%Y%m%d %H:%M')
-                        # end_temp = datetime.strptime(symbols_no_data[symbol][-1], '%Y%m%d %H:%M')
-                        # Cursor = collection.find({"datetime": {'$gte':start_temp, '$lte':end_temp}})
                         data_df = pd.DataFrame(list(Cursor))
                         if data_df.size > 0:
                             del data_df["_id"]
-                        dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<=end)].iterrows()]
+
+                        # 筛选出需要的时间段
+                        dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]
 
                         # 缓存到本地文件
                         if data_df.size>0:
@@ -278,6 +280,9 @@ class BacktestingEngine(object):
                                 if file_data.size>0:
                                     file_path = os.path.join(save_path, "%s.h5" % (date,))
                                     file_data.to_hdf(file_path, key="d")
+                    else:
+                        self.output("We use full range of local data in %s "%symbol)
+
                 else:
                     self.output("We don\'t have %s in database"%symbol)
                     self.output("Our database have these symbols: %s"%self.dbClient[self.dbName].collection_names())
@@ -295,6 +300,7 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def runBacktesting(self):
         """运行回测"""
+
         dataLimit = 1000000
         self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
         # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
@@ -348,7 +354,7 @@ class BacktestingEngine(object):
         """新的K线"""
         self.barDict[bar.vtSymbol] = bar
         self.dt = bar.datetime        
-        # print(self.dt)
+
         self.crossLimitOrder(bar)      # 先撮合限价单
         self.crossStopOrder(bar)       # 再撮合停止单
         self.strategy.onBar(bar)       # 推送K线到策略中
@@ -586,7 +592,7 @@ class BacktestingEngine(object):
         order.vtOrderID = orderID
         order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
         order.priceType = priceType
-        order.levelRate = levelRate
+        # order.levelRate = levelRate
         
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -602,19 +608,19 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE     
 
-        if levelRate:
-            if order.offset == OFFSET_OPEN and (self.balance < (self.size /levelRate * order.totalVolume)):
-                order.status = STATUS_REJECTED
-                order.rejectedInfo = "INSUFFICIENT FUND"
-            elif order.offset == OFFSET_OPEN and (self.balance > (self.size /levelRate * order.totalVolume)):
-                self.balance -= self.size /levelRate * order.totalVolume
+        # if levelRate:
+        #     if order.offset == OFFSET_OPEN and (self.balance < (self.size /levelRate * order.totalVolume)):
+        #         order.status = STATUS_REJECTED
+        #         order.rejectedInfo = "INSUFFICIENT FUND"
+        #     elif order.offset == OFFSET_OPEN and (self.balance > (self.size /levelRate * order.totalVolume)):
+        #         self.balance -= self.size /levelRate * order.totalVolume
         
-            if order.offset == OFFSET_CLOSE and order.direction == DIRECTION_SHORT and strategy.eveningDict[vtSymbol+"_LONG"]<order.totalVolume:
-                order.status = STATUS_REJECTED
-                order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
-            elif order.offset == OFFSET_CLOSE and order.direction == DIRECTION_LONG and strategy.eveningDict[vtSymbol+"_SHORT"]<order.totalVolume:
-                order.status = STATUS_REJECTED
-                order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
+        #     if order.offset == OFFSET_CLOSE and order.direction == DIRECTION_SHORT and strategy.eveningDict[vtSymbol+"_LONG"]<order.totalVolume:
+        #         order.status = STATUS_REJECTED
+        #         order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
+        #     elif order.offset == OFFSET_CLOSE and order.direction == DIRECTION_LONG and strategy.eveningDict[vtSymbol+"_SHORT"]<order.totalVolume:
+        #         order.status = STATUS_REJECTED
+        #         order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
 
         # 保存到限价单字典中
         self.workingLimitOrderDict[orderID] = order
@@ -748,6 +754,9 @@ class BacktestingEngine(object):
             if 'frozenDict' in strategy.syncList:
                 strategy.frozenDict[symbol] = 0
         print("仓位字典构造完成","\n初始仓位:",strategy.posDict,"\n可平仓量:",strategy.eveningDict)
+    
+    def mail(self,content,strategy):
+        pass
                 
     #------------------------------------------------
     # 结果计算相关
@@ -1603,7 +1612,7 @@ def get_date_list(start=None, end=None):
 
 def gen_hours(b_date, days, hours):
     # day = timedelta(days=1)
-    hour = timedelta(hours = 1)
+    hour = timedelta(minutes = 1)
     for i in range(days*24+hours):
         yield b_date + hour*i
 

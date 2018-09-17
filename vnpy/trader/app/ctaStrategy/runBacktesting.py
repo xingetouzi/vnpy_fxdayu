@@ -6,7 +6,7 @@ from __future__ import division
 from ctaBacktesting import BacktestingEngine, MINUTE_DB_NAME
 
 if __name__ == '__main__':
-    from strategy.strategytest import TestStrategy
+    from strategy.strategydemo import DemoStrategy
     
     # 创建回测引擎
     engine = BacktestingEngine()
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     
     # 在引擎中创建策略对象
     d = {'symbolList':['tBTCUSD:bitfinex']}
-    engine.initStrategy(TestStrategy, d)
+    engine.initStrategy(DemoStrategy, d)
     
     # 开始跑回测
     engine.runBacktesting()

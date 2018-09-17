@@ -1,7 +1,7 @@
 [
     {
-        "name": "TEST",
-        "className": "TestStrategy",
+        "name": "DEMO",
+        "className": "DemoStrategy",
         "symbolList": ["btc_this_week:OKEX_1","btc_quarter:OKEX_1"],
         "mailAdd":[""]
     }
