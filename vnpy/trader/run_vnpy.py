@@ -8,6 +8,8 @@ import sys
 import platform
 system = platform.system()
 
+is_windows = "win" in system
+
 # vn.trader模块
 from vnpy.event import EventEngine
 from vnpy.trader.vtEngine import MainEngine
@@ -15,7 +17,11 @@ from vnpy.trader.uiQt import createQApp
 from vnpy.trader.uiMainWindow import MainWindow
 
 # 加载底层接口
-from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGateway,bitmexGateway)
+if is_windows:
+    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGateway,bitmexGateway)
+else:
+    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,bitmexGateway)
+    ctpGateway = None
 
 # 加载上层应用
 from vnpy.trader.app import (riskManager, 
@@ -45,8 +51,11 @@ def main():
     me.addGateway(okexGateway)
     me.addGateway(huobiGateway)
     me.addGateway(binanceGateway)
-    me.addGateway(ctpGateway)
     me.addGateway(bitmexGateway)
+
+    if is_windows:
+        me.addGateway(ctpGateway)
+    
     # 添加上层应用
     me.addApp(riskManager)
     me.addApp(ctaStrategy)
