@@ -436,7 +436,7 @@ class BacktestingEngine(object):
                     trade.vtOrderID = order.orderID
                     trade.direction = order.direction
                     trade.offset = order.offset
-                    trade.levelRate = order.levelRate
+                    # trade.levelRate = order.levelRate
 
                     # 以买入为例：
                     # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
@@ -520,7 +520,7 @@ class BacktestingEngine(object):
                     trade.vtSymbol = so.vtSymbol
                     trade.tradeID = tradeID
                     trade.vtTradeID = tradeID
-                    trade.levelRate = levelRate
+                    # trade.levelRate = levelRate
 
                     if buyCross and so.offset == OFFSET_OPEN: # 买开
                         self.strategy.posDict[symbol+"_LONG"] += so.volume
@@ -985,8 +985,8 @@ class BacktestingEngine(object):
     def showBacktestingResult(self):
         """显示回测结果"""
         d = self.calculateBacktestingResult()
-        if not d:
-            return
+        # if not d:
+        #     return
         
         # 输出
         self.output('-' * 30)
@@ -1197,8 +1197,8 @@ class BacktestingEngine(object):
     def calculateDailyStatistics(self, df):
         """计算按日统计的结果"""
 
-        if df is None:
-            return
+        # if df is None:
+        #     return
         
         df['balance'] = df['netPnl'].cumsum() + self.capital
         df['return'] = (np.log(df['balance']) - np.log(df['balance'].shift(1))).fillna(0)
@@ -1275,10 +1275,10 @@ class BacktestingEngine(object):
     #----------------------------------------------------------------------
     def showDailyResult(self, df=None, result=None):
         """显示按日统计的交易结果"""
-        if df is None:
-            return
-            df = self.calculateDailyResult()
-            df, result = self.calculateDailyStatistics(df)
+        # if df is None:
+        #     return
+        df = self.calculateDailyResult()
+        df, result = self.calculateDailyStatistics(df)
             
         # 输出统计结果
         self.output('-' * 30)

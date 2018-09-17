@@ -3,7 +3,8 @@
 展示如何执行策略回测。
 """
 from __future__ import division
-from ctaBacktesting import BacktestingEngine, MINUTE_DB_NAME
+from ctaBacktesting import BacktestingEngine
+from vnpy.trader.app.ctaStrategy.ctaBase import *
 
 if __name__ == '__main__':
     from strategy.strategydemo import DemoStrategy
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     engine.setDatabase(MINUTE_DB_NAME)
     
     # 在引擎中创建策略对象
-    d = {'symbolList':['tBTCUSD:bitfinex']}
+    d = {'symbolList':['tBTCUSD:bitfinex','tBTCUSD:bitfinex']}
     engine.initStrategy(DemoStrategy, d)
     
     # 开始跑回测

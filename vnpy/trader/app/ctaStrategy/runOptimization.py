@@ -7,9 +7,8 @@
 from __future__ import division
 from __future__ import print_function
 
-
-from vnpy.trader.app.ctaStrategy.ctaBacktesting import BacktestingEngine, MINUTE_DB_NAME, OptimizationSetting
-
+from vnpy.trader.app.ctaStrategy.ctaBacktesting import BacktestingEngine, OptimizationSetting
+from vnpy.trader.app.ctaStrategy.ctaBase import *
 
 if __name__ == '__main__':
     from strategy.MultiSignal import MultiSignalStrategy    
@@ -38,7 +37,7 @@ if __name__ == '__main__':
     setting.addParameter('lmaPeriod', 12, 20, 2)    # 增加第一个优化参数atrLength，起始12，结束20，步进2
     setting.addParameter('cciPeriod', 20, 30, 5)        # 增加第二个优化参数atrMa，起始20，结束30，步进5
     setting.addParameter('rsiEntry', 5)            # 增加一个固定数值的参数
-    setting.addParameter('symbolList':['IF0000','IH0000'])
+    setting.addParameter('symbolList':['tBTCUSD:bitfinex','tBTCUSD:bitfinex'])
     
     # 性能测试环境：I7-3770，主频3.4G, 8核心，内存16G，Windows 7 专业版
     # 测试时还跑着一堆其他的程序，性能仅供参考

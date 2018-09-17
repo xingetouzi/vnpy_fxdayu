@@ -62,7 +62,7 @@ class DemoStrategy(CtaTemplate):
         self.generateHFBar(10)
 
         # 回测和实盘的获取历史数据部分，建议实盘初始化之后得到的历史数据和回测预加载数据交叉验证，确认代码正确
-        if self.ctaEngine.engineType == ENGINETYPE_CTATRADING:
+        if self.ctaEngine.engineType == 'trading':
             # 实盘载入1分钟历史数据，并采用回放计算的方式初始化策略参数
             # 通用可选参数：["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
             pastbar1 = self.loadHistoryBar(self.activeSymbol,
@@ -75,7 +75,7 @@ class DemoStrategy(CtaTemplate):
                 self.amDict[self.activeSymbol].updateBar(bar1)    
                 self.amDict[self.passiveSymbol].updateBar(bar2)
         
-        elif self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+        elif self.ctaEngine.engineType == 'backtesting':
             # 获取回测设置中的initHours长度的历史数据
             self.initBacktesingData()    
         self.putEvent()  # putEvent 能刷新UI界面的信息
