@@ -261,7 +261,7 @@ class CtaTemplate(object):
         setattr(self, variable2, amDict)
 
     def generateHFBar(self,xSecond):
-        self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond)
+        self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond = xSecond)
                         for sym in self.symbolList}
             
 ########################################################################

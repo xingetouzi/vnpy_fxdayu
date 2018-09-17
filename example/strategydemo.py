@@ -9,9 +9,9 @@ import talib as ta
 import pandas as pd
 from datetime import datetime
 
-class DemoStrategy(CtaTemplate):
+class DeStrategy(CtaTemplate):
     
-    className = 'DemoStrategy'      # 策略 和 MongoDb数据表 的名称
+    className = 'DeStrategy'      # 策略 和 MongoDb数据表 的名称
     author = 'Patrick'
     version = '1.1'
 
@@ -20,7 +20,7 @@ class DemoStrategy(CtaTemplate):
     passiveSymbol = EMPTY_STRING    # 被动品种
 
     # 策略变量
-    posSize = 100                     # 每笔下单的数量
+    posSize = 1                     # 每笔下单的数量
 
     # 参数列表，保存了参数的名称，在实盘交易时，作为策略参数在UI显示
     paramList = ['name',
@@ -43,7 +43,7 @@ class DemoStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
         """Constructor"""
-        super(DemoStrategy, self).__init__(ctaEngine, setting)
+        super(DeStrategy, self).__init__(ctaEngine, setting)
              
     # ----------------------------------------------------------------------
     def onInit(self):
@@ -56,7 +56,7 @@ class DemoStrategy(CtaTemplate):
         #       将同时生成 self.bg5Dict 和 self.am5Dict ,字典的key是品种名,
         #       用于生成 on5MinBar 需要的 Bar 和计算用的 bar array，可在 on5MinBar() 获取
         self.generateBarDict(self.onBar)  
-        self.generateBarDict(self.onBar, 5, self.on5MinBar, size =10)
+        self.generateBarDict(self.onBar,5,self.on5MinBar,size =10)
 
         # 对于高频交易员，提供秒级别的 Bar，或者可当作秒级计数器，参数为秒，可在 onHFBar() 获取
         self.generateHFBar(10)
@@ -102,14 +102,15 @@ class DemoStrategy(CtaTemplate):
     # ----------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送"""
-        # 在每个Tick推送过来的时候, 对 bgDict 进行 updateTick, 生成分钟线后推送到onBar. 
-        # 注：如果没有对 bgDict 去 updateTick, 实盘将不会推送1分钟K线, 需要高频K线的同理操作hfDict
+        # 在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
+        # 注：如果没有updateTick，实盘将不会推送1分钟K线
         self.bgDict[tick.vtSymbol].updateTick(tick)
         self.hfDict[tick.vtSymbol].updateTick(tick)
 
+
     # ----------------------------------------------------------------------
     def onHFBar(self,bar):
-        """收到高频bar推送（需要在onInit定义频率, 否则默认不推送）"""
+        """收到高频bar推送（需要在onInit定义频率，否则默认不推送）"""
         self.writeCtaLog('stg_onHFbar_check_%s_%s_%s'%(bar.vtSymbol,bar.datetime,bar.close))
 
     # ----------------------------------------------------------------------
@@ -120,9 +121,9 @@ class DemoStrategy(CtaTemplate):
         
         self.buy(self.activeSymbol,            # 下单交易品种
                     bar.close,                 # 下单的价格
-                    posSize,                   # 交易数量
+                    100,                       # 交易数量
                     priceType = PRICETYPE_LIMITPRICE,   # 价格类型：[PRICETYPE_LIMITPRICE,PRICETYPE_MARKETPRICE,PRICETYPE_FAK,PRICETYPE_FOK]
-                    levelRate = 10)            # 保证金交易可填杠杆参数, 默认levelRate = 0
+                    levelRate = 10)            # 保证金交易可填杠杆参数，默认levelRate = 0
         self.putEvent()
 
     # ----------------------------------------------------------------------

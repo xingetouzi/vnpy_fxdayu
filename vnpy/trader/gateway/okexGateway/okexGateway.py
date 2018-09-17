@@ -1632,6 +1632,7 @@ class FuturesApi(OkexFuturesApi):
                     trade.fee = order.fee
                     trade.volume = order.tradedVolume - order2.tradedVolume
                     trade.tradeTime = order.deliverTime
+                    trade.status = order.status
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
 
@@ -1844,6 +1845,7 @@ class FuturesApi(OkexFuturesApi):
                         trade.volume = order.tradedVolume - lastTradedVolume
                         trade.tradeTime = order.deliverTime
                         trade.fee = order.fee
+                        trade.status = order.status
                         self.gateway.onTrade(trade)
                     if order.status in [STATUS_CANCELLED,STATUS_CANCELINPROGRESS,STATUS_CANCELLING]:
                         self.gateway.onOrder(copy(order))

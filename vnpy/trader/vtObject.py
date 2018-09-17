@@ -135,6 +135,7 @@ class VtTradeData(VtBaseData):
         self.tradeTime = EMPTY_STRING           # 成交时间
         self.price_avg=EMPTY_FLOAT              # 成交均价
         self.fee=EMPTY_FLOAT                    # 成交手续费
+        self.status = EMPTY_UNICODE
 
    
 
@@ -171,7 +172,7 @@ class VtOrderData(VtBaseData):
         self.exchangeOrderID = EMPTY_STRING     # 
         self.byStrategy = EMPTY_STRING
         self.deliverTime = EMPTY_STRING
-        self.rejectedInfo = EMPTY_STRING
+        self.rejectedInfo = EMPTY_UNICODE
         self.fee = EMPTY_FLOAT
 
         # CTP/LTS相关
