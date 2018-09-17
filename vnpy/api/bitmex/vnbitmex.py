@@ -11,7 +11,7 @@ from multiprocessing.dummy import Pool
 from time import time, sleep
 
 from copy import copy
-from threading import Thread, Event, Timer
+from threading import Thread, Event, Timer, current_thread
 
 from six.moves.urllib.parse import urlparse, urlencode
 from six.moves import input
@@ -236,7 +236,7 @@ class BitmexWebsocketApiWithHeartbeat(object):
     def __init__(self):
         """Constructor"""
         self.ws = None
-        self.thread = None
+        self.wsThread = None
         self.active = False
 
         self.heartbeatCount = 0
@@ -318,7 +318,8 @@ class BitmexWebsocketApiWithHeartbeat(object):
         """关闭WS"""
         if self.wsThread and self.wsThread.isAlive():
             self.ws.close()
-            self.wsThread.join(2)
+            if current_thread() != self.wsThread:
+                self.wsThread.join(2)
     
     def close(self):
         """"""

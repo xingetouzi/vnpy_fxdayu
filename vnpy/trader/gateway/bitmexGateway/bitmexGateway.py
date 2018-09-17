@@ -292,12 +292,15 @@ class WebsocketApi(BitmexWebsocketApi):
         """数据回调"""
         if 'request' in data:
             req = data['request']
-            success = data['success']
+            success = data.get("success", False)
             
-            if success:
-                if req['op'] == 'authKey':
+            if req['op'] == 'authKey':
+                if success:
                     self.writeLog(u'Websocket API验证授权成功')
                     self.subscribe()
+                else:
+                    self.writeLog(u'Websocket API验证失败,退出连接')
+                    self.close()
             
         elif 'table' in data:
             name = data['table']
@@ -519,12 +522,12 @@ class WebsocketApi(BitmexWebsocketApi):
         
         contract.symbol = d['symbol']
         contract.exchange = EXCHANGE_BITMEX
-        contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = ':'.join([contract.symbol, contract.exchange])
         contract.name = contract.vtSymbol
         contract.productClass = PRODUCT_FUTURES
         contract.priceTick = d['tickSize']
         contract.size = d['multiplier']
-        
+
         self.gateway.onContract(contract)        
 
     #-----------------------------------------------------------------------
