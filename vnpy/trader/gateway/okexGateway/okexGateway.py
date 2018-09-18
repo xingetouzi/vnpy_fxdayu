@@ -234,6 +234,9 @@ class OkexGateway(VtGateway):
             data = self.spotApi.rest_spot_orders(symbol,order_id,status)
         return data
 
+    def batchCancelOrder(cancelOrderReqList):
+        self.futuresApi.batchCancelOrder(cancelOrderReqList)
+
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         """策略初始化时下载历史数据"""
         type_ = KlinePeriodMap[type_]
@@ -1795,13 +1798,8 @@ class FuturesApi(OkexFuturesApi):
         "result":true
         }
         """
-        try:
-            data = self.future_order_info(
-                symbol,contractType,order_id,status)
-
-        except ConnectionError as e:
-            self.writeLog(u'qry_rest_order出错：%s' %e)
-            return
+        data = self.future_order_info(symbol,contractType,order_id,status)
+        self.writeLog(u'***rest_qry_orders***%s**'%data)
         order_id = str(order_id)
 
         if order_id in self.exchangeOrderDict.keys():
@@ -1862,4 +1860,30 @@ class FuturesApi(OkexFuturesApi):
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)
+        return data
+
+    def batchCancelOrder(self, reqList):
+        cancelMenu = {}
+        for req in reqList:
+            cancelMenu[req.symbol] =[]
+
+        for req in reqList:
+            localNo = str(req.orderID)
+            
+            if localNo in self.localNoDict.keys():
+                orderID = self.localNoDict[localNo]
+                cancelMenu[req.symbol].insert(-1,orderID)
+            else:
+                # 如果在系统委托号返回前客户就发送了撤单请求，则保存
+                # 在cancelDict字典中，等待返回后执行撤单任务
+                self.cancelDict[localNo] = req
+                self.writeLog(u'gw_rest_cancel_Not in localNoDict: we cannot cancel this order')
+        # data = {}
+        for key in cancelMenu.keys():
+            symbol = key[:3]+"_usd"
+            contract_type = key[4:]
+            data = self.future_cancel_order(symbol, contract_type, cancelMenu[key])
+            self.writeLog(u'--gw-rest_cancelorder---,%s,%s,%s'%(symbol,cancelMenu[key],contract_type))
+        
+        del cancelMenu
         return data

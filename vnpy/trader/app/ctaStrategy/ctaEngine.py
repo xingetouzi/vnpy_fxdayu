@@ -21,6 +21,7 @@
 import json
 import os
 import traceback
+import importlib
 from collections import OrderedDict,defaultdict
 from datetime import datetime, timedelta
 from copy import copy
@@ -175,8 +176,40 @@ class CtaEngine(object):
                 req.frontID = order.frontID
                 req.sessionID = order.sessionID
                 req.orderID = order.orderID
+
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
+
+    def batchCancelOrder(self,vtOrderIDList):
+        """批量撤单"""
+        # 查询报单对象
+
+        reqList = []
+        for vtOrderID in vtOrderIDList:
+            order = self.mainEngine.getOrder(vtOrderID)
+
+            # 如果查询成功
+            if order:
+                # 检查是否报单还有效，只有有效时才发出撤单指令
+                orderFinished = (order.status==STATUS_ALLTRADED 
+                                or order.status==STATUS_CANCELLED 
+                                or order.status == STATUS_REJECTED
+                                or order.status == STATUS_CANCELLING
+                                or order.status == STATUS_CANCELINPROGRESS)
+                
+                if not orderFinished:
+                    req = VtCancelOrderReq()
+                    req.vtSymbol = order.vtSymbol
+                    req.symbol = order.symbol
+                    req.exchange = order.exchange
+                    req.frontID = order.frontID
+                    req.sessionID = order.sessionID
+                    req.orderID = order.orderID
+            
+                    reqList.append(req)
+
+        self.mainEngine.batchCancelOrder(reqList, order.gatewayName)
+        self.writeCtaLog('策略%s: 对本地订单%s，发送批量撤单委托，实际发送单量%s'%(order.byStrategy, vtOrderIDList,len(reqList)))
 
     #----------------------------------------------------------------------
     def sendStopOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
@@ -515,8 +548,11 @@ class CtaEngine(object):
         
         
         if not strategyClass:
-            self.writeCtaLog(u'找不到策略类：%s' %className)
-            return
+            STRATEGY_GET_CLASS = self.loadLocalStrategy()
+            strategyClass = STRATEGY_GET_CLASS.get(className, None)
+            if not strategyClass:
+                self.writeCtaLog(u'找不到策略类：%s' %className)
+                return
 
         # 防止策略重名
         if name in self.strategyDict:
@@ -569,6 +605,9 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
+                strategy.posDict = {}
+                strategy.eveningDict = {}
+                strategy.bondDict = {}
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
@@ -983,3 +1022,35 @@ class CtaEngine(object):
             ret=False
             self.writeCtaLog(u"%s: Send email failed ..."%strategy.name)
         return ret
+
+    def loadLocalStrategy(self):
+        # 用来保存策略类的字典
+        STRATEGY_GET_CLASS = {}
+
+        # 获取目录路径
+        path = os.path.abspath(os.path.dirname(__file__))
+
+        # 遍历strategy目录下的文件
+        for root, subdirs, files in os.walk(path):
+            for name in files:
+                # 只有文件名中包含strategy且非.pyc的文件，才是策略文件
+                if 'strategy' in name and '.pyc' not in name:
+                    # 模块名称需要上前缀
+                    moduleName = name.replace('.py', '')
+
+                    # 使用importlib动态载入模块
+                    try:
+                        module = importlib.import_module(moduleName)
+
+                        # 遍历模块下的对象，只有名称中包含'Strategy'的才是策略类
+                        for k in dir(module):
+                            if 'Strategy' in k:
+                                v = module.__getattribute__(k)
+                                STRATEGY_GET_CLASS[k] = v
+
+                    except:
+                        print('-' * 20)
+                        print(('Failed to import strategy file %s:' %moduleName))
+                        traceback.print_exc()
+
+        return STRATEGY_GET_CLASS

@@ -164,6 +164,12 @@ class MainEngine(object):
         
         if gateway:
             gateway.cancelOrder(cancelOrderReq)   
+
+    def batchCancelOrder(self,cancelOrderReqList,gatewayName)
+        gateway = self.getGateway(gatewayName)
+        
+        if gateway:
+            gateway.batchCancelOrder(cancelOrderReqList)  
   
     #----------------------------------------------------------------------
     def qryAccount(self, gatewayName):

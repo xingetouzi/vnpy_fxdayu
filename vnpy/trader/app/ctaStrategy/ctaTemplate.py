@@ -161,6 +161,11 @@ class CtaTemplate(object):
     def cancelAllStopOrder(self):
         self.ctaEngine.cancelAllStopOrder(self.name)
 
+    def batchCancelOrder(self,vtOrderIDList):
+        if len(vtOrderIDList)>5:
+            self.writeCtaLog(u'策略发送批量撤单委托失败，单量超过5张')
+            return
+        self.ctaEngine.batchCancelOrder(vtOrderIDList)
     # ----------------------------------------------------------------------
     def insertTick(self, tick):
         """向数据库中插入tick数据"""

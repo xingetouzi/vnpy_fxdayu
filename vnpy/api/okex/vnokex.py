@@ -118,7 +118,7 @@ class OkexApi(object):
         if not self.reconnecting:
             self.reconnecting = True
             self.closeWebsocket()  # 首先关闭之前的连接
-            print('API断线重连')
+            print('OKEX_API断线重连')
             self.reconnectTimer = Timer(self.reconnect_timeout, self.connectEvent.set)
             self.connectEvent.clear() # 设置未连接上
             self.initWebsocket()
@@ -137,7 +137,7 @@ class OkexApi(object):
         self.initWebsocket()
         self.active = True
         self.heartbeatReceived = True
-        print('API初始化连接')
+        print('OKEX_API初始化连接')
         
     #----------------------------------------------------------------------
     def initWebsocket(self):
@@ -652,7 +652,7 @@ class OkexFuturesApi(OkexApi):
         params['sign'] = self.rest_sign(params)
         url = self._post_url_func("future_userinfo")
         # print(url)
-        r = requests.post(url, data=params, timeout=60)
+        r = requests.post(url, data=params, timeout=10)
         return r.json()
     
     def future_orders_info(self, symbol, contract_type, order_id):
@@ -662,7 +662,7 @@ class OkexFuturesApi(OkexApi):
                 "order_id": order_id}
         url = self._post_url_func("future_orders_info")
         # print(url)
-        r = requests.post(url, data=data, timeout=60)
+        r = requests.post(url, data=data, timeout=10)
         return r.json()
     
     def future_position(self, symbol, contract_type):
@@ -670,8 +670,7 @@ class OkexFuturesApi(OkexApi):
         data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type}
         url = self._post_url_func("future_position")
         # print(url)
-        r = requests.post(url, data=data, timeout=60)
-
+        r = requests.post(url, data=data, timeout=10)
         return r.json()
     
     def future_order_info(self, symbol, contract_type, order_id, status=None, current_page=None, page_length=None):
@@ -685,10 +684,11 @@ class OkexFuturesApi(OkexApi):
         if page_length:
             data["page_length"] = page_length
         url = self._post_url_func("future_order_info")
-        print(data,"*****qry_order*****")
         # print(url)
-        
-        r = requests.post(url, data=data, timeout=60)
+        try:
+            r = requests.post(url, data=data, timeout=2)
+        except requests.Timeout:
+            self.future_order_info(symbol, contract_type, order_id, status, current_page, page_length)
         return r.json()
 
     def future_trade(self, symbol, contract_type, price, amount, type, match_price=None, lever_rate=None):
@@ -701,8 +701,21 @@ class OkexFuturesApi(OkexApi):
             data["lever_rate"] = lever_rate
         print(data,"********send order api******")
         url = self._post_url_func("future_trade")
-        r = requests.post(url, data=data, timeout=60)
+        r = requests.post(url, data=data, timeout=10)
         # print(url)
+        return r.json()
+
+    def future_cancel_order(self, symbol, contract_type, order_id):
+        #order_id可以是多个以,隔开
+        api_key = self.apiKey
+        data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type,
+                "order_id": order_id}
+        url = self._post_url_func("future_cancel")
+        # print(url)
+        try:
+            r = requests.post(url, data=data, timeout=2)
+        except requests.Timeout:
+            self.future_cancel_order(symbol, contract_type, order_id)
         return r.json()
 
     def futureKline(self, symbol, type, contract_type, size=None, since=None):
@@ -718,5 +731,5 @@ class OkexFuturesApi(OkexApi):
         df["datetime"] = df["datetime"].map(
             lambda x: datetime.datetime.strptime(x,"%Y%m%d %H:%M:%S"))
         # delta = datetime.timedelta(hours=8)
-        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
+        # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)  # 如果服务器有时区差别
         return df.to_dict()

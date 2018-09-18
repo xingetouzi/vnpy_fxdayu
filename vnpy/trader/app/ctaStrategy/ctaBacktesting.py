@@ -1611,7 +1611,7 @@ def get_date_list(start=None, end=None):
 
 def gen_hours(b_date, days, hours):
     # day = timedelta(days=1)
-    hour = timedelta(minutes = 1)
+    hour = timedelta(hours = 1)
     for i in range(days*24+hours):
         yield b_date + hour*i
 
