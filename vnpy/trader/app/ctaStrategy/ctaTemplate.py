@@ -242,9 +242,15 @@ class CtaTemplate(object):
 
     def initBacktesingData(self):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
-            initdata = self.loadBar()
-            for bar in initdata:
-                self.onBar(bar)  # 将历史数据直接推送到onBar
+            if self.ctaEngine.mode == 'bar':
+                initdata = self.loadBar()
+                for bar in initdata:
+                    self.onBar(bar)  # 将历史数据直接推送到onBar
+
+            elif self.ctaEngine.mode ='tick':
+                initdata = self.loadBar()
+                for tick in initdata:
+                    self.onTick(tick)  # 将历史数据直接推送到onTick
     
     def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
         if xmin: 

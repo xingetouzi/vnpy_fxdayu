@@ -466,7 +466,7 @@ class BacktestingEngine(object):
                         # self.strategy.posDict[symbol] -= order.totalVolume
                     
                     trade.volume = order.totalVolume
-                    trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                    trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
                     trade.dt = self.dt
                     self.strategy.onTrade(trade)
                     
@@ -548,7 +548,7 @@ class BacktestingEngine(object):
                     trade.direction = so.direction
                     trade.offset = so.offset
                     trade.volume = so.volume
-                    trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                    trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
                     trade.dt = self.dt
                     
                     self.tradeDict[tradeID] = trade
@@ -589,7 +589,7 @@ class BacktestingEngine(object):
         order.totalVolume = volume
         order.orderID = orderID
         order.vtOrderID = orderID
-        order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+        order.orderTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
         order.priceType = priceType
         # order.levelRate = levelRate
         
@@ -634,7 +634,7 @@ class BacktestingEngine(object):
             order = self.workingLimitOrderDict[vtOrderID]
             
             order.status = STATUS_CANCELLED
-            order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+            order.cancelTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
             
             self.strategy.onOrder(order)
             
