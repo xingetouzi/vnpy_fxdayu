@@ -247,7 +247,7 @@ class CtaTemplate(object):
                 for bar in initdata:
                     self.onBar(bar)  # 将历史数据直接推送到onBar
 
-            elif self.ctaEngine.mode ='tick':
+            elif self.ctaEngine.mode =='tick':
                 initdata = self.loadBar()
                 for tick in initdata:
                     self.onTick(tick)  # 将历史数据直接推送到onTick

@@ -19,6 +19,7 @@
 
 
 import json
+import math
 import os
 import traceback
 import importlib
@@ -857,7 +858,7 @@ class CtaEngine(object):
         if not priceTick:
             return price
 
-        newPrice = round(price,priceTick)
+        newPrice = round(price,-int(math.log10(priceTick)))
         return newPrice
 
     #----------------------------------------------------------------------

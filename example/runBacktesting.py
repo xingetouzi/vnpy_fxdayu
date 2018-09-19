@@ -15,13 +15,14 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
 
     # 设置回测用的数据起始日期
-    engine.setStartDate('20180729 06:00',initHours=1)               # 设置回测用的数据起始日期
+    engine.setStartDate('20180729 06:00',initHours=1)      # 设置回测用的数据起始日期和初始化时长
     engine.setEndDate('20180801 08:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
     engine.setRate(0.3/10000)   # 万0.3
     engine.setSize(300)         # 股指合约大小 
     engine.setPriceTick(0.2)    # 股指最小价格变动
+    engine.setCachePath('D:\\vnpy_data\\')
     
     # 设置使用的历史数据库
     engine.setDatabase(MINUTE_DB_NAME)
