@@ -1659,7 +1659,10 @@ class FuturesApi(OkexFuturesApi):
                     else:
                         symbol = order.symbol[:3]+ '_usd'
                         contract_type = order.symbol[4:]
-                        self.rest_qry_orders(symbol,contract_type,order.exchangeOrderID)
+                        try:
+                            self.rest_qry_orders(symbol,contract_type,order.exchangeOrderID)
+                        except:
+                            self.writeLog(u'***rest_qry_orders**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
                         self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
 
             else:
@@ -1798,7 +1801,11 @@ class FuturesApi(OkexFuturesApi):
         "result":true
         }
         """
-        data = self.future_order_info(symbol,contractType,order_id,status)
+        try:
+            data = self.future_order_info(symbol,contractType,order_id,status)
+        except:
+            self.writeLog(u'***rest_qry_orders***return_error,ID:(%s)'%order_id)
+            return
         self.writeLog(u'***rest_qry_orders***%s**'%data)
         order_id = str(order_id)
 
@@ -1882,7 +1889,10 @@ class FuturesApi(OkexFuturesApi):
         for key in cancelMenu.keys():
             symbol = key[:3]+"_usd"
             contract_type = key[4:]
-            data = self.future_cancel_order(symbol, contract_type, cancelMenu[key])
+            try:
+                data = self.future_cancel_order(symbol, contract_type, cancelMenu[key])
+            except:
+                self.writeLog(u'***rest_cancel_batch_orders***return_error*******DICT:%s'%cancelMenu[key])
             self.writeLog(u'--gw-rest_cancelorder---,%s,%s,%s'%(symbol,cancelMenu[key],contract_type))
         
         del cancelMenu

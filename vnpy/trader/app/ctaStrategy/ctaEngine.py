@@ -36,6 +36,8 @@ from vnpy.trader.vtGlobal import globalSetting
 import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from functools import lru_cache
+
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -852,13 +854,21 @@ class CtaEngine(object):
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
         
-    #----------------------------------------------------------------------
-    def roundToPriceTick(self, priceTick, price):
-        """取整价格到合约最小价格变动"""
-        if not priceTick:
-            return price
 
-        newPrice = round(price,-int(math.log10(priceTick)))
+    @lru_cache(50)
+    def roundNumberPriceTick(priceTick): 
+        strPriceTick = str(priceTick)
+        if "." in strPriceTick:
+            xiaosu = strPriceTick.split(".")[1]
+            return len(("." + xiaosu).strip("0")) - 1
+        else:
+            l1 = len(strPriceTick)
+            l2 = len(("." + strPriceTick).strip("0")) - 1
+            return l2 - l1
+
+    def roundToPriceTick(priceTick, price):
+        """取整价格到合约最小价格变动"""
+        newPrice = round(round(price/priceTick,0)*priceTick, roundNumberPriceTick(priceTick))
         return newPrice
 
     #----------------------------------------------------------------------

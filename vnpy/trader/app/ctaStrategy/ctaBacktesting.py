@@ -582,14 +582,12 @@ class BacktestingEngine(object):
         self.limitOrderCount += 1
         self.levelRate = levelRate
         orderID = str(self.limitOrderCount)
-        
         order = VtOrderData()
         order.vtSymbol = vtSymbol
-        order.price = self.roundToPriceTick(price)
         order.totalVolume = volume
         order.orderID = orderID
         order.vtOrderID = orderID
-        order.orderTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
+        order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
         order.priceType = priceType
         # order.levelRate = levelRate
         
@@ -606,6 +604,13 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE     
+
+        if priceType == PRICETYPE_LIMITPRICE:
+            order.price = self.roundToPriceTick(price)
+        elif priceType == PRICETYPE_MARKETPRICE and order.direction == DIRECTION_LONG:
+            order.price = self.roundToPriceTick(price) * 1000
+        elif priceType == PRICETYPE_MARKETPRICE and order.direction == DIRECTION_SHORT:
+            order.price = self.roundToPriceTick(price) / 1000
 
         # if levelRate:
         #     if order.offset == OFFSET_OPEN and (self.balance < (self.size /levelRate * order.totalVolume)):
@@ -725,6 +730,11 @@ class BacktestingEngine(object):
         for stopOrderID in list(self.workingStopOrderDict.keys()):
             self.cancelStopOrder(stopOrderID)
 
+    def batchCancelOrder(self, vtOrderList):
+        # 为了和实盘一致撤销限价单
+        for orderID in list(self.workingLimitOrderDict.keys()):
+            self.cancelOrder(orderID)
+
     #----------------------------------------------------------------------
     def saveSyncData(self, strategy):
         """保存同步数据（无效）"""
@@ -748,11 +758,14 @@ class BacktestingEngine(object):
                 strategy.bondDict[symbol+"_LONG"] = 0
                 strategy.bondDict[symbol+"_SHORT"] = 0
             
+            symbolPair = symbol.split('_')
             if 'accountDict' in strategy.syncList:
-                strategy.accountDict[symbol] = 0
+                strategy.accountDict[symbolPair[0]] = 0
+                strategy.accountDict[symbolPair[1]] = 0
             if 'frozenDict' in strategy.syncList:
-                strategy.frozenDict[symbol] = 0
-        print("仓位字典构造完成","\n初始仓位:",strategy.posDict,"\n可平仓量:",strategy.eveningDict)
+                strategy.frozenDict[symbolPair[0]] = 0
+                strategy.frozenDict[symbolPair[1]] = 0
+        print("仓位字典构造完成","\n初始仓位:",strategy.posDict)
     
     def mail(self,content,strategy):
         pass

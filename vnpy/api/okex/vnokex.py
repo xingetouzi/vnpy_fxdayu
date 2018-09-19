@@ -652,7 +652,7 @@ class OkexFuturesApi(OkexApi):
         params['sign'] = self.rest_sign(params)
         url = self._post_url_func("future_userinfo")
         # print(url)
-        r = requests.post(url, data=params, timeout=10)
+        r = requests.post(url, data=params, timeout=30)
         return r.json()
     
     def future_orders_info(self, symbol, contract_type, order_id):
@@ -662,7 +662,7 @@ class OkexFuturesApi(OkexApi):
                 "order_id": order_id}
         url = self._post_url_func("future_orders_info")
         # print(url)
-        r = requests.post(url, data=data, timeout=10)
+        r = requests.post(url, data=data, timeout=30)
         return r.json()
     
     def future_position(self, symbol, contract_type):
@@ -670,7 +670,7 @@ class OkexFuturesApi(OkexApi):
         data = {"api_key": api_key, "sign": self.rest_sign(locals()), "symbol": symbol, "contract_type": contract_type}
         url = self._post_url_func("future_position")
         # print(url)
-        r = requests.post(url, data=data, timeout=10)
+        r = requests.post(url, data=data, timeout=30)
         return r.json()
     
     def future_order_info(self, symbol, contract_type, order_id, status=None, current_page=None, page_length=None):
@@ -685,10 +685,7 @@ class OkexFuturesApi(OkexApi):
             data["page_length"] = page_length
         url = self._post_url_func("future_order_info")
         # print(url)
-        try:
-            r = requests.post(url, data=data, timeout=2)
-        except requests.Timeout:
-            self.future_order_info(symbol, contract_type, order_id, status, current_page, page_length)
+        r = requests.post(url, data=data, timeout=30)
         return r.json()
 
     def future_trade(self, symbol, contract_type, price, amount, type, match_price=None, lever_rate=None):
@@ -701,7 +698,7 @@ class OkexFuturesApi(OkexApi):
             data["lever_rate"] = lever_rate
         print(data,"********send order api******")
         url = self._post_url_func("future_trade")
-        r = requests.post(url, data=data, timeout=10)
+        r = requests.post(url, data=data, timeout=30)
         # print(url)
         return r.json()
 
@@ -712,10 +709,7 @@ class OkexFuturesApi(OkexApi):
                 "order_id": order_id}
         url = self._post_url_func("future_cancel")
         # print(url)
-        try:
-            r = requests.post(url, data=data, timeout=2)
-        except requests.Timeout:
-            self.future_cancel_order(symbol, contract_type, order_id)
+        r = requests.post(url, data=data, timeout=30)
         return r.json()
 
     def futureKline(self, symbol, type, contract_type, size=None, since=None):

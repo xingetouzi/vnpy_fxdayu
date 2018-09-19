@@ -62,22 +62,22 @@ class DeStrategy(CtaTemplate):
         self.generateHFBar(10)
 
         # 回测和实盘的获取历史数据部分，建议实盘初始化之后得到的历史数据和回测预加载数据交叉验证，确认代码正确
-        if self.ctaEngine.engineType == 'trading':
+        if self.ctaEngine.engineType == 'backtesting':
+            # 获取回测设置中的initHours长度的历史数据
+            self.initBacktesingData()    
+        
+        elif self.ctaEngine.engineType == 'trading':
             # 实盘载入1分钟历史数据，并采用回放计算的方式初始化策略参数
             # 通用可选参数：["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
             pastbar1 = self.loadHistoryBar(self.activeSymbol,
                                 type_ = "1min",  size = 1000)
             pastbar2 = self.loadHistoryBar(self.passiveSymbol,
                             type_ = "1min",  size = 1000)
-
             # 更新数据矩阵(optional)
             for bar1,bar2 in zip(pastbar1,pastbar2):    
                 self.amDict[self.activeSymbol].updateBar(bar1)    
                 self.amDict[self.passiveSymbol].updateBar(bar2)
-        
-        elif self.ctaEngine.engineType == 'backtesting':
-            # 获取回测设置中的initHours长度的历史数据
-            self.initBacktesingData()    
+                
         self.putEvent()  # putEvent 能刷新UI界面的信息
         '''
         实盘在初始化策略时, 如果将历史数据推送到onbar去执行updatebar, 此时引擎的下单逻辑为False, 不会触发下单。
@@ -106,7 +106,6 @@ class DeStrategy(CtaTemplate):
         # 注：如果没有updateTick，实盘将不会推送1分钟K线
         self.bgDict[tick.vtSymbol].updateTick(tick)
         self.hfDict[tick.vtSymbol].updateTick(tick)
-
 
     # ----------------------------------------------------------------------
     def onHFBar(self,bar):
