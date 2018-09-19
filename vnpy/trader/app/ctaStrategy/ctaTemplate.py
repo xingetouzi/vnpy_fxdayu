@@ -3,7 +3,6 @@
 '''
 本文件包含了CTA引擎中的策略开发用模板，开发策略时需要继承CtaTemplate类。
 '''
-
 import numpy as np
 import pandas as  pd
 import datetime
@@ -14,7 +13,6 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtBarData
 
 from .ctaBase import *
-
 
 ########################################################################
 class CtaTemplate(object):
@@ -34,19 +32,12 @@ class CtaTemplate(object):
     productClass = EMPTY_STRING  # 产品类型（只有IB接口需要）
     currency = EMPTY_STRING  # 货币（只有IB接口需要）
 
-    KlinePeriod = ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]
-
     # 策略的基本变量，由引擎管理
     inited = False  # 是否进行了初始化
     trading = False  # 是否启动交易，由引擎管理
     symbolList = []  # 策略的标的列表
     barsList = []
     ticksList = []
-    posDict = {}
-    eveningDict = {}
-    bondDict = {}
-    accountDict = {}
-    frozenDict = {}
 
     # 参数列表，保存了参数的名称
     paramList = ['name',
@@ -81,12 +72,12 @@ class CtaTemplate(object):
         """初始化策略（必须由用户继承实现）"""
         raise NotImplementedError
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def onStart(self):
         """启动策略（必须由用户继承实现）"""
         raise NotImplementedError
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
         raise NotImplementedError
@@ -106,10 +97,6 @@ class CtaTemplate(object):
         """收到成交推送（必须由用户继承实现）"""
         raise NotImplementedError
 
-    def oninitPos(self,pos):
-        """收到总持仓推送（必须由用户继承实现）"""
-        raise NotImplementedError
-
     #-----------------------------------------------------
     def onBar(self, bar):
         """收到Bar推送（必须由用户继承实现）"""
@@ -121,34 +108,34 @@ class CtaTemplate(object):
         raise NotImplementedError
 
     # ----------------------------------------------------------------------
-    def buy(self, vtSymbol, price, volume, marketPrice=0, levelRate = 0, stop=False):
+    def buy(self, vtSymbol, price, volume, priceType = PRICETYPE_LIMITPRICE, levelRate = 0, stop=False):
         """买开"""
-        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, marketPrice, levelRate, stop)
+        return self.sendOrder(CTAORDER_BUY, vtSymbol, price, volume, priceType, levelRate, stop)
 
-    # ----------------------------------------------------------------------
-    def sell(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
+        # ----------------------------------------------------------------------
+    def sell(self, vtSymbol, price, volume, priceType = PRICETYPE_LIMITPRICE,  levelRate = 0, stop=False):
         """卖平"""
-        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, marketPrice, levelRate, stop)
+        return self.sendOrder(CTAORDER_SELL, vtSymbol, price, volume, priceType, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def short(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
+    def short(self, vtSymbol, price, volume, priceType = PRICETYPE_LIMITPRICE,  levelRate = 0, stop=False):
         """卖开"""
-        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, marketPrice, levelRate, stop)
+        return self.sendOrder(CTAORDER_SHORT, vtSymbol, price, volume, priceType, levelRate, stop)
 
         # ----------------------------------------------------------------------
-    def cover(self, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
+    def cover(self, vtSymbol, price, volume, priceType = PRICETYPE_LIMITPRICE,  levelRate = 0, stop=False):
         """买平"""
-        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, marketPrice, levelRate, stop)
+        return self.sendOrder(CTAORDER_COVER, vtSymbol, price, volume, priceType, levelRate, stop)
 
     # ----------------------------------------------------------------------
-    def sendOrder(self, orderType, vtSymbol, price, volume, marketPrice=0,  levelRate = 0, stop=False):
+    def sendOrder(self, orderType, vtSymbol, price, volume, priceType = PRICETYPE_LIMITPRICE,  levelRate = 0, stop=False):
         """发送委托"""
         if self.trading:
             # 如果stop为True，则意味着发本地停止单
             if stop:
-                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, marketPrice, levelRate, self)
+                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, priceType, levelRate, self)
             else:
-                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, marketPrice, levelRate, self)
+                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, priceType, levelRate, self)
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
@@ -166,33 +153,38 @@ class CtaTemplate(object):
         else:
             self.ctaEngine.cancelOrder(vtOrderID)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def cancelAll(self):
         """全部撤单"""
         self.ctaEngine.cancelAll(self.name)
-
+        #---------
     def cancelAllStopOrder(self):
         self.ctaEngine.cancelAllStopOrder(self.name)
 
+    def batchCancelOrder(self,vtOrderIDList):
+        if len(vtOrderIDList)>5:
+            self.writeCtaLog(u'策略发送批量撤单委托失败，单量超过5张')
+            return
+        self.ctaEngine.batchCancelOrder(vtOrderIDList)
     # ----------------------------------------------------------------------
     def insertTick(self, tick):
         """向数据库中插入tick数据"""
         self.ctaEngine.insertData(self.tickDbName, self.vtSymbol, tick)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     def insertBar(self, bar):
         """向数据库中插入bar数据"""
         self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
 
     # ----------------------------------------------------------------------
-    def loadTick(self, days):
+    def loadTick(self, hours=1):
         """读取tick数据"""
-        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, days)
+        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
 
-    # ----------------------------------------------------------------------
-    def loadBar(self, days):
+        # ----------------------------------------------------------------------
+    def loadBar(self, hours=1):
         """读取bar数据"""
-        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, days)
+        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
 
     # ----------------------------------------------------------------------
     def writeCtaLog(self, content):
@@ -209,12 +201,14 @@ class CtaTemplate(object):
     def getEngineType(self):
         """查询当前运行的环境"""
         return self.ctaEngine.engineType
+
     #----------------------------------------------------------------------
     def saveSyncData(self):
         """保存同步数据到数据库"""
         if self.trading:
             self.ctaEngine.saveSyncData(self)
-            
+
+        #--------------------------------------------------    
     def loadSyncData(self):
         """从数据库读取同步数据"""
         self.ctaEngine.loadSyncData(self)
@@ -226,11 +220,12 @@ class CtaTemplate(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
-        if type_ in self.KlinePeriod:
+        if type_ in ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]:
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
             return data
         else:
-            self.writeCtaLog(u'下载历史数据参数错误，请参考以下参数%s，同时size不得大于2000'%self.KlinePeriod)
+            self.writeCtaLog(
+                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]，同时size不得大于2000')
             return
         
     def qryOrder(self, vtSymbol, status= None):
@@ -240,36 +235,75 @@ class CtaTemplate(object):
     def onRestore(self):
         """恢复策略（必须由用户继承实现）"""
         raise NotImplementedError
-    def mail(self,my_context,name):
+        
+    def mail(self,my_context):
         """邮件发送模块"""
-        return self.ctaEngine.mail(my_context,name)
+        self.ctaEngine.mail(my_context,self)
 
+    def initBacktesingData(self):
+        if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+            if self.ctaEngine.mode == 'bar':
+                initdata = self.loadBar()
+                for bar in initdata:
+                    self.onBar(bar)  # 将历史数据直接推送到onBar
 
+            elif self.ctaEngine.mode =='tick':
+                initdata = self.loadBar()
+                for tick in initdata:
+                    self.onTick(tick)  # 将历史数据直接推送到onTick
+    
+    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
+        if xmin: 
+            variable = "bg%sDict"%xmin
+            variable2 = "am%sDict"%xmin
+        else:
+            variable = "bgDict"
+            variable2 = "amDict"
+
+        bgDict= {
+            sym: BarGenerator(onBar,xmin,onXminBar)
+            for sym in self.symbolList }
+        
+        amDict = {
+            sym: ArrayManager(size)
+            for sym in self.symbolList }
+
+        setattr(self, variable, bgDict)
+        setattr(self, variable2, amDict)
+
+    def generateHFBar(self,xSecond):
+        self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond = xSecond)
+                        for sym in self.symbolList}
+            
 ########################################################################
 class TargetPosTemplate(CtaTemplate):
     """
     允许直接通过修改目标持仓来实现交易的策略模板
+    
     开发策略时，无需再调用buy/sell/cover/short这些具体的委托指令，
     只需在策略逻辑运行完成后调用setTargetPos设置目标持仓，底层算法
-    会自动完成相关交易，适合不擅长管理交易挂撤单细节的用户。
+    会自动完成相关交易，适合不擅长管理交易挂撤单细节的用户。    
+    
     使用该模板开发策略时，请在以下回调方法中先调用母类的方法：
     onTick
     onBar
     onOrder
+    
     假设策略名为TestStrategy，请在onTick回调中加上：
     super(TestStrategy, self).onTick(tick)
+    
     其他方法类同。
     """
-
+    
     className = 'TargetPosTemplate'
-    author = '量衍投资'
-
+    author = u'量衍投资'
+    
     # 目标持仓模板的基本变量
-    tickAdd = 1  # 委托时相对基准价格的超价
-    lastTick = None  # 最新tick数据
-    lastBar = None  # 最新bar数据
-    targetPos = EMPTY_INT  # 目标持仓
-    orderList = []  # 委托号列表
+    tickAdd = 1             # 委托时相对基准价格的超价
+    lastTick = None         # 最新tick数据
+    lastBar = None          # 最新bar数据
+    targetPos = EMPTY_INT   # 目标持仓
+    orderList = []          # 委托号列表
 
     # 变量列表，保存了变量的名称
     varList = ['inited',
@@ -277,66 +311,68 @@ class TargetPosTemplate(CtaTemplate):
                'pos',
                'targetPos']
 
-    # ----------------------------------------------------------------------
+    #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
         """Constructor"""
         super(TargetPosTemplate, self).__init__(ctaEngine, setting)
-
-    # ----------------------------------------------------------------------
+        
+    #----------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情推送"""
         self.lastTick = tick
-
+        
         # 实盘模式下，启动交易后，需要根据tick的实时推送执行自动开平仓操作
         if self.trading:
             self.trade()
-
-    # ----------------------------------------------------------------------
+        
+    #----------------------------------------------------------------------
     def onBar(self, bar):
         """收到K线推送"""
         self.lastBar = bar
-
-    # ----------------------------------------------------------------------
+    
+    #----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托推送"""
         if order.status == STATUS_ALLTRADED or order.status == STATUS_CANCELLED:
-            self.orderList.remove(order.vtOrderID)
-
-    # ----------------------------------------------------------------------
+            if order.vtOrderID in self.orderList:
+                self.orderList.remove(order.vtOrderID)
+    
+    #----------------------------------------------------------------------
     def setTargetPos(self, targetPos):
         """设置目标仓位"""
         self.targetPos = targetPos
-
         self.trade()
-
-    # ----------------------------------------------------------------------
+    
+    #----------------------------------------------------------------------
     def trade(self):
         """执行交易"""
         # 先撤销之前的委托
-        for vtOrderID in self.orderList:
-            self.cancelOrder(vtOrderID)
-        self.orderList = []
-
+        self.cancelAll()
+        
         # 如果目标仓位和实际仓位一致，则不进行任何操作
         posChange = self.targetPos - self.pos
         if not posChange:
             return
-
+        
         # 确定委托基准价格，有tick数据时优先使用，否则使用bar
         longPrice = 0
         shortPrice = 0
-
+        
         if self.lastTick:
             if posChange > 0:
                 longPrice = self.lastTick.askPrice1 + self.tickAdd
+                if self.lastTick.upperLimit:
+                    longPrice = min(longPrice, self.lastTick.upperLimit)         # 涨停价检查
             else:
                 shortPrice = self.lastTick.bidPrice1 - self.tickAdd
+                if self.lastTick.lowerLimit:
+                    shortPrice = max(shortPrice, self.lastTick.lowerLimit)       # 跌停价检查
         else:
             if posChange > 0:
                 longPrice = self.lastBar.close + self.tickAdd
             else:
                 shortPrice = self.lastBar.close - self.tickAdd
-
+        
         # 回测模式下，采用合并平仓和反向开仓委托的方式
         if self.getEngineType() == ENGINETYPE_BACKTESTING:
             if posChange > 0:
@@ -344,28 +380,37 @@ class TargetPosTemplate(CtaTemplate):
             else:
                 l = self.short(shortPrice, abs(posChange))
             self.orderList.extend(l)
-
+        
         # 实盘模式下，首先确保之前的委托都已经结束（全成、撤销）
         # 然后先发平仓委托，等待成交后，再发送新的开仓委托
         else:
             # 检查之前委托都已结束
             if self.orderList:
                 return
-
+            
             # 买入
             if posChange > 0:
+                # 若当前有空头持仓
                 if self.pos < 0:
-                    l = self.cover(longPrice, abs(self.pos))
+                    # 若买入量小于空头持仓，则直接平空买入量
+                    if posChange < abs(self.pos):
+                        l = self.cover(longPrice, posChange)
+                    # 否则先平所有的空头仓位
+                    else:
+                        l = self.cover(longPrice, abs(self.pos))
+                # 若没有空头持仓，则执行开仓操作
                 else:
                     l = self.buy(longPrice, abs(posChange))
-            # 卖出
+            # 卖出和以上相反
             else:
                 if self.pos > 0:
-                    l = self.sell(shortPrice, abs(self.pos))
+                    if abs(posChange) < self.pos:
+                        l = self.sell(shortPrice, abs(posChange))
+                    else:
+                        l = self.sell(shortPrice, abs(self.pos))
                 else:
                     l = self.short(shortPrice, abs(posChange))
             self.orderList.extend(l)
-#
 #
 # ########################################################################
 class BarGenerator(object):
@@ -374,9 +419,8 @@ class BarGenerator(object):
     1. 基于Tick合成1分钟K线
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
-
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None):
+    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -385,30 +429,37 @@ class BarGenerator(object):
         self.xmin = xmin  # X的值
         self.onXminBar = onXminBar  # X分钟K线的回调函数
 
+        self.hfBar = None  # 高频K线对象
+        self.onHFBar = onBar
+        self.xSecond = xSecond
+        self.lastSecond = 0
+
         self.lastTick = None  # 上一TICK缓存对象
 
     # ----------------------------------------------------------------------
     def updateTick(self, tick):
         """TICK更新"""
         newMinute = False  # 默认不是新的一分钟
+        newHfBar = False  # 默认不是新的hf
 
         # 尚未创建对象
         if not self.bar:
             self.bar = VtBarData()
-            newMinute = True
-        # 新的一分钟
-        elif self.bar.datetime.minute != tick.datetime.minute and tick.datetime.second < 50:
             # 生成上一分钟K线的时间戳
-            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
             self.bar.date = self.bar.datetime.strftime('%Y%m%d')
             self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
-
-            # 推送已经结束的上一分钟K线
-            self.onBar(self.bar)
-
-            # 创建新的K线对象
-            self.bar = VtBarData()
             newMinute = True
+
+        # 新的一分钟
+        elif self.bar.datetime.minute != tick.datetime.minute:
+            if tick.datetime.second < 50:
+                # 推送已经结束的上一分钟K线
+                self.onBar(self.bar)
+
+                # 创建新的K线对象
+                self.bar = VtBarData()
+                newMinute = True
 
         # 初始化新一分钟的K线数据
         if newMinute:
@@ -430,13 +481,57 @@ class BarGenerator(object):
         self.bar.openInterest = tick.openInterest
 
         # if self.lastTick:
-            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量
+            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
         if tick.volumeChange:
             self.bar.volume += tick.lastVolume
 
         # 缓存Tick
         # self.lastTick = tick
+        
+        # 高频交易的bar
+        if self.xSecond:
+            if not self.hfBar:
+                self.hfBar = VtBarData()
+                # 生成上一分钟K线的时间戳
+                self.hfBar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+                self.hfBar.date = self.bar.datetime.strftime('%Y%m%d')
+                self.hfBar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
+                newHfBar = True
 
+            # 新的一分钟
+            elif not (self.hfBar.datetime.second) % self.xSecond:
+                if (self.hfBar.datetime.second != self.lastSecond) and tick.datetime.second > 10:
+                    # 推送已经结束的上一分钟K线
+                    self.onHFBar(self.hfBar)
+                    self.lastSecond = self.hfBar.datetime.second
+
+                    # 创建新的K线对象
+                    self.hfBar = VtBarData()
+                    newHfBar = True
+                
+                # 初始化新一分钟的K线数据
+            if newHfBar:
+                self.hfBar.vtSymbol = tick.vtSymbol
+                self.hfBar.symbol = tick.symbol
+                self.hfBar.exchange = tick.exchange
+
+                self.hfBar.open = tick.lastPrice
+                self.hfBar.high = tick.lastPrice
+                self.hfBar.low = tick.lastPrice
+            # 累加更新老一分钟的K线数据
+            else:
+                self.hfBar.high = max(self.hfBar.high, tick.lastPrice)
+                self.hfBar.low = min(self.hfBar.low, tick.lastPrice)
+
+            # 通用更新部分
+            self.hfBar.close = tick.lastPrice
+            self.hfBar.datetime = tick.datetime
+            self.hfBar.openInterest = tick.openInterest
+
+            # if self.lastTick:
+                # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
+            if tick.volumeChange:
+                self.hfBar.volume += tick.lastVolume
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
         """1分钟K线更新"""
@@ -451,6 +546,10 @@ class BarGenerator(object):
             self.xminBar.open = bar.open
             self.xminBar.high = bar.high
             self.xminBar.low = bar.low
+            # 生成上一X分钟K线的时间戳
+            self.xminBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            self.xminBar.date = bar.datetime.strftime('%Y%m%d')
+            self.xminBar.time = bar.datetime.strftime('%H:%M:%S.%f')
 
             # 累加老K线
         else:
@@ -459,22 +558,23 @@ class BarGenerator(object):
 
         # 通用部分
         self.xminBar.close = bar.close
-        self.xminBar.datetime = bar.datetime
+        # self.xminBar.datetime = bar.datetime
         self.xminBar.openInterest = bar.openInterest
         self.xminBar.volume += int(bar.volume)
+        
         # X分钟已经走完
-        if not bar.datetime.minute % self.xmin:  # 可以用X整除
-            # 生成上一X分钟K线的时间戳
-            self.xminBar.datetime = self.xminBar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.xminBar.date = self.xminBar.datetime.strftime('%Y%m%d')
-            self.xminBar.time = self.xminBar.datetime.strftime('%H:%M:%S.%f')
-
+        if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
             # 推送
             self.onXminBar(self.xminBar)
 
             # 清空老K线缓存对象
             self.xminBar = None
-#
+
+    #----------------------------------------------------------------------
+    def generate(self):
+        """手动强制立即完成K线合成"""
+        self.onBar(self.bar)
+        self.bar = None
 #
 # ########################################################################
 class ArrayManager(object):
@@ -615,8 +715,7 @@ class ArrayManager(object):
 
         return up, down
 
-        # ----------------------------------------------------------------------
-
+    # ----------------------------------------------------------------------
     def keltner(self, n, dev, array=False):
         """肯特纳通道"""
         mid = self.sma(n, array)
@@ -636,3 +735,34 @@ class ArrayManager(object):
         if array:
             return up, down
         return up[-1], down[-1]
+
+########################################################################
+class CtaSignal(object):
+    """
+    CTA策略信号，负责纯粹的信号生成（目标仓位），不参与具体交易管理
+    """
+
+    #----------------------------------------------------------------------
+    def __init__(self):
+        """Constructor"""
+        self.signalPos = 0      # 信号仓位
+    
+    #----------------------------------------------------------------------
+    def onBar(self, bar):
+        """K线推送"""
+        pass
+    
+    #----------------------------------------------------------------------
+    def onTick(self, tick):
+        """Tick推送"""
+        pass
+        
+    #----------------------------------------------------------------------
+    def setSignalPos(self, pos):
+        """设置信号仓位"""
+        self.signalPos = pos
+        
+    #----------------------------------------------------------------------
+    def getSignalPos(self):
+        """获取信号仓位"""
+        return self.signalPos

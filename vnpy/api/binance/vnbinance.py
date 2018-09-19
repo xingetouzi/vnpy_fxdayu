@@ -246,12 +246,24 @@ class BinanceApi(object):
         if endTime:
             params['endTime'] = endTime
         
-        print("--检查type是否正确--",params)
         result, data = self.request('GET', path, params, signed=False, stream=False)
-        df = pd.DataFrame(data, columns=["opentime", "open", "high", "low", "close", "volume","closetime","Quote","trades","buybase","buyquote","ignore"])
+        df = pd.DataFrame(data, columns=[
+            "opentime", "open", "high", "low", "close", "volume","closetime","Quote","trades","buybase","buyquote","ignore"])
 
-        df["datetime"] = df["closetime"].map(lambda x: datetime.fromtimestamp(x / 1000).strftime("%Y-%m-%d %H:%M:%S"))
-
+        df["datetime"] = df["closetime"].map(
+            lambda x: datetime.fromtimestamp(x / 1000).strftime("%Y%m%d %H:%M:%S"))
+        df["datetime"] = df["datetime"].map(
+            lambda x: datetime.strptime(x,"%Y%m%d %H:%M:%S"))
+        df["open"] = df["open"].map(
+            lambda x: float(x))
+        df["high"] = df["high"].map(
+            lambda x: float(x))
+        df["low"] = df["low"].map(
+            lambda x: float(x))
+        df["close"] = df["close"].map(
+            lambda x: float(x))
+        df["volume"] = df["volume"].map(
+            lambda x: float(x))
         return self.addReq('GET', path, params, self.onQueryKlines),df.to_dict()
 
         # ----------------------------------------------------------------------

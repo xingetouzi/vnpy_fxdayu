@@ -3,11 +3,11 @@
 展示如何执行策略回测。
 """
 from __future__ import division
-from ctaBacktesting import BacktestingEngine
+from vnpy.trader.app.ctaStrategy.ctaBacktesting import BacktestingEngine
 from vnpy.trader.app.ctaStrategy.ctaBase import *
 
 if __name__ == '__main__':
-    from strategy.strategydemo import DemoStrategy
+    from strategydemo import DeStrategy
     
     # 创建回测引擎
     engine = BacktestingEngine()
@@ -15,20 +15,21 @@ if __name__ == '__main__':
     engine.setBacktestingMode(engine.BAR_MODE)
 
     # 设置回测用的数据起始日期
-    engine.setStartDate('20180729 06:00',initHours=1)               # 设置回测用的数据起始日期
+    engine.setStartDate('20180729 06:00',initHours=1)      # 设置回测用的数据起始日期和初始化时长
     engine.setEndDate('20180801 08:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
     engine.setRate(0.3/10000)   # 万0.3
     engine.setSize(300)         # 股指合约大小 
     engine.setPriceTick(0.2)    # 股指最小价格变动
+    engine.setCachePath('D:\\vnpy_data\\')
     
     # 设置使用的历史数据库
     engine.setDatabase(MINUTE_DB_NAME)
     
     # 在引擎中创建策略对象
     d = {'symbolList':['tBTCUSD:bitfinex','tBTCUSD:bitfinex']}
-    engine.initStrategy(DemoStrategy, d)
+    engine.initStrategy(DeStrategy, d)
     
     # 开始跑回测
     engine.runBacktesting()
@@ -38,7 +39,8 @@ if __name__ == '__main__':
     import os 
     log = engine.logList
     dataframe = pd.DataFrame(log)
-    filename = os.path.join(os.path.expanduser("~"), "Desktop/") + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
+    filename = 'BTG_' + datetime.now().strftime("%Y%m%d_%H%M%S") +'.csv'
+    filename = os.path.abspath(filename) 
     dataframe.to_csv(filename,index=False,sep=',')    
     # 显示回测结果
     engine.showBacktestingResult()

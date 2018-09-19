@@ -83,9 +83,9 @@ class CtaStrategyManager(QtWidgets.QGroupBox):
         self.paramMonitor = CtaValueMonitor(self)
         self.varMonitor = CtaValueMonitor(self)
 
-        # height = 70
-        # self.paramMonitor.setFixedHeight(height)
-        # self.varMonitor.setFixedHeight(height)
+        height = 70
+        self.paramMonitor.setFixedHeight(height)
+        self.varMonitor.setFixedHeight(height)
 
         buttonInit = QtWidgets.QPushButton(text.INIT)
         buttonStart = QtWidgets.QPushButton(text.START)

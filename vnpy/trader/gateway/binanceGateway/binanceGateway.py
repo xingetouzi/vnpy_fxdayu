@@ -159,17 +159,25 @@ class BinanceGateway(VtGateway):
         self.qryEnabled = qryEnabled
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
-        KLINE_PERIOD=['1m', '3m', '5m', '15m', '30m', '1h','2h','4h','6h','8h', '12h','1d', '3d', '1w', '1M']
-        if type_ not in KLINE_PERIOD:
-            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
-            self.writeLog("BINANCE Type_ hint：'1m', '3m', '5m', '15m', '30m', '1h','2h','4h','6h','8h', '12h','1d', '3d', '1w', '1M'")
-            return '-1'
-        symbol = vtSymbol.split('.')[0]
-        data = self.GatewayApi.loadHistoryBar(symbol,type_,size)
+        KLINE_PERIOD_MAP={}
+        KLINE_PERIOD_MAP['1min'] = '1m'
+        KLINE_PERIOD_MAP['5min'] = '5m'
+        KLINE_PERIOD_MAP['15min'] = '15m'
+        KLINE_PERIOD_MAP['30min'] = '30m'
+        KLINE_PERIOD_MAP['60min'] = '1h'
+        KLINE_PERIOD_MAP['120min'] = '2h'
+        KLINE_PERIOD_MAP['1day'] = '1d'
+        KLINE_PERIOD_MAP['1week'] = '1w'
+        KLINE_PERIOD_MAP['1month'] = '1M'
+        
+        if type_ in KLINE_PERIOD_MAP:
+            candletype = KLINE_PERIOD_MAP[type_]
+            
+        symbol = vtSymbol.split(':')[0]
+        data = self.api.loadHistoryBar(symbol,candletype,size)
         return data
 
     def initPosition(self,vtSymbol):
-    
         pass
         
     def qryOrder(self):
@@ -242,7 +250,7 @@ class GatewayApi(BinanceApi):
 
             contract.symbol = d['symbol']
             contract.exchange = EXCHANGE_BINANCE
-            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+            contract.vtSymbol = ':'.join([contract.symbol, contract.exchange])
             contract.name = contract.vtSymbol
             contract.productClass = PRODUCT_SPOT
             contract.size = 1
@@ -273,10 +281,10 @@ class GatewayApi(BinanceApi):
 
             order.symbol = d['symbol']
             order.exchange = EXCHANGE_BINANCE
-            order.vtSymbol = '.'.join([order.symbol, order.exchange])
+            order.vtSymbol = ':'.join([order.symbol, order.exchange])
 
             order.orderID = d['clientOrderId']
-            order.vtOrderID = '.'.join([order.gatewayName, order.orderID])
+            order.vtOrderID = ':'.join([order.gatewayName, order.orderID])
 
             order.direction = directionMapReverse[d['side']]
             order.price = float(d['price'])
@@ -305,9 +313,9 @@ class GatewayApi(BinanceApi):
                 pos.gatewayName = self.gatewayName
                 pos.symbol = d['asset']
                 pos.exchange = EXCHANGE_BINANCE
-                pos.vtSymbol = '.'.join([pos.vtSymbol, pos.direction])
+                pos.vtSymbol = ':'.join([pos.vtSymbol, pos.direction])
                 pos.direction = DIRECTION_LONG
-                pos.vtPositionName = '.'.join([pos.symbol, pos.direction])
+                pos.vtPositionName = ':'.join([pos.symbol, pos.direction])
                 pos.frozen = locked
                 pos.position = free + locked
                 self.gateway.onPosition(pos)
@@ -356,9 +364,9 @@ class GatewayApi(BinanceApi):
                 pos.gatewayName = self.gatewayName
                 pos.symbol = d['a']
                 pos.exchange = EXCHANGE_BINANCE
-                pos.vtSymbol = '.'.join([pos.vtSymbol, pos.direction])
+                pos.vtSymbol = ':'.join([pos.vtSymbol, pos.direction])
                 pos.direction = DIRECTION_LONG
-                pos.vtPositionName = '.'.join([pos.symbol, pos.direction])
+                pos.vtPositionName = ':'.join([pos.symbol, pos.direction])
                 pos.frozen = locked
                 pos.position = free + locked
                 self.gateway.onPosition(pos)
@@ -374,13 +382,13 @@ class GatewayApi(BinanceApi):
 
         order.symbol = d['s']
         order.exchange = EXCHANGE_BINANCE
-        order.vtSymbol = '.'.join([order.symbol, order.exchange])
+        order.vtSymbol = ':'.join([order.symbol, order.exchange])
 
         if d['C'] != 'null':
             order.orderID = d['C']  # 撤单原始委托号
         else:
             order.orderID = d['c']
-        order.vtOrderID = '.'.join([order.gatewayName, order.orderID])
+        order.vtOrderID = ':'.join([order.gatewayName, order.orderID])
 
         order.direction = directionMapReverse[d['S']]
         order.price = float(d['p'])
@@ -402,7 +410,7 @@ class GatewayApi(BinanceApi):
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.tradeID = str(d['t'])
-            trade.vtTradeID = '.'.join([trade.gatewayName, trade.tradeID])
+            trade.vtTradeID = ':'.join([trade.gatewayName, trade.tradeID])
             trade.direction = order.direction
             trade.price = float(d['L'])
             trade.volume = float(d['l'])
@@ -424,7 +432,7 @@ class GatewayApi(BinanceApi):
             tick.gatewayName = self.gatewayName
             tick.symbol = symbol
             tick.exchange = EXCHANGE_BINANCE
-            tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
+            tick.vtSymbol = ':'.join([tick.symbol, tick.exchange])
 
             self.tickDict[symbol] = tick
 
@@ -499,7 +507,7 @@ class GatewayApi(BinanceApi):
         """"""
         self.orderId += 1
         orderId = self.date + str(self.orderId).rjust(6, '0')
-        vtOrderID = '.'.join([self.gatewayName, orderId])
+        vtOrderID = ':'.join([self.gatewayName, orderId])
         side = directionMap.get(orderReq.direction, '')
         if orderReq.priceType == 0:
             orderReq.priceType = PRICETYPE_LIMITPRICE
@@ -519,7 +527,7 @@ class GatewayApi(BinanceApi):
         """"""
         self.cancelOrder(cancelOrderReq.symbol, origClientOrderId=cancelOrderReq.orderID)
 
-    def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
+    def loadHistoryBar(self,symbol,type_,size = None, since = None):
         interval = type_
         if size:
             limit = size

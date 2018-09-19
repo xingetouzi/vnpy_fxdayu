@@ -19,8 +19,10 @@
 
 
 import json
+import math
 import os
 import traceback
+import importlib
 from collections import OrderedDict,defaultdict
 from datetime import datetime, timedelta
 from copy import copy
@@ -30,9 +32,12 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
+from vnpy.trader.vtGlobal import globalSetting
 import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
+from functools import lru_cache
+
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -97,14 +102,13 @@ class CtaEngine(object):
         self.registerEvent()
 
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, marketPrice, levelRate, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
         """发单"""
         
         contract = self.mainEngine.getContract(vtSymbol)
         req = VtOrderReq()
         
         req.symbol = contract.symbol
-        req.contractType = req.symbol[4:]
         req.exchange = contract.exchange
         req.vtSymbol = contract.vtSymbol
         req.price = self.roundToPriceTick(contract.priceTick, price)
@@ -112,18 +116,13 @@ class CtaEngine(object):
 
         req.productClass = strategy.productClass
         req.currency = strategy.currency
-        req.bystrategy = strategy.name
+        req.byStrategy = strategy.name
 
         # 设计为CTA引擎发出的委托只允许使用限价单
         # req.priceType = PRICETYPE_LIMITPRICE
 
-        req.priceType = marketPrice    #OKEX 用number作priceType
+        req.priceType = priceType
         req.levelRate = str(levelRate)
-
-        if marketPrice:
-            type_shown = PRICETYPE_MARKETPRICE
-        else:
-            type_shown = PRICETYPE_LIMITPRICE
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -141,6 +140,7 @@ class CtaEngine(object):
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
             req.offset = OFFSET_CLOSE
+
         # 委托转换
         reqList = self.mainEngine.convertOrderReq(req)
         vtOrderIDList = []
@@ -152,7 +152,7 @@ class CtaEngine(object):
             self.strategyOrderDict[strategy.name].add(vtOrderID)                         # 添加到策略委托号集合中
             vtOrderIDList.append(vtOrderID)
         self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
-                         %(strategy.name,type_shown,vtOrderID, vtSymbol, orderType, volume, price ))
+                         %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
 
         return vtOrderIDList
 
@@ -175,32 +175,61 @@ class CtaEngine(object):
                 req = VtCancelOrderReq()
                 req.vtSymbol = order.vtSymbol
                 req.symbol = order.symbol
-
-                req.contractType = order.contractType
                 req.exchange = order.exchange
                 req.frontID = order.frontID
                 req.sessionID = order.sessionID
                 req.orderID = order.orderID
+
                 self.mainEngine.cancelOrder(req, order.gatewayName)
-                self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.bystrategy, vtOrderID, order.vtSymbol))
+                self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
+
+    def batchCancelOrder(self,vtOrderIDList):
+        """批量撤单"""
+        # 查询报单对象
+
+        reqList = []
+        for vtOrderID in vtOrderIDList:
+            order = self.mainEngine.getOrder(vtOrderID)
+
+            # 如果查询成功
+            if order:
+                # 检查是否报单还有效，只有有效时才发出撤单指令
+                orderFinished = (order.status==STATUS_ALLTRADED 
+                                or order.status==STATUS_CANCELLED 
+                                or order.status == STATUS_REJECTED
+                                or order.status == STATUS_CANCELLING
+                                or order.status == STATUS_CANCELINPROGRESS)
+                
+                if not orderFinished:
+                    req = VtCancelOrderReq()
+                    req.vtSymbol = order.vtSymbol
+                    req.symbol = order.symbol
+                    req.exchange = order.exchange
+                    req.frontID = order.frontID
+                    req.sessionID = order.sessionID
+                    req.orderID = order.orderID
+            
+                    reqList.append(req)
+
+        self.mainEngine.batchCancelOrder(reqList, order.gatewayName)
+        self.writeCtaLog('策略%s: 对本地订单%s，发送批量撤单委托，实际发送单量%s'%(order.byStrategy, vtOrderIDList,len(reqList)))
 
     #----------------------------------------------------------------------
-    def sendStopOrder(self, vtSymbol, orderType, price, volume, marketPrice, strategy):
+    def sendStopOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发停止单（本地实现）"""
         self.stopOrderCount += 1
         stopOrderID = STOPORDERPREFIX + str(self.stopOrderCount)
 
         so = StopOrder()
         so.vtSymbol = vtSymbol
-        contractType = vtSymbol.split('.')[0]
-        so.contractType = contractType[4:]
         so.orderType = orderType
         so.price = price
-        so.priceType = marketPrice
+        so.priceType = priceType
         so.volume = volume
         so.strategy = strategy
         so.stopOrderID = stopOrderID
         so.status = STOPORDER_WAITING
+        so.byStrategy = strategy.name
 
         if orderType == CTAORDER_BUY:
             so.direction = DIRECTION_LONG
@@ -270,7 +299,7 @@ class CtaEngine(object):
                             price = tick.lowerLimit
 
                         # 发出市价委托
-                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.marketPrice, so.strategy)
+                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.priceType, so.strategy)
 
                         # 从活动停止单字典中移除该停止单
                         del self.workingStopOrderDict[so.stopOrderID]
@@ -297,6 +326,8 @@ class CtaEngine(object):
             try:
                 # 添加datetime字段
                 if not tick.datetime:
+                    if len(tick.time.split('.'))>1:
+                        tick.time = tick.time[:-2]
                     tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
             except ValueError:
                 self.writeCtaLog(traceback.format_exc())
@@ -509,6 +540,7 @@ class CtaEngine(object):
             name = setting['name']
             className = setting['className']
             vtSymbolset=setting['symbolList']
+            mailAdd = setting['mailAdd']
 
         except Exception as e:
             self.writeCtaLog(u'载入策略%s出错：%s' %e)
@@ -519,8 +551,11 @@ class CtaEngine(object):
         
         
         if not strategyClass:
-            self.writeCtaLog(u'找不到策略类：%s' %className)
-            return
+            STRATEGY_GET_CLASS = self.loadLocalStrategy()
+            strategyClass = STRATEGY_GET_CLASS.get(className, None)
+            if not strategyClass:
+                self.writeCtaLog(u'找不到策略类：%s' %className)
+                return
 
         # 防止策略重名
         if name in self.strategyDict:
@@ -530,6 +565,8 @@ class CtaEngine(object):
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
             strategy.symbolList = vtSymbolset
+            strategy.mailAdd = mailAdd
+            strategy.name = name
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -554,9 +591,6 @@ class CtaEngine(object):
                 req.symbol = contract.symbol
                 req.vtSymbol = contract.vtSymbol
                 req.exchange = contract.exchange
-
-                if contract.contractType:         # 如果该品种是OKEX期货
-                    req.contractType = contract.contractType
                 
                 # 对于IB接口订阅行情时所需的货币和产品类型，从策略属性中获取
                 req.currency = strategy.currency
@@ -574,6 +608,9 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
+                strategy.posDict = {}
+                strategy.eveningDict = {}
+                strategy.bondDict = {}
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
@@ -699,7 +736,10 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：' + name)
             return None
-
+    #-----------------------------------
+    def getStrategyNames(self):
+        """查询所有策略名称"""
+        return self.strategyDict.keys()  
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
         """触发策略状态变化事件（通常用于通知GUI更新）"""
@@ -720,12 +760,8 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            if not strategy.mailAdd:
-                self.writeCtaLog(u'you will receive an email notification for this func_error if you fill your email address in the ctaSetting.json')
-            else:
-                self.mail(content,strategy.name)
+            self.mail(content,strategy)
             self.writeCtaLog(content)
-            
 
     #----------------------------------------------------------------------------------------
     def saveSyncData(self, strategy):    #改为posDict
@@ -811,20 +847,28 @@ class CtaEngine(object):
             'totalVolume':order.totalVolume,
             'status':order.status,
             'createTime':order.orderTime,
-            'orderby':order.bystrategy
+            'orderby':order.byStrategy
             }
 
         self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
         
-    #----------------------------------------------------------------------
-    def roundToPriceTick(self, priceTick, price):
-        """取整价格到合约最小价格变动"""
-        if not priceTick:
-            return price
 
-        newPrice = round(price,priceTick)
+    @lru_cache(50)
+    def roundNumberPriceTick(priceTick): 
+        strPriceTick = str(priceTick)
+        if "." in strPriceTick:
+            xiaosu = strPriceTick.split(".")[1]
+            return len(("." + xiaosu).strip("0")) - 1
+        else:
+            l1 = len(strPriceTick)
+            l2 = len(("." + strPriceTick).strip("0")) - 1
+            return l2 - l1
+
+    def roundToPriceTick(priceTick, price):
+        """取整价格到合约最小价格变动"""
+        newPrice = round(round(price/priceTick,0)*priceTick, roundNumberPriceTick(priceTick))
         return newPrice
 
     #----------------------------------------------------------------------
@@ -887,7 +931,7 @@ class CtaEngine(object):
         # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
-            if 'week' in  symbol or 'quarter' in symbol or 'bitmex' in symbol:
+            if 'week' in  symbol or 'quarter' in symbol:
                 if 'posDict' in strategy.syncList:
                     strategy.posDict[symbol+"_LONG"] = 0
                     strategy.posDict[symbol+"_SHORT"] = 0
@@ -916,16 +960,17 @@ class CtaEngine(object):
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
-            contract = self.mainEngine.getContract(vtSymbol)
-            self.mainEngine.initPosition(vtSymbol, contract.gatewayName)
+            self.mainEngine.initPosition(vtSymbol)
 
     def qryOrder(self,name,status=None):
         s = self.strategyOrderDict[name]
-        for vtOrderID in list(s):
-            if STOPORDERPREFIX not in vtOrderID:
-                order = self.mainEngine.getOrder(vtOrderID)
-                if order:
-                    self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+        
+        if len(list(s)):
+            for vtOrderID in list(s):
+                if STOPORDERPREFIX not in vtOrderID:
+                    order = self.mainEngine.getOrder(vtOrderID)
+                    if order:
+                        self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
 
     def restoreStrategy(self, name):
         """恢复策略"""
@@ -943,44 +988,80 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
-    def mail(self,my_context,name):
-        if name in self.strategyDict:
-            strategy = self.strategyDict[name]
-            if strategy.mailAdd:
-                if len(strategy.mailAdd)>1:
-                    to_receiver = strategy.mailAdd[0]
-                    cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
-                    cc_receiver = ",".join(cc_receiver)
-                    my_receiver = ",".join([to_receiver,cc_receiver])
-                else:
-                    to_receiver = my_receiver = strategy.mailAdd[0]
-            else:
-                self.writeCtaLog(u"Please write email address in ctaSetting.json")
-                return False
-        else:
-            self.writeCtaLog(u"Strategy not found under the name given: %s"%name)
-            return False
+    def mail(self,my_context,strategy):
+        mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
+        mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
+        if "" in [mailaccount,mailpass,mailserver,mailport]:
+            return self.writeCtaLog(u'Please fill sender\'s mail info in vtSetting.json')
 
+        if strategy.mailAdd:
+            if len(strategy.mailAdd)>1:
+                to_receiver = strategy.mailAdd[0]
+                cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
+                cc_receiver = ",".join(cc_receiver)
+                my_receiver = ",".join([to_receiver,cc_receiver])
+            elif len(strategy.mailAdd)==1:
+                to_receiver = my_receiver = strategy.mailAdd[0]
+                cc_receiver = ""
+        else:
+            self.writeCtaLog(u"Please fill email address in ctaSetting.json")
+            return False
         
         if not my_context:
-            self.writeCtaLog(u"Please write email context: %s"%name)
+            self.writeCtaLog(u"Please write email context: %s"%strategy.name)
             return False
 
         ret=True
         try:
+            my_context = my_context +"<br><br> from strategy: "+ strategy.name+"<br><br>Good Luck<br>"+ datetime.now().strftime("%Y%m%d %H:%M:%S")
             msg=MIMEText(my_context,'html','utf-8')
-            msg['From']=formataddr(['VNPY_CryptoCurrency','trade-msg@yandex.com'])
-            msg['To']=formataddr(["收件人昵称",to_receiver])
+            msg['From']=formataddr(['VNPY_CryptoCurrency',mailaccount])
+            msg['To']=to_receiver#formataddr(["收件人昵称",to_receiver])
             if cc_receiver:
-                msg['Cc']=formataddr(["CC收件人昵称",cc_receiver])
+                msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
             msg['Subject'] = '策略信息播报'
     
-            server=smtplib.SMTP_SSL("smtp.yandex.com",465)
-            server.login('trade-msg@yandex.com', 'zaq!1234')
-            server.sendmail('trade-msg@yandex.com',[my_receiver,],msg.as_string())
+            server=smtplib.SMTP_SSL(mailserver, mailport)
+            server.login(mailaccount, mailpass)
+            if cc_receiver:
+                server.sendmail(mailaccount,[to_receiver,cc_receiver],msg.as_string())
+            else:
+                server.sendmail(mailaccount,[to_receiver],msg.as_string())
             server.quit()
-            self.writeCtaLog(u"%s: Send successfully ..."%name)
+            self.writeCtaLog(u"%s: Send email successfully ..."%strategy.name)
         except Exception:
             ret=False
-            self.writeCtaLog(u"%s: Send email failed ..."%name)
+            self.writeCtaLog(u"%s: Send email failed ..."%strategy.name)
         return ret
+
+    def loadLocalStrategy(self):
+        # 用来保存策略类的字典
+        STRATEGY_GET_CLASS = {}
+
+        # 获取目录路径
+        path = os.path.abspath(os.path.dirname(__file__))
+
+        # 遍历strategy目录下的文件
+        for root, subdirs, files in os.walk(path):
+            for name in files:
+                # 只有文件名中包含strategy且非.pyc的文件，才是策略文件
+                if 'strategy' in name and '.pyc' not in name:
+                    # 模块名称需要上前缀
+                    moduleName = name.replace('.py', '')
+
+                    # 使用importlib动态载入模块
+                    try:
+                        module = importlib.import_module(moduleName)
+
+                        # 遍历模块下的对象，只有名称中包含'Strategy'的才是策略类
+                        for k in dir(module):
+                            if 'Strategy' in k:
+                                v = module.__getattribute__(k)
+                                STRATEGY_GET_CLASS[k] = v
+
+                    except:
+                        print('-' * 20)
+                        print(('Failed to import strategy file %s:' %moduleName))
+                        traceback.print_exc()
+
+        return STRATEGY_GET_CLASS
