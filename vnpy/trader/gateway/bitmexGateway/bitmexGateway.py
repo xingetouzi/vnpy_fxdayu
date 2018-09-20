@@ -375,7 +375,7 @@ class WebsocketApi(BitmexWebsocketApi):
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
-        
+        tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         self.gateway.onTick(tick)
 
     #----------------------------------------------------------------------
