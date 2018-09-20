@@ -93,6 +93,8 @@ class BacktestingEngine(object):
         
         self.logList = []               # 日志记录
         
+        self.orderList = []             # 订单记录
+        
         # 当前最新数据，用于模拟成交用
         self.tickDict = defaultdict(lambda: None)
         self.barDict = defaultdict(lambda: None)
@@ -293,7 +295,7 @@ class BacktestingEngine(object):
             self.output(u'载入完成，数据量：%s' %(len(dataList)))
             return dataList
         else:
-            self.output(u'！！没有数据 没有数据 没有数据！！')
+            self.output(u'！！ 数据量为0 ！！')
             return []
         
     #----------------------------------------------------------------------
@@ -1361,7 +1363,8 @@ class TradingResult(object):
         self.entryDt = entryDt          # 开仓时间datetime    
         self.exitDt = exitDt            # 平仓时间
         
-        self.volume = volume        # 交易数量（+/-代表方向）
+        self.volume = volume            # 交易数量（+/-代表方向）
+        self.deliverySheet = []         # 交割单记录
         if levelRate:
             self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
         else:
@@ -1379,9 +1382,12 @@ class TradingResult(object):
         else:
             self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
-        
-        print("单笔盈亏：",self.pnl,"开仓：",entryDt, ", ",self.entryPrice,"平仓:",exitDt,", ",self.exitPrice,"交易数量：",volume,"合约面值：",size,"滑点：",self.slippage,"手续费：",self.commission)
 
+        deliveryResult = "单笔盈亏："+ self.pnl + ", 开仓：" + entryDt  +  ", " + self.entryPrice +\
+                        ", 平仓:" + exitDt + ", " + self.exitPrice + ", 交易数量：" + volume +\
+                        ", 合约面值：" + size + ", 滑点：" + self.slippage + ", 手续费：" + self.commission
+        self.deliverySheet.append(deliveryResult)
+        
 
 ########################################################################
 class DailyResult(object):

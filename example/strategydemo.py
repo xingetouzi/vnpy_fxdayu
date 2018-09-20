@@ -20,6 +20,7 @@ class DeStrategy(CtaTemplate):
     passiveSymbol = EMPTY_STRING    # 被动品种
 
     # 策略变量
+    posDict = {}                    # 仓位字典初始化
     posSize = 1                     # 每笔下单的数量
 
     # 参数列表，保存了参数的名称，在实盘交易时，作为策略参数在UI显示

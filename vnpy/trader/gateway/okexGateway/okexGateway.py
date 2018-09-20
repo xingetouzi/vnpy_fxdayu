@@ -224,7 +224,7 @@ class OkexGateway(VtGateway):
         # self.futuresApi.futuresUserInfo()
         pass
     #------------------------------------------------
-    def qryOrder(self, vtSymbol, order_id, status= None):
+    def qryAllOrdera(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
         contract_type = vtSymbol.split(':')[0]
         contractType = contract_type[4:]
@@ -1282,7 +1282,8 @@ class FuturesApi(OkexFuturesApi):
         order.exchangeOrderID = orderId        
         order.user_id = rawData['user_id']
         order.gatewayName = self.gatewayName
-        order.orderTime = rawData['create_date_str']
+        time_temp = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
+        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
         
         order.deliverTime = datetime.now()
         order.status = statusMap[rawData['status']] 
@@ -1562,7 +1563,7 @@ class FuturesApi(OkexFuturesApi):
         if not validate:
             # self.localOrderDict[str(self.localNo)] = order
             # self.localNoDict[str(self.localNo)] = vtOrderID
-            self.rest_qry_orders(symbol,req.contractType,order_id)
+            self.rest_qry_orders(symbol,contract_type,order_id)
          
         # self.localOrderDict[str(self.localNo)] = order
         # self.localNoDict[str(self.localNo)] = vtOrderID
@@ -1650,12 +1651,14 @@ class FuturesApi(OkexFuturesApi):
                 self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
                 for orphanOrder in list(self.orphanDict.values()):
                     if order.vtSymbol == orphanOrder.vtSymbol:
-                        if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
-                            order.vtOrderID = orphanOrder.vtOrderID
-                            order.orderID = orphanOrder.orderID
-                            order.byStrategy = orphanOrder.byStrategy
-                            self.gateway.onOrder(order)
-                            del self.orphanDict[order.vtOrderID]
+                        ordertimediff = orphanOrder.createDate - order.orderTime
+                        if ordertimediff.seconds < 10 :
+                            if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
+                                order.vtOrderID = orphanOrder.vtOrderID
+                                order.orderID = orphanOrder.orderID
+                                order.byStrategy = orphanOrder.byStrategy
+                                self.gateway.onOrder(order)
+                                del self.orphanDict[order.vtOrderID]
                     else:
                         symbol = order.symbol[:3]+ '_usd'
                         contract_type = order.symbol[4:]
@@ -1806,64 +1809,91 @@ class FuturesApi(OkexFuturesApi):
         except:
             self.writeLog(u'***rest_qry_orders***return_error,ID:(%s)'%order_id)
             return
-        self.writeLog(u'***rest_qry_orders***%s**'%data)
-        order_id = str(order_id)
+        
+        if 'result' in data.keys():
+            if data['result']:
+                orderinfo = data['orders']
+                self.writeLog(u'***rest_qry_orders**found %s orders,**%s**'%(len(orderinfo),data))
+                for i in range(len(orderinfo)):
+                    orderdetail = orderinfo[i]
+                    order_id = str(orderdetail['order_id'])
 
-        if order_id in self.exchangeOrderDict.keys():
-            vtOrderID = self.exchangeOrderDict[order_id]
-            order = self.orderDict[vtOrderID]
-            if 'result' in data.keys():
-                if data['result']:
-                    orderinfo = data['orders'][0]
-                    order.status = statusMap[orderinfo['status']]
-                    lastTradedVolume = order.tradedVolume
-                    order.tradedVolume = orderinfo['deal_amount']
-                    order.thisTradedVolume = order.tradedVolume - lastTradedVolume
-                    order.price = orderinfo['price']
-                    order.price_avg = orderinfo['price_avg']
-                    order.deliverTime = datetime.now()
-                    order.fee = orderinfo['fee']
-                    self.sendOrderDict[order_id] = order  
+                    if order_id in self.exchangeOrderDict.keys():
+                        vtOrderID = self.exchangeOrderDict[order_id]
+                        order = self.orderDict[vtOrderID]
 
-                    if order.tradedVolume > lastTradedVolume:
+                        order.status = statusMap[orderdetail['status']]
+                        lastTradedVolume = order.tradedVolume
+                        order.tradedVolume = orderdetail['deal_amount']
+                        order.thisTradedVolume = order.tradedVolume - lastTradedVolume
+                        order.price = orderdetail['price']
+                        order.price_avg = orderdetail['price_avg']
+                        order.deliverTime = datetime.now()
+                        order.fee = orderdetail['fee']
+                        time_temp = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+                        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
+
+                        self.sendOrderDict[order_id] = order  
+                        self.wsOrderDict[order_id] = order
+                        self.orderDict[vtOrderID] = order   #更新order信息
                         self.gateway.onOrder(copy(order))
-                        self.writeLog(u'gw_qry_order_update,%s ,thisvolume: %s'%(
-                            order.vtOrderID,order.thisTradedVolume))
 
-                        trade = VtTradeData()
-                        trade.gatewayName = self.gatewayName
-                        trade.symbol = order.symbol
-                        trade.exchange = order.exchange
-                        trade.vtSymbol = order.vtSymbol
+                        self.writeLog(u'rest_qry_orders_findout_%s,%s,status:%s'%(
+                                order.symbol,order.vtOrderID,order.status))
+
+                        if order.tradedVolume > lastTradedVolume:
+                            self.writeLog(u'gw_qry_order_update,%s ,thisvolume: %s'%(
+                                order.vtOrderID,order.thisTradedVolume))
+
+                            trade = VtTradeData()
+                            trade.gatewayName = self.gatewayName
+                            trade.symbol = order.symbol
+                            trade.exchange = order.exchange
+                            trade.vtSymbol = order.vtSymbol
+                            
+                            self.tradeID += 1
+                            trade.tradeID = str(self.tradeID)
+                            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                            
+                            trade.orderID = order.orderID
+                            trade.vtOrderID = order.vtOrderID
+                            trade.exchangeOrderID = order_id
+                            trade.direction = order.direction
+                            trade.offset = order.offset
+                            trade.price = order.price
+                            trade.price_avg = order.price_avg
+                            trade.volume = order.tradedVolume - lastTradedVolume
+                            trade.tradeTime = order.deliverTime
+                            trade.orderTime = order.createDate
+                            trade.fee = order.fee
+                            trade.status = order.status
+                            self.gateway.onTrade(trade)
+                    else:
+                        self.writeLog(
+                            'rest_qry_orders: we don\'t have this order in record, Now create it!!  id = %s'%order_id)
+                        order = VtOrderData()
+                        order.symbol = symbol[:3] + contractType
+                        order.gatewayName = self.gatewayName
+                        order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+                        order.exchange = EXCHANGE_OKEX
+                        order.price = orderdetail['price']
+                        order.price_avg = orderdetail['price_avg']
+                        order.direction, order.offset = futureOrderTypeMap[str(orderdetail['type'])]
+                        order.totalVolume = orderdetail['amount']    
+                        order.exchangeOrderID = orderId        
+                        order.gatewayName = self.gatewayName
+                        time_temp = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+                        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
                         
-                        self.tradeID += 1
-                        trade.tradeID = str(self.tradeID)
-                        trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
-                        
-                        trade.orderID = order.orderID
-                        trade.vtOrderID = order.vtOrderID
-                        trade.exchangeOrderID = order_id
-                        trade.direction = order.direction
-                        trade.offset = order.offset
-                        trade.price = order.price
-                        trade.price_avg = order.price_avg
-                        trade.volume = order.tradedVolume - lastTradedVolume
-                        trade.tradeTime = order.deliverTime
-                        trade.fee = order.fee
-                        trade.status = order.status
-                        self.gateway.onTrade(trade)
-                    if order.status in [STATUS_CANCELLED,STATUS_CANCELINPROGRESS,STATUS_CANCELLING]:
-                        self.gateway.onOrder(copy(order))
-                        self.writeLog(u'gw_rest_order_findout_cancelled,<3<3 %s,%s,status:%s'%(
-                            order.symbol,order.vtOrderID,order.status))
-                    self.writeLog(u'gw_rest_order_no_new_update:%s,%s status:%s thisvolume:%s'%(
-                        order.symbol,order.vtOrderID,order.status,order.tradedVolume))
-                
-                    self.orderDict[vtOrderID] = order   #更新order信息
-        else:
-            self.writeLog(
-                'qryOrder: we don\'t have this order in record, attention!!  id = %s'%order_id)
-            return
+                        order.deliverTime = datetime.now()
+                        order.status = statusMap[orderdetail['status']] 
+                        order.fee = orderdetail['fee']
+                        # lastTradedVolume = order.tradedVolume
+                        order.tradedVolume = float(orderdetail['deal_amount'])
+                        self.wsOrderDict[orderId] = order
+                    validation = self.order_arbitration(order)
+            else:
+                self.writeLog('rest_qry_orders: it returned false')
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)

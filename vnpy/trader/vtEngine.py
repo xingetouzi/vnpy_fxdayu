@@ -203,11 +203,11 @@ class MainEngine(object):
             data = gateway.loadHistoryBar(vtSymbol,type_,size)
         return data
 
-    def qryOrder(self, vtSymbol,orderId,status=None):
+    def qryAllOrders(self, vtSymbol,orderId,status=None):
         gatewayName = vtSymbol.split(':')
         gateway = self.getGateway(gatewayName[1])
         if gateway:
-            gateway.qryOrder(vtSymbol,orderId,status)
+            gateway.qryAllOrders(vtSymbol,orderId,status)
 
     #----------------------------------------------------------------------
     def exit(self):

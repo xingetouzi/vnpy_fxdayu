@@ -61,7 +61,7 @@ class CtaEngine(object):
 
         # 当前日期
         self.today = todayDate()
-        self.minute_temp = 0
+        self.second_temp = 0
 
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
@@ -338,12 +338,9 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 45 and tick.datetime.minute != self.minute_temp:
-                        self.minute_temp = tick.datetime.minute
-                        self.qryOrder(strategy.name)
-                    elif tick.datetime.second == 15 and tick.datetime.minute != self.minute_temp:
-                        self.minute_temp = tick.datetime.minute
-                        self.qryOrder(strategy.name)
+                    if tick.datetime.second % 16 and tick.datetime.second != self.second_temp:
+                        self.second_temp = tick.datetime.second
+                        self.qryAllOrders(strategy.name)
                     
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -931,46 +928,48 @@ class CtaEngine(object):
         # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
-            if 'week' in  symbol or 'quarter' in symbol:
-                if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol+"_LONG"] = 0
-                    strategy.posDict[symbol+"_SHORT"] = 0
-                if 'eveningDict' in strategy.syncList:
-                    strategy.eveningDict[symbol+"_LONG"] = 0
-                    strategy.eveningDict[symbol+"_SHORT"] = 0
-                if 'bondDict' in strategy.syncList:
-                    strategy.bondDict[symbol+"_LONG"] = 0
-                    strategy.bondDict[symbol+"_SHORT"] = 0
-            else:
-                if 'accountDict' in strategy.syncList:
-                    symbol = symbol.split('.')[0]
-                    name = str.lower(symbol.replace('_',''))
-                    if 'btc' in name[-3:]:
-                        a = name.split('btc')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['btc'] = 0
-                    elif 'usdt' in name[-4:]:
-                        a = name.split('usdt')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['usdt'] = 0
-                    elif 'bnb' in name[-3:]:
-                        a = name.split('bnb')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['bnb'] = 0
+            if 'posDict' in strategy.syncList:
+                strategy.posDict[symbol+"_LONG"] = 0
+                strategy.posDict[symbol+"_SHORT"] = 0
+            if 'eveningDict' in strategy.syncList:
+                strategy.eveningDict[symbol+"_LONG"] = 0
+                strategy.eveningDict[symbol+"_SHORT"] = 0
+            if 'bondDict' in strategy.syncList:
+                strategy.bondDict[symbol+"_LONG"] = 0
+                strategy.bondDict[symbol+"_SHORT"] = 0
+
+            if 'accountDict' in strategy.syncList:
+                symbol = symbol.split('.')[0]
+                name = str.lower(symbol.replace('_',''))
+                if 'btc' in name[-3:]:
+                    a = name.split('btc')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['btc'] = 0
+                elif 'usdt' in name[-4:]:
+                    a = name.split('usdt')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['usdt'] = 0
+                elif 'bnb' in name[-3:]:
+                    a = name.split('bnb')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['bnb'] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
             self.mainEngine.initPosition(vtSymbol)
 
-    def qryOrder(self,name,status=None):
+    def qryAllOrders(self,name,status=None):
         s = self.strategyOrderDict[name]
+        qryList = []
         
         if len(list(s)):
             for vtOrderID in list(s):
                 if STOPORDERPREFIX not in vtOrderID:
                     order = self.mainEngine.getOrder(vtOrderID)
                     if order:
-                        self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+                        qryList.append(order.vtSymbol)
+            for symbol in set(qryList):
+                self.mainEngine.qryAllOrder(symbol, -1, status = 1)
 
     def restoreStrategy(self, name):
         """恢复策略"""
