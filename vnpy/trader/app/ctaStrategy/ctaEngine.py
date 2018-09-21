@@ -967,8 +967,9 @@ class CtaEngine(object):
                 if STOPORDERPREFIX not in vtOrderID:
                     order = self.mainEngine.getOrder(vtOrderID)
                     if order:
-                        qryList.append(order.vtSymbol)
-            for symbol in set(qryList):
+                        if order.vtSymbol not in qryList:
+                            qryList.append(order.vtSymbol)
+            for symbol in qryList:
                 self.mainEngine.qryAllOrder(symbol, -1, status = 1)
 
     def restoreStrategy(self, name):
@@ -1038,7 +1039,7 @@ class CtaEngine(object):
         STRATEGY_GET_CLASS = {}
 
         # 获取目录路径
-        path = os.path.abspath(os.path.dirname(__file__))
+        path = os.getcwd()
 
         # 遍历strategy目录下的文件
         for root, subdirs, files in os.walk(path):

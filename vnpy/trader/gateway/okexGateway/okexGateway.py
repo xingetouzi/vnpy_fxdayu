@@ -224,7 +224,7 @@ class OkexGateway(VtGateway):
         # self.futuresApi.futuresUserInfo()
         pass
     #------------------------------------------------
-    def qryAllOrdera(self, vtSymbol, order_id, status= None):
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
         contract_type = vtSymbol.split(':')[0]
         contractType = contract_type[4:]
@@ -946,7 +946,7 @@ class FuturesApi(OkexFuturesApi):
             contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
             contract.name = symbol
             contract.size = 0.00001
-            contract.priceTick = 0.00001
+            contract.priceTick = 5
             contract.productClass = PRODUCT_FUTURES
             self.gateway.onContract(contract)
     
@@ -1705,6 +1705,7 @@ class FuturesApi(OkexFuturesApi):
             error.gatewayName = self.gatewayName
             error.errorID = rawData['error_code']
             error.errorMsg = u'请求失败，功能：%s' %data['channel']
+            self.writeLog("from_error_msg:%s"%data)
             self.gateway.onError(error)
             return True
 

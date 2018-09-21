@@ -14,8 +14,8 @@ if __name__ == '__main__':
     # 设置引擎的回测模式为K线
     engine.setBacktestingMode(engine.BAR_MODE)
 
-    # 设置回测用的数据起始日期
-    engine.setStartDate('20180729 06:00',initHours=1)               # 设置回测用的数据起始日期
+    # 设置回测用的数据起始日期，initHours 默认值为 0
+    engine.setStartDate('20180729 06:00',initHours=1)   
     engine.setEndDate('20180801 08:00')
     # 设置产品相关参数
     engine.setSlippage(0.2)     # 股指1跳
@@ -32,23 +32,6 @@ if __name__ == '__main__':
     
     # 开始跑回测
     engine.runBacktesting()
-    
-    # 输出策略的回测日志
-    import pandas as pd
-    from datetime import datetime
-    import os 
-    log = engine.logList
-    dataframe = pd.DataFrame(log)
-    filename = 'BTG_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
-    filename = os.path.abspath(filename) 
-    dataframe.to_csv(filename,index=False,sep=',')   
-    # 输出回测的交割单
-    result = TradingResult()
-    deliverySheet =  result.deliverySheet
-    resultDF = pd.DataFrame(deliverySheet)
-    filename = 'Deliver_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
-    filename = os.path.abspath(filename) 
-    resultDF.to_csv(filename,index=False,sep=',')   
 
     # 显示回测结果
     engine.showBacktestingResult()

@@ -224,7 +224,7 @@ class CtpGateway(VtGateway):
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         pass
-    def qryOrder(self, vtSymbol, order_id, status= None):
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
     def initPosition(self,vtSymbol):
         pass

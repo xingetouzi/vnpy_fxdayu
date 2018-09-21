@@ -349,6 +349,11 @@ class BacktestingEngine(object):
                 start = end
 
         self.output(u'数据回放结束')
+
+        dataframe = pd.DataFrame(self.logList)
+        filename = os.getcwd() + '\\' + u'策略日志_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
+        dataframe.to_csv(filename,index=False,sep=',')  
+        self.output(u'策略日志已生成') 
         
     #----------------------------------------------------------------------
     def newBar(self, bar):
@@ -600,12 +605,16 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_SELL:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
+            if order.totalVolume > self.strategy.posDict[order.vtSymbol+'_LONG']:
+                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
         elif orderType == CTAORDER_SHORT:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_OPEN
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
-            order.offset = OFFSET_CLOSE     
+            order.offset = OFFSET_CLOSE  
+            if order.totalVolume > self.strategy.posDict[order.vtSymbol+'_SHORT']:
+                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
 
         if priceType == PRICETYPE_LIMITPRICE:
             order.price = self.roundToPriceTick(price)
@@ -789,6 +798,7 @@ class BacktestingEngine(object):
             return {}
         # 首先基于回测后的成交记录，计算每笔交易的盈亏
         resultList = []             # 交易结果列表
+        deliverSheet = []
 
         longTrade = defaultdict(list)  # 未平仓的多头交易
         shortTrade = defaultdict(list)  # 未平仓的空头交易
@@ -818,6 +828,7 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.dt,
                                                -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
+                        deliverSheet.append(result.__dict__)
                         
                         posList.extend([-1,0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -862,6 +873,7 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.dt,
                                                closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
+                        deliverSheet.append(result.__dict__)
                         
                         posList.extend([1,0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -899,7 +911,9 @@ class BacktestingEngine(object):
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
                                        trade.volume, self.rate, self.slippage, self.size,self.levelRate)
+
                 resultList.append(result)
+                deliverSheet.append(result.__dict__)
 
         for tradeList in shortTrade.values():
 
@@ -912,11 +926,18 @@ class BacktestingEngine(object):
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
                                        -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
                 resultList.append(result)
+                deliverSheet.append(result.__dict__)
+
         # 检查是否有交易
         if not resultList:
             self.output(u'无交易结果')
             return {}
-        
+
+        resultDF = pd.DataFrame(deliverSheet)
+        filename = os.getcwd() + '\\' + u'交割单_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
+        resultDF.to_csv(filename,index=False,sep=',')   
+        self.output(u'交割单已生成')
+
         # 然后基于每笔交易的结果，我们可以计算具体的盈亏曲线和最大回撤等        
         capital = 0             # 资金
         maxCapital = 0          # 资金最高净值
@@ -1364,7 +1385,7 @@ class TradingResult(object):
         self.exitDt = exitDt            # 平仓时间
         
         self.volume = volume            # 交易数量（+/-代表方向）
-        self.deliverySheet = []         # 交割单记录
+
         if levelRate:
             self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
         else:
@@ -1382,11 +1403,6 @@ class TradingResult(object):
         else:
             self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
-
-        deliveryResult = "单笔盈亏："+ self.pnl + ", 开仓：" + entryDt  +  ", " + self.entryPrice +\
-                        ", 平仓:" + exitDt + ", " + self.exitPrice + ", 交易数量：" + volume +\
-                        ", 合约面值：" + size + ", 滑点：" + self.slippage + ", 手续费：" + self.commission
-        self.deliverySheet.append(deliveryResult)
         
 
 ########################################################################
