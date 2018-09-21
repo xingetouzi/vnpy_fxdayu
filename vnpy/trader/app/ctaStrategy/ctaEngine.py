@@ -43,7 +43,16 @@ from .ctaBase import *
 from .strategy import STRATEGY_CLASS
 
 
-
+@lru_cache(1024)
+def roundNumberPriceTick(priceTick): 
+    strPriceTick = str(priceTick)
+    if "." in strPriceTick:
+        decimal = strPriceTick.split(".")[1]
+        return len(("." + decimal).strip("0")) - 1
+    else:
+        l1 = len(strPriceTick)
+        l2 = len(("." + strPriceTick).strip("0")) - 1
+        return l2 - l1
 
 ########################################################################
 class CtaEngine(object):
@@ -853,18 +862,6 @@ class CtaEngine(object):
         self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
-        
-
-    @lru_cache(50)
-    def roundNumberPriceTick(priceTick): 
-        strPriceTick = str(priceTick)
-        if "." in strPriceTick:
-            xiaosu = strPriceTick.split(".")[1]
-            return len(("." + xiaosu).strip("0")) - 1
-        else:
-            l1 = len(strPriceTick)
-            l2 = len(("." + strPriceTick).strip("0")) - 1
-            return l2 - l1
 
     def roundToPriceTick(priceTick, price):
         """取整价格到合约最小价格变动"""
