@@ -107,7 +107,7 @@ class CtpGateway(VtGateway):
     def connect(self):
         """连接"""
         try:
-            f = open(self.filePath)
+            f = file(self.filePath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -117,7 +117,6 @@ class CtpGateway(VtGateway):
         
         # 解析json文件
         setting = json.load(f)
-        f.close()
         try:
             userID = str(setting['userID'])
             password = str(setting['password'])
@@ -284,7 +283,7 @@ class CtpMdApi(MdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -306,7 +305,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
 
     #---------------------------------------------------------------------- 
@@ -324,7 +323,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------  
@@ -334,7 +333,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------  
@@ -535,7 +534,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -562,7 +561,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
             
             # 标识登录失败，防止用错误信息连续重复登录
@@ -583,7 +582,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg']#.decode('gbk')
+            err.errorMsg = error['ErrorMsg'].decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -618,7 +617,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -637,7 +636,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -832,7 +831,7 @@ class CtpTdApi(TdApi):
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
         contract.vtSymbol = contract.symbol #'.'.join([contract.symbol, contract.exchange])
-        contract.name = data['InstrumentName']#.decode('GBK')
+        contract.name = data['InstrumentName'].decode('GBK')
 
         # 合约数值
         contract.size = data['VolumeMultiple']
@@ -1019,7 +1018,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1115,7 +1114,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1124,7 +1123,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg']#.decode('gbk')
+        err.errorMsg = error['ErrorMsg'].decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1438,7 +1437,7 @@ class CtpTdApi(TdApi):
         
         req['InstrumentID'] = orderReq.symbol
         req['LimitPrice'] = orderReq.price
-        req['VolumeTotalOriginal'] = int(orderReq.volume)
+        req['VolumeTotalOriginal'] = orderReq.volume
         
         # 下面如果由于传入的类型本接口不支持，则会返回空字符串
         req['OrderPriceType'] = priceTypeMap.get(orderReq.priceType, '')
@@ -1466,7 +1465,7 @@ class CtpTdApi(TdApi):
         if orderReq.priceType == PRICETYPE_FOK:
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
             req['TimeCondition'] = defineDict['THOST_FTDC_TC_IOC']
-            req['VolumeCondition'] = int(defineDict['THOST_FTDC_VC_CV'])
+            req['VolumeCondition'] = defineDict['THOST_FTDC_VC_CV']        
         
         self.reqOrderInsert(req, self.reqID)
         

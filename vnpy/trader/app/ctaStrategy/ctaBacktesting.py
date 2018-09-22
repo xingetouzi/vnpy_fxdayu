@@ -285,17 +285,16 @@ class BacktestingEngine(object):
                         self.output("We use full range of local data in %s "%symbol)
 
                 else:
-                    self.output("We don\'t have %s in database"%symbol)
-                    self.output("Our database have these symbols: %s"%self.dbClient[self.dbName].collection_names())
+                    self.output("%s not in Our database, we have symbols: %s"%(symbol,self.dbClient[self.dbName].collection_names()))
         except:
-            self.output('No Mongo connection, attempt using local data')
+            self.output('Mongo connection error, attempt using local data')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: (x.datetime))
             self.output(u'载入完成，数据量：%s' %(len(dataList)))
             return dataList
         else:
-            self.output(u'！！ 数据量为0 ！！')
+            self.output(u'！！ 数据量为 0 ！！')
             return []
         
     #----------------------------------------------------------------------

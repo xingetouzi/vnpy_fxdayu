@@ -1881,7 +1881,7 @@ class FuturesApi(OkexFuturesApi):
                         order.price_avg = orderdetail['price_avg']
                         order.direction, order.offset = futureOrderTypeMap[str(orderdetail['type'])]
                         order.totalVolume = orderdetail['amount']    
-                        order.exchangeOrderID = orderId        
+                        order.exchangeOrderID = order_id        
                         order.gatewayName = self.gatewayName
                         time_temp = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
                         order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
@@ -1891,7 +1891,7 @@ class FuturesApi(OkexFuturesApi):
                         order.fee = orderdetail['fee']
                         # lastTradedVolume = order.tradedVolume
                         order.tradedVolume = float(orderdetail['deal_amount'])
-                        self.wsOrderDict[orderId] = order
+                        self.wsOrderDict[order_id] = order
                     validation = self.order_arbitration(order)
             else:
                 self.writeLog('rest_qry_orders: it returned false')

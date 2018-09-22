@@ -338,7 +338,7 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second % 16 and tick.datetime.second != self.second_temp:
+                    if tick.datetime.second == 46 and tick.datetime.second != self.second_temp:
                         self.second_temp = tick.datetime.second
                         self.qryAllOrders(strategy.name)
                     

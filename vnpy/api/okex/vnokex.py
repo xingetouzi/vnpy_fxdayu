@@ -627,10 +627,12 @@ class OkexFuturesApi(OkexApi):
     
     # RESTFUL 接口
     def _post_url_func(self, url):
-        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + ".do"
+        return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + ".do"
+        # return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + ".do"
     
     def _get_url_func(self, url, params=""):
-        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
+        return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + params
+        # return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
     
     def _chg_dic_to_str(self, dictionary):
         keys = list(dictionary.keys())

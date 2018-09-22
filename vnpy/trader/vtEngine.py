@@ -191,23 +191,26 @@ class MainEngine(object):
     def initPosition(self, vtSymbol):
         """策略初始化时查询特定接口的持仓"""
         gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
-        if gateway:
-            gateway.initPosition(vtSymbol)
+        if len(gatewayName)>1:
+            gateway = self.getGateway(gatewayName[1])
+            if gateway:
+                gateway.initPosition(vtSymbol)
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
         """策略初始化时下载历史数据"""
         gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
-        if gateway:
-            data = gateway.loadHistoryBar(vtSymbol,type_,size)
-        return data
+        if len(gatewayName)>1:
+            gateway = self.getGateway(gatewayName[1])
+            if gateway:
+                data = gateway.loadHistoryBar(vtSymbol,type_,size)
+            return data
 
     def qryAllOrders(self, vtSymbol,orderId,status=None):
         gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
-        if gateway:
-            gateway.qryAllOrders(vtSymbol,orderId,status)
+        if len(gatewayName)>1:
+            gateway = self.getGateway(gatewayName[1])
+            if gateway:
+                gateway.qryAllOrders(vtSymbol,orderId,status)
 
     #----------------------------------------------------------------------
     def exit(self):
