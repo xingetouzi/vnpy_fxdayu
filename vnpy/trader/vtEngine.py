@@ -59,6 +59,7 @@ class MainEngine(object):
     def addGateway(self, gatewayModule):
         """添加底层接口"""
         gatewayName = gatewayModule.gatewayName
+        gatewayTypeMap = {}
         
         # 创建接口实例
         if type(gatewayName) == list:
@@ -92,33 +93,30 @@ class MainEngine(object):
                 'gatewayType': gatewayModule.gatewayType
             }
             self.gatewayDetailList.append(d)
-
+        
+        for i in range(len(self.gatewayDetailList)):
+            s = self.gatewayDetailList[i]['gatewayName'].split('_connect.json')[0]
+            gatewayTypeMap[s]=self.gatewayDetailList[i]['gatewayType']
+            
         path = os.getcwd()
-        # 遍历strategy目录下的文件
+        # 遍历当前目录下的所有文件
         for root, subdirs, files in os.walk(path):
             for name in files:
-                # 只有文件名中包含strategy且非.pyc的文件，才是策略文件
+                # 只有文件名中包含_connect.json的文件，才是密钥配置文件
                 if '_connect.json' in name:
-                    # 模块名称需要上前缀
-                    gw = name.replace('_connect.json', '')
-                    get_temp = []
-                    for i in range(len(self.gatewayDetailList)):
-                        s = self.gatewayDetailList[i]['gatewayName'].split('_connect.json')[0]
-                        get_temp.append(s)
-
-                        if gw in get_temp:
-                            return
-                        elif s in gw and s!=gw:
-                            gwType = self.gatewayDetailList[i]['gatewayType']
-
-                    d= {
-                        'gatewayName' : gw,
-                        'gatewayDisplayName' :  gw,
-                        'gatewayType': gwType
-                    }
-                    self.gatewayDetailList.append(d)
-                    self.gatewayDict[gw] = gatewayModule.gatewayClass(self.eventEngine, 
+                    gw = name.replace('_connect.json', '')                    
+                    if not gw in gatewayTypeMap.keys():
+                        for existnames in list(gatewayTypeMap.keys()):
+                            if existnames in gw and existnames!=gw:
+                                d= {
+                                    'gatewayName' : gw,
+                                    'gatewayDisplayName' :  gw,
+                                    'gatewayType': gatewayTypeMap[existnames]
+                                }
+                                self.gatewayDetailList.append(d)
+                                self.gatewayDict[gw] = gatewayModule.gatewayClass(self.eventEngine, 
                                                                     gw)
+
                     
     #----------------------------------------------------------------------
     def addApp(self, appModule):

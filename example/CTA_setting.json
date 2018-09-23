@@ -1,7 +1,7 @@
 [
     {
-        "name": "De",
-        "className": "DeStrategy",
+        "name": "Demo",
+        "className": "DemoStrategy",
         "symbolList": ["eos_this_week:OKEX_1","eos_quarter:OKEX_1"],
         "mailAdd":[""]
     }

@@ -15,7 +15,6 @@
 	"logFile": true,
 
 	"tdPenalty": ["IF", "IH", "IC"],
-	"deligateGateway":{"OKEX_CHAN":"OKEX_CHAN"},
 
 	"mailAccount":"",
 	"mailPass":"",
