@@ -1282,8 +1282,7 @@ class FuturesApi(OkexFuturesApi):
         order.exchangeOrderID = orderId        
         order.user_id = rawData['user_id']
         order.gatewayName = self.gatewayName
-        time_temp = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
-        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
+        order.createDate  = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
         
         order.deliverTime = datetime.now()
         order.status = statusMap[rawData['status']] 
@@ -1650,7 +1649,7 @@ class FuturesApi(OkexFuturesApi):
             elif len(self.orphanDict)>0:
                 self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
                 for orphanOrder in list(self.orphanDict.values()):
-                    if order.vtSymbol == orphanOrder.vtSymbol:
+                    if order.vtSymbol == orphanOrder.vtSymbol and not order.orderTime:
                         ordertimediff = orphanOrder.createDate - order.orderTime
                         if ordertimediff.seconds < 10 :
                             if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
@@ -1831,8 +1830,7 @@ class FuturesApi(OkexFuturesApi):
                         order.price_avg = orderdetail['price_avg']
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
-                        time_temp = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-                        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
+                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
                         self.sendOrderDict[order_id] = order  
                         self.wsOrderDict[order_id] = order
@@ -1883,8 +1881,7 @@ class FuturesApi(OkexFuturesApi):
                         order.totalVolume = orderdetail['amount']    
                         order.exchangeOrderID = order_id        
                         order.gatewayName = self.gatewayName
-                        time_temp = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-                        order.createDate = time_temp.strftime("%Y%m%d %H:%M:%S.%f")
+                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
                         
                         order.deliverTime = datetime.now()
                         order.status = statusMap[orderdetail['status']] 
