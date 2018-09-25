@@ -6,7 +6,6 @@ vn.ctp的gateway接入
 vtSymbol直接使用symbol
 '''
 
-
 import os
 import json
 from copy import copy
@@ -107,7 +106,7 @@ class CtpGateway(VtGateway):
     def connect(self):
         """连接"""
         try:
-            f = file(self.filePath)
+            f = open(self.filePath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -117,6 +116,7 @@ class CtpGateway(VtGateway):
         
         # 解析json文件
         setting = json.load(f)
+        f.close()
         try:
             userID = str(setting['userID'])
             password = str(setting['password'])
@@ -356,12 +356,11 @@ class CtpMdApi(MdApi):
         
         tick.symbol = symbol
         tick.exchange = symbolExchangeDict[tick.symbol]
-        tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName]) #':'.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = symbol #  ':'.join([tick.symbol, tick.exchange])
         
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
         tick.openInterest = data['OpenInterest']
-        #tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])   # 原版，会造成秒有两个点
         tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec'])])
         
         # 上期所和郑商所可以直接使用，大商所需要转换
@@ -384,7 +383,6 @@ class CtpMdApi(MdApi):
         # 大商所日期转换
         if tick.exchange is EXCHANGE_DCE:
             tick.date = datetime.now().strftime('%Y%m%d')
-        
         self.gateway.onTick(tick)
         
     #---------------------------------------------------------------------- 
@@ -831,7 +829,7 @@ class CtpTdApi(TdApi):
 
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
-        contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName]) #':'.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = contract.symbol #':'.join([contract.symbol, contract.exchange])
         contract.name = data['InstrumentName']#.decode('GBK')
 
         # 合约数值
@@ -1036,7 +1034,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = ':'.join([order.symbol, order.gatewayName]) #':'.join([order.symbol, order.exchange])
+        order.vtSymbol = order.symbol #':'.join([order.symbol, order.exchange])
         
         order.orderID = data['OrderRef']
         # CTP的报单号一致性维护需要基于frontID, sessionID, orderID三个字段
@@ -1071,7 +1069,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         trade.symbol = data['InstrumentID']
         trade.exchange = exchangeMapReverse[data['ExchangeID']]
-        trade.vtSymbol = ':'.join([trade.symbol, trade.gatewayName]) #':'.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = trade.symbol #':'.join([trade.symbol, trade.exchange])
         
         trade.tradeID = data['TradeID']
         trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
@@ -1433,13 +1431,12 @@ class CtpTdApi(TdApi):
         """发单"""
         self.reqID += 1
         self.orderRef += 1
-        
+        symbol = orderReq.symbol.split(':')
         req = {}
-        symbol = orderReq.symbol.split(":")[0]
         
-        req['InstrumentID'] = symbol
+        req['InstrumentID'] = symbol[0]
         req['LimitPrice'] = orderReq.price
-        req['VolumeTotalOriginal'] = orderReq.volume
+        req['VolumeTotalOriginal'] = int(orderReq.volume)
         
         # 下面如果由于传入的类型本接口不支持，则会返回空字符串
         req['OrderPriceType'] = priceTypeMap.get(orderReq.priceType, '')
@@ -1467,8 +1464,7 @@ class CtpTdApi(TdApi):
         if orderReq.priceType == PRICETYPE_FOK:
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
             req['TimeCondition'] = defineDict['THOST_FTDC_TC_IOC']
-            req['VolumeCondition'] = defineDict['THOST_FTDC_VC_CV']        
-        
+            req['VolumeCondition'] = int(defineDict['THOST_FTDC_VC_CV'])
         self.reqOrderInsert(req, self.reqID)
         
         # 返回订单号（字符串），便于某些算法进行动态管理
@@ -1479,11 +1475,10 @@ class CtpTdApi(TdApi):
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
         self.reqID += 1
-
+        symbol = cancelOrderReq.symbol#.split(':')
         req = {}
         
-        symbol = cancelOrderReq.symbol.split(":")[0]
-        req['InstrumentID'] = cancelOrderReq.symbol
+        req['InstrumentID'] = symbol
         req['ExchangeID'] = cancelOrderReq.exchange
         req['OrderRef'] = cancelOrderReq.orderID
         req['FrontID'] = cancelOrderReq.frontID
@@ -1502,8 +1497,3 @@ class CtpTdApi(TdApi):
 
     #----------------------------------------------------------------------
     def writeLog(self, content):
-        """发出日志"""
-        log = VtLogData()
-        log.gatewayName = self.gatewayName
-        log.logContent = content
-        self.gateway.onLog(log)        
