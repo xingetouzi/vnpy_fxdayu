@@ -242,10 +242,7 @@ class OkexGateway(VtGateway):
         type_ = KlinePeriodMap[type_]
         symbol= vtSymbol.split(':')[0]
         contractType = symbol[4:]
-        # if type_ not in KLINE_PERIOD:
-        #     self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
-        #     self.writeLog("OKEX Type_ hint：1min,3min,5min,15min,30min,1hour,2hour,4hour,6hour,12hour,day,3day,week")
-        #     return '-1'
+
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]+"_usd"
             data = self.futuresApi.rest_future_bar(symbol, type_, contractType, size, since)

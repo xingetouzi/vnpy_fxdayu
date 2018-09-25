@@ -283,7 +283,7 @@ class CtpMdApi(MdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -305,7 +305,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
 
     #---------------------------------------------------------------------- 
@@ -323,7 +323,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------  
@@ -333,7 +333,7 @@ class CtpMdApi(MdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------  
@@ -356,12 +356,13 @@ class CtpMdApi(MdApi):
         
         tick.symbol = symbol
         tick.exchange = symbolExchangeDict[tick.symbol]
-        tick.vtSymbol = tick.symbol #'.'.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName]) #':'.join([tick.symbol, tick.exchange])
         
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
         tick.openInterest = data['OpenInterest']
-        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])
+        #tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])   # 原版，会造成秒有两个点
+        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec'])])
         
         # 上期所和郑商所可以直接使用，大商所需要转换
         tick.date = data['ActionDay']
@@ -534,7 +535,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -561,7 +562,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
             
             # 标识登录失败，防止用错误信息连续重复登录
@@ -582,7 +583,7 @@ class CtpTdApi(TdApi):
             err = VtErrorData()
             err.gatewayName = self.gatewayName
             err.errorID = error['ErrorID']
-            err.errorMsg = error['ErrorMsg'].decode('gbk')
+            err.errorMsg = error['ErrorMsg']#.decode('gbk')
             self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -605,7 +606,7 @@ class CtpTdApi(TdApi):
         order.exchange = exchangeMapReverse[data['ExchangeID']]
         order.vtSymbol = order.symbol
         order.orderID = data['OrderRef']
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = ':'.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
         order.status = STATUS_REJECTED
@@ -617,7 +618,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -636,7 +637,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -715,7 +716,7 @@ class CtpTdApi(TdApi):
             return
         
         # 获取持仓缓存对象
-        posName = '.'.join([data['InstrumentID'], data['PosiDirection']])
+        posName = ':'.join([data['InstrumentID'], data['PosiDirection']])
         if posName in self.posDict:
             pos = self.posDict[posName]
         else:
@@ -726,7 +727,7 @@ class CtpTdApi(TdApi):
             pos.symbol = data['InstrumentID']
             pos.vtSymbol = pos.symbol
             pos.direction = posiDirectionMapReverse.get(data['PosiDirection'], '')
-            pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction]) 
+            pos.vtPositionName = ':'.join([pos.vtSymbol, pos.direction]) 
         
         exchange = self.symbolExchangeDict.get(pos.symbol, EXCHANGE_UNKNOWN)
         
@@ -773,7 +774,7 @@ class CtpTdApi(TdApi):
     
         # 账户代码
         account.accountID = data['AccountID']
-        account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
+        account.vtAccountID = ':'.join([self.gatewayName, account.accountID])
     
         # 数值相关
         account.preBalance = data['PreBalance']
@@ -830,8 +831,8 @@ class CtpTdApi(TdApi):
 
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
-        contract.vtSymbol = contract.symbol #'.'.join([contract.symbol, contract.exchange])
-        contract.name = data['InstrumentName'].decode('GBK')
+        contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName]) #':'.join([contract.symbol, contract.exchange])
+        contract.name = data['InstrumentName']#.decode('GBK')
 
         # 合约数值
         contract.size = data['VolumeMultiple']
@@ -1018,7 +1019,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1035,14 +1036,14 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol #'.'.join([order.symbol, order.exchange])
+        order.vtSymbol = ':'.join([order.symbol, order.gatewayName]) #':'.join([order.symbol, order.exchange])
         
         order.orderID = data['OrderRef']
         # CTP的报单号一致性维护需要基于frontID, sessionID, orderID三个字段
         # 但在本接口设计中，已经考虑了CTP的OrderRef的自增性，避免重复
         # 唯一可能出现OrderRef重复的情况是多处登录并在非常接近的时间内（几乎同时发单）
         # 考虑到VtTrader的应用场景，认为以上情况不会构成问题
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = ':'.join([self.gatewayName, order.orderID])        
         
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
@@ -1070,13 +1071,13 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         trade.symbol = data['InstrumentID']
         trade.exchange = exchangeMapReverse[data['ExchangeID']]
-        trade.vtSymbol = trade.symbol #'.'.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = ':'.join([trade.symbol, trade.gatewayName]) #':'.join([trade.symbol, trade.exchange])
         
         trade.tradeID = data['TradeID']
-        trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
+        trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
         
         trade.orderID = data['OrderRef']
-        trade.vtOrderID = '.'.join([self.gatewayName, trade.orderID])
+        trade.vtOrderID = ':'.join([self.gatewayName, trade.orderID])
         
         # 方向
         trade.direction = directionMapReverse.get(data['Direction'], '')
@@ -1102,7 +1103,7 @@ class CtpTdApi(TdApi):
         order.exchange = exchangeMapReverse[data['ExchangeID']]
         order.vtSymbol = order.symbol
         order.orderID = data['OrderRef']
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = ':'.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
         order.status = STATUS_REJECTED
@@ -1114,7 +1115,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1123,7 +1124,7 @@ class CtpTdApi(TdApi):
         err = VtErrorData()
         err.gatewayName = self.gatewayName
         err.errorID = error['ErrorID']
-        err.errorMsg = error['ErrorMsg'].decode('gbk')
+        err.errorMsg = error['ErrorMsg']#.decode('gbk')
         self.gateway.onError(err)
         
     #----------------------------------------------------------------------
@@ -1434,8 +1435,9 @@ class CtpTdApi(TdApi):
         self.orderRef += 1
         
         req = {}
+        symbol = orderReq.symbol.split(":")[0]
         
-        req['InstrumentID'] = orderReq.symbol
+        req['InstrumentID'] = symbol
         req['LimitPrice'] = orderReq.price
         req['VolumeTotalOriginal'] = orderReq.volume
         
@@ -1470,7 +1472,7 @@ class CtpTdApi(TdApi):
         self.reqOrderInsert(req, self.reqID)
         
         # 返回订单号（字符串），便于某些算法进行动态管理
-        vtOrderID = '.'.join([self.gatewayName, str(self.orderRef)])
+        vtOrderID = ':'.join([self.gatewayName, str(self.orderRef)])
         return vtOrderID
     
     #----------------------------------------------------------------------
@@ -1480,6 +1482,7 @@ class CtpTdApi(TdApi):
 
         req = {}
         
+        symbol = cancelOrderReq.symbol.split(":")[0]
         req['InstrumentID'] = cancelOrderReq.symbol
         req['ExchangeID'] = cancelOrderReq.exchange
         req['OrderRef'] = cancelOrderReq.orderID

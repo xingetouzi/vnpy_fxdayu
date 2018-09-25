@@ -410,12 +410,6 @@ class CtaEngine(object):
             elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
                 posName = trade.vtSymbol + "_SHORT"
                 strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol
-                strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol
-                strategy.posDict[str(posName)] -= trade.volume
 
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
     #----------------------------------
@@ -605,9 +599,6 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
-                strategy.posDict = {}
-                strategy.eveningDict = {}
-                strategy.bondDict = {}
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
@@ -851,19 +842,7 @@ class CtaEngine(object):
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
         
-
-    @lru_cache(50)
-    def roundNumberPriceTick(priceTick): 
-        strPriceTick = str(priceTick)
-        if "." in strPriceTick:
-            xiaosu = strPriceTick.split(".")[1]
-            return len(("." + xiaosu).strip("0")) - 1
-        else:
-            l1 = len(strPriceTick)
-            l2 = len(("." + strPriceTick).strip("0")) - 1
-            return l2 - l1
-
-    def roundToPriceTick(priceTick, price):
+    def roundToPriceTick(self, priceTick, price):
         """取整价格到合约最小价格变动"""
         newPrice = round(round(price/priceTick,0)*priceTick, roundNumberPriceTick(priceTick))
         return newPrice
@@ -920,12 +899,6 @@ class CtaEngine(object):
         return histbar
 
     def initPosition(self,strategy):
-        # 因交易所更改仓位的读取方式，暂时取消使用defaultdict初始化posdict
-        # for item in strategy.syncList:
-        #     d = strategy.__getattribute__(item)
-        #     d = defaultdict(None)
-        
-        # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
             if 'posDict' in strategy.syncList:
@@ -1065,3 +1038,15 @@ class CtaEngine(object):
                         traceback.print_exc()
 
         return STRATEGY_GET_CLASS
+
+
+@lru_cache(50)
+def roundNumberPriceTick(priceTick): 
+    strPriceTick = str(priceTick)
+    if "." in strPriceTick:
+        xiaosu = strPriceTick.split(".")[1]
+        return len(("." + xiaosu).strip("0")) - 1
+    else:
+        l1 = len(strPriceTick)
+        l2 = len(("." + strPriceTick).strip("0")) - 1
+        return l2 - l1

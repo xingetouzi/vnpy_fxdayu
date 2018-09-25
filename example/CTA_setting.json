@@ -1,7 +1,7 @@
 [
     {
-        "name": "Demo",
-        "className": "DemoStrategy",
+        "name": "BB",
+        "className": "BollBandsStrategy",
         "symbolList": ["eos_this_week:OKEX_1","eos_quarter:OKEX_1"],
         "mailAdd":[""]
     }
