@@ -326,8 +326,6 @@ class CtaEngine(object):
             try:
                 # 添加datetime字段
                 if not tick.datetime:
-                    if len(tick.time.split('.'))>1:
-                        tick.time = tick.time[:-2]
                     tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
             except ValueError:
                 self.writeCtaLog(traceback.format_exc())
@@ -943,7 +941,7 @@ class CtaEngine(object):
                         if order.vtSymbol not in qryList:
                             qryList.append(order.vtSymbol)
             for symbol in qryList:
-                self.mainEngine.qryAllOrder(symbol, -1, status = 1)
+                self.mainEngine.qryAllOrders(symbol, -1, status = 1)
 
     def restoreStrategy(self, name):
         """恢复策略"""

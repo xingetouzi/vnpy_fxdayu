@@ -282,12 +282,13 @@ class BacktestingEngine(object):
                                     file_path = os.path.join(save_path, "%s.h5" % (date,))
                                     file_data.to_hdf(file_path, key="d")
                     else:
-                        self.output("We use full range of local data in %s "%symbol)
+                        self.output(" 当前品种 %s 的数据，全部来自于本地缓存"%symbol)
 
                 else:
-                    self.output("%s not in Our database, we have symbols: %s"%(symbol,self.dbClient[self.dbName].collection_names()))
+                    self.output("我们的数据库没有 %s 这个品种"%symbol)
+                    self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
         except:
-            self.output('Mongo connection error, attempt using local data')
+            self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: (x.datetime))
@@ -318,7 +319,10 @@ class BacktestingEngine(object):
         # 策略初始化
         self.output(u'策略初始化')
         # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
-        self.initData = self.loadHistoryData(self.strategy.symbolList,self.strategyStartDate,self.dataStartDate)
+        if self.strategyStartDate == self.dataStartDate:
+            self.output(u'策略无请求历史数据初始化')
+        else:
+            self.initData = self.loadHistoryData(self.strategy.symbolList,self.strategyStartDate,self.dataStartDate)
         self.strategy.inited = True
         self.strategy.onInit()
         self.output(u'策略初始化完成')

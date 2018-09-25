@@ -566,9 +566,13 @@ class BarGenerator(object):
         self.xminBar.volume += int(bar.volume)
         
         # X分钟已经走完
-        if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
-            # 推送
-            self.onXminBar(self.xminBar)
+        if self.xmin < 61:
+            if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
+                # 推送
+                self.onXminBar(self.xminBar)
+        elif self.xmin > 60:
+            if not (bar.datetime.hour*60) % self.xmin and bar.datetime.minute == 0: # 小时线
+                self.onXminBar(self.xminBar)
 
             # 清空老K线缓存对象
             self.xminBar = None
