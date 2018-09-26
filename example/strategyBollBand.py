@@ -65,7 +65,7 @@ class BollBandsStrategy(CtaTemplate):
         """初始化策略（必须由用户继承实现）"""
 
         # 生成所有品种相应的 bgDict 和 amDict，用于存放一定时间长度的行情数据，时间长度size默认值是100
-        # 引擎支持的常用分钟数为：1, 5, 10, 15, 20, 30, 60, 120, 240, 480
+        # 引擎支持的常用分钟数为：1, 5, 10, 15, 20, 30, 60, 120, 240, 360, 480
         # 示例： self.generateBarDict( self.onBar, 5, self.on5MinBar) 
         #       将同时生成 self.bg5Dict 和 self.am5Dict ,字典的key是品种名,
         #       用于生成 on5MinBar 需要的 Bar 和计算用的 bar array，可在 on5MinBar() 获取
@@ -83,7 +83,7 @@ class BollBandsStrategy(CtaTemplate):
 
         elif self.ctaEngine.engineType == 'trading':
             # 实盘载入1分钟历史数据，并采用回放计算的方式初始化策略参数
-            # 通用可选参数：["1min","5min","15min","30min","60min","120min","240hour","1day","1week","1month"]
+            # 通用可选参数：["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]
             kline1,kline60,kline15 ={},{},{}
             for s in self.symbolList:
                 kline60[s] = self.loadHistoryBar(s, '60min',1000)[:-20]
@@ -112,6 +112,13 @@ class BollBandsStrategy(CtaTemplate):
     #----------------------------------------------------------------------
     def onStop(self):
         """停止策略（必须由用户继承实现）"""
+        self.putEvent()
+
+    #----------------------------------------------------------------------
+    def onRestore(self):
+        """恢复策略（必须由用户继承实现）"""
+        # 策略恢复会自动读取 varList 和 syncList 的数据，还原之前运行时的状态。
+        # 需要注意的是，使用恢复，策略不会运行 onInit 和 onStart 的代码，直接进入行情接收阶段
         self.putEvent()
 
     #----------------------------------------------------------------------

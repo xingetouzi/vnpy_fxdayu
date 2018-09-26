@@ -8,21 +8,21 @@
 详细说明请查阅：[VNPY_FXDAYU说明文档](https://github.com/xingetouzi/vnpy_fxdayu/wiki)
 ## 项目安装（WINDOWS）：
 
-    1、此版本VNPY基于python3开发，建议安装ANACONDA3_5.0.0以上版本
-    2、安装MONGODB 3.4
-    3、打开cmd，cd进入本文件夹，运行install.bat，然后pip install 安装msgpack和ta-lib的whl文件
-    4、安装VNPY ：python setup.py install
+    1、此版本VNPY基于python3.6开发，建议安装ANACONDA3_5.2.0以上版本
+    2、安装MONGODB 4.0
+    3、在下载项目的文件夹内找到install.bat，双击即可进入自动安装
 
 ## 项目使用方法：
 
     实盘：
 
-    找到实盘交易的启动入口vnpy\trader\run_vnpy.py，打开cmd输入python run_vnpy.py运行。
+    在下载的文件中，打开example文件夹，按照设置的说明填写配置文件，双击打开 “VNPY - 交易界面.bat” 这个文件，即可进行实盘。同时，我们为数字货币准备了专用的交易界面Crypto_Trader，同样在example文件夹内，双击打开 “VNPY - 数字货币.bat”这个文件，即可进行实盘。
 
     回测：
 
-    1、在MongoDB存入历史数据；
-    2、找到策略文件夹vnpy\trader\app\ctaEngine\strategy，直接运行Demo，就可以显示回测数据
+    1、在MongoDB存入历史数据，范例可在下载的文件内找到loadData文件夹，配置好数据库连接，即可导入提供的数据样本，时间跨度2018年1月1日到1月31日； 
+    
+    2、在example文件夹内，有两个和回测有关的配置文件，runBacktesting 是回测，runOptimization 是对回测进行优化。同样的，提供了运行的快捷方式，双击 “VNPY-回测” 可以进行回测，双击 “VNPY-并行优化” 可以得到优化结果
 
 ## 最新功能：
 

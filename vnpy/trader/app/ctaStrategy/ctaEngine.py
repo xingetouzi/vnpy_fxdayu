@@ -953,6 +953,9 @@ class CtaEngine(object):
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据                
                 self.loadSyncData(strategy)
                 self.writeCtaLog(u'策略%s： 恢复策略状态成功' %name)
+
+            else:
+                self.writeCtaLog(u'策略%s： 策略无法从当前状态恢复' %name)
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
@@ -1033,15 +1036,3 @@ class CtaEngine(object):
                         traceback.print_exc()
 
         return STRATEGY_GET_CLASS
-
-
-@lru_cache(50)
-def roundNumberPriceTick(priceTick): 
-    strPriceTick = str(priceTick)
-    if "." in strPriceTick:
-        xiaosu = strPriceTick.split(".")[1]
-        return len(("." + xiaosu).strip("0")) - 1
-    else:
-        l1 = len(strPriceTick)
-        l2 = len(("." + strPriceTick).strip("0")) - 1
-        return l2 - l1
