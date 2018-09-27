@@ -56,7 +56,7 @@ class CtaEngine(object):
 
         # 当前日期
         self.today = todayDate()
-        self.second_temp = 0
+        self.minute_temp = 0
 
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
@@ -333,8 +333,8 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 36 and tick.datetime.second != self.second_temp:
-                        self.second_temp = tick.datetime.second
+                    if tick.datetime.second == 36 and tick.datetime.minute != self.minute_temp:
+                        self.minute_temp = tick.datetime.minute
                         self.qryAllOrders(strategy.name)
                     
     #----------------------------------------------------------------------
@@ -922,15 +922,14 @@ class CtaEngine(object):
         for vtSymbol in strategy.symbolList:
             self.mainEngine.initPosition(vtSymbol)
 
-    def qryAllOrders(self,name,status=None):
+    def qryAllOrders(self,name):
 
         if name in self.strategyDict:
             strategy = self.strategyDict[name]
             s = self.strategyOrderDict[name]
-            if len(list(s)):
-                for symbol in strategy.symbolList:
-                    self.mainEngine.qryAllOrders(symbol, -1, status = 1)
-                    self.writeCtaLog("ctaEngine开始对策略%s,轮询%s"%(name,symbol))
+            for symbol in strategy.symbolList:
+                self.mainEngine.qryAllOrders(symbol, -1, status = 1)
+                self.writeCtaLog("ctaEngine对策略%s发出%s的挂单轮询请求，本地订单数量%s"%(name,symbol,len(list(s))))
 
     def restoreStrategy(self, name):
         """恢复策略"""

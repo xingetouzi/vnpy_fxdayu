@@ -1592,6 +1592,7 @@ class FuturesApi(OkexFuturesApi):
 
     #----------------------------------------------------------------------
     def order_arbitration(self, orderinfo, source = 'onorder'):
+        """将sendorder发出的和futureordersinfo收到的订单信息对应起来"""
 
         order = orderinfo
 
@@ -1684,7 +1685,7 @@ class FuturesApi(OkexFuturesApi):
 
     def contactOrders(self):
         qryDict = {}
-        for orderid in self.exchangeOrderDict():
+        for orderid in self.exchangeOrderDict.keys():
             if orderid in self.sendOrderDict.keys():
                 order = self.sendOrderDict(orderid)
                 symbol = order.symbol
@@ -1704,7 +1705,7 @@ class FuturesApi(OkexFuturesApi):
             symbol = symbol[:3]+'_usd'
             idlist = ','.join(qryDict[symbol][:50])
             self.batchQryOrder(symbol,contract_type,idlist)    
-        self.writeLog(u'对交易所id批量轮询，(品种字典：%s)'%qryDict)
+        self.writeLog(u'对本地unfilled的交易所id批量轮询，(品种字典：%s)'%qryDict)
         del qryDict
 
     #----------------------------------------
