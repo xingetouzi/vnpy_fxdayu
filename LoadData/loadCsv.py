@@ -49,4 +49,3 @@ def loadCoinCsv(fileName, dbName, symbol):
 
 if __name__ == '__main__':
     loadCoinCsv('bch_usdt.csv', MINUTE_DB_NAME, 'bch_usdt:OKEX')
-

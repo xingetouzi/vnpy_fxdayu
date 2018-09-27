@@ -222,13 +222,14 @@ class CtaTemplate(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
-        if type_ in ["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]:
+
+        if type_ in ["1min","5min","15min","30min","60min","120min","240min","360min","480min","1day","1week","1month"]:
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
             return data
             
         else:
             self.writeCtaLog(
-                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]，同时size不得大于2000')
+                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","120min","240min","360min","480min","1day","1week","1month"]，同时size建议不大于2000')
             return
         
     def qryOrder(self, vtSymbol, status= None):

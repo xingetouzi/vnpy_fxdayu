@@ -178,6 +178,8 @@ class CtaEngine(object):
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
 
+
+
     def batchCancelOrder(self,vtOrderIDList):
         """批量撤单"""
         # 查询报单对象
@@ -331,7 +333,7 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 46 and tick.datetime.second != self.second_temp:
+                    if tick.datetime.second == 36 and tick.datetime.second != self.second_temp:
                         self.second_temp = tick.datetime.second
                         self.qryAllOrders(strategy.name)
                     
@@ -435,12 +437,6 @@ class CtaEngine(object):
                             strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
                         if 'bondDict' in strategy.syncList:
                             strategy.bondDict[str(posName2)]=pos.frozen
-                # elif productType == 'SPOT':
-                #     posName = pos.vtSymbol
-                #     if 'posDict' in strategy.syncList:
-                #         strategy.posDict[str(posName)] = pos.position
-                #     if 'bondDict' in strategy.syncList:
-                #         strategy.bondDict[str(posName)] = pos.frozen
 
                         # 保存策略持仓到数据库
                         self.saveSyncData(strategy)  
@@ -927,18 +923,14 @@ class CtaEngine(object):
             self.mainEngine.initPosition(vtSymbol)
 
     def qryAllOrders(self,name,status=None):
-        s = self.strategyOrderDict[name]
-        qryList = []
-        
-        if len(list(s)):
-            for vtOrderID in list(s):
-                if STOPORDERPREFIX not in vtOrderID:
-                    order = self.mainEngine.getOrder(vtOrderID)
-                    if order:
-                        if order.vtSymbol not in qryList:
-                            qryList.append(order.vtSymbol)
-            for symbol in qryList:
-                self.mainEngine.qryAllOrders(symbol, -1, status = 1)
+
+        if name in self.strategyDict:
+            strategy = self.strategyDict[name]
+            s = self.strategyOrderDict[name]
+            if len(list(s)):
+                for symbol in strategy.symbolList:
+                    self.mainEngine.qryAllOrders(symbol, -1, status = 1)
+                    self.writeCtaLog("ctaEngine开始对策略%s,轮询%s"%(name,symbol))
 
     def restoreStrategy(self, name):
         """恢复策略"""

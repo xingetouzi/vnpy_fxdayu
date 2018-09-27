@@ -1497,3 +1497,8 @@ class CtpTdApi(TdApi):
 
     #----------------------------------------------------------------------
     def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)        

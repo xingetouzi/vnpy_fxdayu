@@ -229,7 +229,7 @@ class OkexGateway(VtGateway):
         contract_type = vtSymbol.split(':')[0]
         contractType = contract_type[4:]
         if 'quarter' in contractType or 'week' in contractType:
-            data = self.futuresApi.rest_qry_orders(symbol,contractType,order_id,status)
+            data = self.futuresApi.rest_qry_order(symbol,contractType,order_id,status)
         else:
             data = self.spotApi.rest_spot_orders(symbol,order_id,status)
         return data
@@ -897,6 +897,7 @@ class FuturesApi(OkexFuturesApi):
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
         self.cache_some_order = {}
+        self.minute_temp = 0
         self.tradeID = 0
         self.symbolSizeDict = {}        # 保存合约代码和合约大小的印射关系
     #----------------------------------------------------------------------
@@ -993,8 +994,9 @@ class FuturesApi(OkexFuturesApi):
             symbol = symbol[:3]
             self.subscribe(symbol,contractType)
             self.rest_futures_position(symbol,contractType)  # 初始化后使用restful查询持仓信息
-
+        self.contactOrders()
         self.writeLog(u'期货服务器登录成功')
+
     #----------------------------------------------------------------------
     def onTicker(self, data):
         """
@@ -1147,15 +1149,15 @@ class FuturesApi(OkexFuturesApi):
         """
         channel = data['channel']
         symbol = self.channelSymbolMap[channel]
-        contractType = self.channelcontractTypeMap[channel]
-        symbol = symbol+'_'+contractType
+        contract_type = self.channelcontractTypeMap[channel]
+        symbol = symbol+'_'+contract_type
 
         if symbol not in self.tickDict:
             tick = VtTickData()
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.contractType = contractType
+            tick.contract_type = contract_type
             tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
@@ -1170,9 +1172,13 @@ class FuturesApi(OkexFuturesApi):
             tick.type = d[4]
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
+            
             if tick.bidPrice1:
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
+            if tick.localTime.minute != self.minute_temp:
+                self.contactOrders()
+                self.minute_temp = tick.localTime.minute
 
     #---------------------------------------------------
     def onFuturesUserInfo(self, data):
@@ -1257,7 +1263,8 @@ class FuturesApi(OkexFuturesApi):
             return
         rawData = data['data']
         orderId = str(rawData['orderid'])
-        
+        if orderId not in self.exchangeOrderDict.keys():
+            self.exchangeOrderDict[orderId] = 'fromws'
         self.writeLog('check wsorderdict when receive id %s ::: %s'%(
             orderId,self.wsOrderDict.items())) 
 
@@ -1287,7 +1294,7 @@ class FuturesApi(OkexFuturesApi):
         # lastTradedVolume = order.tradedVolume
         order.tradedVolume = float(rawData['deal_amount'])
         self.wsOrderDict[orderId] = order
-        validation = self.order_arbitration(order)
+        self.order_arbitration(order)
 
         # self.writeLog('check orderDict from id %s :%s'%(orderId,self.orderDict.items())) 
         # if order.status == STATUS_CANCELLED or order.status == STATUS_ALLTRADED:
@@ -1559,7 +1566,8 @@ class FuturesApi(OkexFuturesApi):
         if not validate:
             # self.localOrderDict[str(self.localNo)] = order
             # self.localNoDict[str(self.localNo)] = vtOrderID
-            self.rest_qry_orders(symbol,contract_type,order_id)
+            self.rest_qry_order(symbol,contract_type,order_id)
+            self.writeLog('gw_send_order not validate')
          
         # self.localOrderDict[str(self.localNo)] = order
         # self.localNoDict[str(self.localNo)] = vtOrderID
@@ -1659,9 +1667,9 @@ class FuturesApi(OkexFuturesApi):
                         symbol = order.symbol[:3]+ '_usd'
                         contract_type = order.symbol[4:]
                         try:
-                            self.rest_qry_orders(symbol,contract_type,order.exchangeOrderID)
+                            self.rest_qry_order(symbol,contract_type,order.exchangeOrderID)
                         except:
-                            self.writeLog(u'***rest_qry_orders**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
+                            self.writeLog(u'***rest_qry_order**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
                         self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
 
             else:
@@ -1673,6 +1681,31 @@ class FuturesApi(OkexFuturesApi):
             req = self.cancelDict[localNo]
             self.cancelOrder(req)
             del self.cancelDict[localNo]  
+
+    def contactOrders(self):
+        qryDict = {}
+        for orderid in self.exchangeOrderDict():
+            if orderid in self.sendOrderDict.keys():
+                order = self.sendOrderDict(orderid)
+                symbol = order.symbol
+                if symbol not in qryDict.keys():
+                    qryDict[symbol] = [orderid]
+                else:
+                    qryDict[symbol].append(orderid)
+            elif orderid in self.wsOrderDict.keys():
+                order = self.wsOrderDict(orderid)
+                symbol = order.symbol
+                if symbol not in qryDict.keys():
+                    qryDict[symbol] = [orderid]
+                else:
+                    qryDict[symbol].append(orderid)
+        for symbol in qryDict.keys():
+            contract_type = symbol[4:]
+            symbol = symbol[:3]+'_usd'
+            idlist = ','.join(qryDict[symbol][:50])
+            self.batchQryOrder(symbol,contract_type,idlist)    
+        self.writeLog(u'对交易所id批量轮询，(品种字典：%s)'%qryDict)
+        del qryDict
 
     #----------------------------------------
     def generateDateTime(self, s):
@@ -1777,7 +1810,7 @@ class FuturesApi(OkexFuturesApi):
             return data['error_code']
 
 
-    def rest_qry_orders(self, symbol, contractType, order_id, status = None ):
+    def rest_qry_order(self, symbol, contractType, order_id, status = None ):
         """
                 {
         "orders":
@@ -1804,13 +1837,13 @@ class FuturesApi(OkexFuturesApi):
         try:
             data = self.future_order_info(symbol,contractType,order_id,status)
         except:
-            self.writeLog(u'***rest_qry_orders***return_error,ID:(%s)'%order_id)
+            self.writeLog(u'***rest_qry_order***return_error,ID:(%s)'%order_id)
             return
         
         if 'result' in data.keys():
             if data['result']:
                 orderinfo = data['orders']
-                self.writeLog(u'***rest_qry_orders**found %s orders,**%s**'%(len(orderinfo),data))
+                self.writeLog(u'***rest_qry_order**found %s orders,**%s**'%(len(orderinfo),data))
                 for i in range(len(orderinfo)):
                     orderdetail = orderinfo[i]
                     order_id = str(orderdetail['order_id'])
@@ -1832,41 +1865,12 @@ class FuturesApi(OkexFuturesApi):
                         self.sendOrderDict[order_id] = order  
                         self.wsOrderDict[order_id] = order
                         self.orderDict[vtOrderID] = order   #更新order信息
-                        self.gateway.onOrder(copy(order))
 
-                        self.writeLog(u'rest_qry_orders_findout_%s,%s,status:%s'%(
+                        self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
-
-                        if order.tradedVolume > lastTradedVolume:
-                            self.writeLog(u'gw_qry_order_update,%s ,thisvolume: %s'%(
-                                order.vtOrderID,order.thisTradedVolume))
-
-                            trade = VtTradeData()
-                            trade.gatewayName = self.gatewayName
-                            trade.symbol = order.symbol
-                            trade.exchange = order.exchange
-                            trade.vtSymbol = order.vtSymbol
-                            
-                            self.tradeID += 1
-                            trade.tradeID = str(self.tradeID)
-                            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
-                            
-                            trade.orderID = order.orderID
-                            trade.vtOrderID = order.vtOrderID
-                            trade.exchangeOrderID = order_id
-                            trade.direction = order.direction
-                            trade.offset = order.offset
-                            trade.price = order.price
-                            trade.price_avg = order.price_avg
-                            trade.volume = order.tradedVolume - lastTradedVolume
-                            trade.tradeTime = order.deliverTime
-                            trade.orderTime = order.createDate
-                            trade.fee = order.fee
-                            trade.status = order.status
-                            self.gateway.onTrade(trade)
                     else:
                         self.writeLog(
-                            'rest_qry_orders: we don\'t have this order in record, Now create it!!  id = %s'%order_id)
+                            'rest_qry_order: we don\'t have this order in record, Now create it!!  id = %s'%order_id)
                         order = VtOrderData()
                         order.symbol = symbol[:3] + contractType
                         order.gatewayName = self.gatewayName
@@ -1886,9 +1890,10 @@ class FuturesApi(OkexFuturesApi):
                         # lastTradedVolume = order.tradedVolume
                         order.tradedVolume = float(orderdetail['deal_amount'])
                         self.wsOrderDict[order_id] = order
-                    validation = self.order_arbitration(order)
+                    
+                    self.order_arbitration(order)    #进入订单信息仲裁匹配
             else:
-                self.writeLog('rest_qry_orders: it returned false')
+                self.writeLog('rest_qry_order: it returned false')
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)
@@ -1922,3 +1927,71 @@ class FuturesApi(OkexFuturesApi):
         
         del cancelMenu
         return data
+
+    #----------------------------------------------------------------
+    def batchQryOrder(self, symbol, contract_type, order_id_list):
+        """
+                {
+        "orders":
+            [
+                {
+                    "amount":1,
+                    "contract_name":"LTC0815",
+                    "create_date":1408076414000,
+                    "deal_amount":1,
+                    "fee":0,
+                    "order_id":106837,
+                    "price":1111,
+                    "price_avg":0,
+                    "status":"0",
+                    "symbol":"ltc_usd",
+                    "type":"1",
+                    "unit_amount":10,
+                    "lever_rate":10
+                }
+            ],
+        "result":true
+        }
+        """
+        try:
+            data = self.future_orders_info(symbol,contract_type,order_id_list)
+        except:
+            self.writeLog(u'***batchQryOrder***%s,%sreturn_error,ID:(%s)'%(symbol, contract_type, order_id_list))
+            return
+        
+        if 'result' in data.keys():
+            if data['result']:
+                orderinfo = data['orders']
+                self.writeLog(u'***batchQryOrder**found %s orders,**%s**'%(len(orderinfo),data))
+                for i in range(len(orderinfo)):
+                    orderdetail = orderinfo[i]
+                    order_id = str(orderdetail['order_id'])
+
+                    if order_id in self.exchangeOrderDict.keys():
+                        vtOrderID = self.exchangeOrderDict[order_id]
+                        order = self.orderDict[vtOrderID]
+
+                        order.status = statusMap[orderdetail['status']]
+                        lastTradedVolume = order.tradedVolume
+                        order.tradedVolume = orderdetail['deal_amount']
+                        order.thisTradedVolume = order.tradedVolume - lastTradedVolume
+                        order.price = orderdetail['price']
+                        order.price_avg = orderdetail['price_avg']
+                        order.deliverTime = datetime.now()
+                        order.fee = orderdetail['fee']
+                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+
+                        self.sendOrderDict[order_id] = order  
+                        self.wsOrderDict[order_id] = order
+                        self.orderDict[vtOrderID] = order   #更新order信息
+
+                        self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
+                                order.symbol,order.vtOrderID,order.status))
+                        self.order_arbitration(order)  # 进入订单匹配流程
+
+                    else:
+                        self.writeLog(
+                            'batchQryOrder: this id: %s has been dropped after filled or cancelled'%order_id)
+                    
+            else:
+                self.writeLog('batchQryOrder: it returned false')

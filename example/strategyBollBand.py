@@ -13,13 +13,13 @@ class BollBandsStrategy(CtaTemplate):
     # 策略交易标的的列表
     symbolList = []         # 初始化为空
     tradeList = []
-    posDict = {}  # 初始化仓位字典
-    eveningDict = {}  #初始化可平仓
-    bondDict = {}   #初始化保证金
+    posDict = {}            # 初始化仓位字典
+    eveningDict = {}        # 初始化可平仓
+    bondDict = {}           # 初始化保证金
 
     # 策略参数
-    fastWindow = 55  # 快速均线参数
-    slowWindow = 70  # 慢速均线参数
+    fastWindow = 55         # 快速均线参数
+    slowWindow = 70         # 慢速均线参数
     bBandPeriod = 40
     minMaxPeriod = 30
     kdjMaPeriod = 65
@@ -66,9 +66,9 @@ class BollBandsStrategy(CtaTemplate):
 
         # 生成所有品种相应的 bgDict 和 amDict，用于存放一定时间长度的行情数据，时间长度size默认值是100
         # 引擎支持的常用分钟数为：1, 5, 10, 15, 20, 30, 60, 120, 240, 360, 480
-        # 示例： self.generateBarDict( self.onBar, 5, self.on5MinBar) 
+        # 示例说明： self.generateBarDict( self.onBar, 5, self.on5MinBar) 
         #       将同时生成 self.bg5Dict 和 self.am5Dict ,字典的key是品种名,
-        #       用于生成 on5MinBar 需要的 Bar 和计算用的 bar array，可在 on5MinBar() 获取
+        #       用于生成 on5MinBar 需要的 Bar 和计算指标信号用的 bar array，可在 on5MinBar() 获取到
         self.generateBarDict(self.onBar)  
         self.generateBarDict(self.onBar,15,self.on15MinBar,size =self.slowWindow*3)
         self.generateBarDict(self.onBar,60,self.on60MinBar,size =self.slowWindow*3)
@@ -77,11 +77,12 @@ class BollBandsStrategy(CtaTemplate):
         self.generateHFBar(10)
 
         # 回测和实盘的获取历史数据部分，建议实盘初始化之后得到的历史数据和回测预加载数据交叉验证，确认代码正确
-        if self.ctaEngine.engineType == 'backtesting':
+        engine = self.getEngineType()
+        if engine == 'backtesting':
             # 获取回测设置中的initHours长度的历史数据
             self.initBacktesingData()    
 
-        elif self.ctaEngine.engineType == 'trading':
+        elif engine == 'trading':
             # 实盘载入1分钟历史数据，并采用回放计算的方式初始化策略参数
             # 通用可选参数：["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]
             kline1,kline60,kline15 ={},{},{}
@@ -125,9 +126,9 @@ class BollBandsStrategy(CtaTemplate):
     def onTick(self, tick):
         """收到行情TICK推送（必须由用户继承实现）"""
         # 在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
-        # 注：如果没有updateTick，实盘将不会推送1分钟K线
+        # 需要注意的是，如果没有updateTick，实盘将不会推送1分钟K线
         self.bgDict[tick.vtSymbol].updateTick(tick)
-        self.hfDict[tick.vtSymbol].updateTick(tick)   # 如果需要使用高频k线，需要在这里用tick更新hdDict
+        self.hfDict[tick.vtSymbol].updateTick(tick)   # 如果需要使用高频k线，需要在这里用tick更新hfDict
 
     # ---------------------------------------------------------------------
     def onHFBar(self,bar):
@@ -255,7 +256,7 @@ class BollBandsStrategy(CtaTemplate):
     #----------------------------------------------------------------------
     def onTrade(self, trade):
         """收到成交推送（必须由用户继承实现）"""
-        # 对于无需做细粒度委托控制的策略，可以忽略onOrder
+        # 对于无需做细粒度委托控制的策略，可以忽略onTrade
         pass
 
     #----------------------------------------------------------------------

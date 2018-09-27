@@ -166,13 +166,16 @@ class BinanceGateway(VtGateway):
         KLINE_PERIOD_MAP['30min'] = '30m'
         KLINE_PERIOD_MAP['60min'] = '1h'
         KLINE_PERIOD_MAP['120min'] = '2h'
+        KLINE_PERIOD_MAP['240min'] = '4h'
         KLINE_PERIOD_MAP['1day'] = '1d'
         KLINE_PERIOD_MAP['1week'] = '1w'
         KLINE_PERIOD_MAP['1month'] = '1M'
         
-        if type_ in KLINE_PERIOD_MAP:
-            candletype = KLINE_PERIOD_MAP[type_]
-            
+        if type_  not in KLINE_PERIOD_MAP:
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("BINANCE Type_ hint：1min,5min,15min,30min,60min,120min,240min,1day,1week,1year")
+            return '-1'
+        candletype = KLINE_PERIOD_MAP[type_]
         symbol = vtSymbol.split(':')[0]
         data = self.api.loadHistoryBar(symbol,candletype,size)
         return data
@@ -180,7 +183,7 @@ class BinanceGateway(VtGateway):
     def initPosition(self,vtSymbol):
         pass
         
-    def qryOrder(self):
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
         return ""
 
 ########################################################################
