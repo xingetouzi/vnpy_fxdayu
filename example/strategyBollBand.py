@@ -79,11 +79,11 @@ class BollBandsStrategy(CtaTemplate):
         # 回测和实盘的获取历史数据部分，建议实盘初始化之后得到的历史数据和回测预加载数据交叉验证，确认代码正确
         engine = self.getEngineType()
         if engine == 'backtesting':
-            # 获取回测设置中的initHours长度的历史数据
+            # 获取回测设置中的initHours长度的历史数据，并直接按照回测模式推送到 onBar 或者 onTick
             self.initBacktesingData()    
 
         elif engine == 'trading':
-            # 实盘载入1分钟历史数据，并采用回放计算的方式初始化策略参数
+            # 实盘从交易所载入1分钟实时历史数据，并采用回放计算的方式初始化策略参数
             # 通用可选参数：["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]
             kline1,kline60,kline15 ={},{},{}
             for s in self.symbolList:
@@ -98,7 +98,12 @@ class BollBandsStrategy(CtaTemplate):
                     self.am15Dict[s].updateBar(bar)
                 for bar in kline1[s]:
                     self.onBar(bar)
-                
+
+        # 如果交易所没有提供下载历史最新的数据接口，可使用以下方法从本地数据库加载实盘需要的数据：
+        # initdata = self.loadBar()  # 如果是tick数据库可以使用self.loadTick()
+        # for bar in initdata:
+        #     self.onBar(bar)  # 将历史数据直接推送到onBar,如果是tick数据要推到self.onTick(tick)
+
         self.putEvent()  # putEvent 能刷新策略UI界面的信息
         '''
         实盘在初始化策略时, 如果将历史数据推送到onbar去执行updatebar, 此时引擎的下单逻辑为False, 不会触发下单。

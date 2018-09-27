@@ -607,6 +607,7 @@ class PositionMonitor(BasicMonitor):
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
         d['position'] = {'chinese':vtText.POSITION, 'cellType':NumCell}
         d['frozen'] = {'chinese':vtText.FROZEN, 'cellType':NumCell}
+        d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':PnlCell}
         d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
         self.setHeaderDict(d)
         
@@ -636,6 +637,8 @@ class AccountMonitor(BasicMonitor):
         d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':NumCell}
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
         d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
+        d['closeProfit'] = {'chinese':vtText.CLOSE_PROFIT, 'cellType':PnlCell}
+
         self.setHeaderDict(d)
         if not d['coinSymbol']:
             self.setDataKey('vtAccountID')

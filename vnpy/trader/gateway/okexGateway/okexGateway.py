@@ -1687,14 +1687,14 @@ class FuturesApi(OkexFuturesApi):
         qryDict = {}
         for orderid in self.exchangeOrderDict.keys():
             if orderid in self.sendOrderDict.keys():
-                order = self.sendOrderDict(orderid)
+                order = self.sendOrderDict[orderid]
                 symbol = order.symbol
                 if symbol not in qryDict.keys():
                     qryDict[symbol] = [orderid]
                 else:
                     qryDict[symbol].append(orderid)
             elif orderid in self.wsOrderDict.keys():
-                order = self.wsOrderDict(orderid)
+                order = self.wsOrderDict[orderid]
                 symbol = order.symbol
                 if symbol not in qryDict.keys():
                     qryDict[symbol] = [orderid]

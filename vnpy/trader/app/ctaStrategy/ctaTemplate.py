@@ -252,9 +252,9 @@ class CtaTemplate(object):
                     self.onBar(bar)  # 将历史数据直接推送到onBar
 
             elif self.ctaEngine.mode =='tick':
-                initdata = self.loadBar()
+                initdata = self.loadTick()
                 for tick in initdata:
-                    self.onTick(tick)  # 将历史数据直接推送到onTick
+                    self.onTick(tick)  # 将历史数据直接推送到onTick  
     
     def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
         if xmin: 

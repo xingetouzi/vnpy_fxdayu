@@ -471,9 +471,9 @@ class CtaEngine(object):
             self.mainEngine.dbInsert(dbName, collectionName_, data.__dict__)
 
     #----------------------------------------------------------------------
-    def loadBar(self, dbName, collectionName, days):
+    def loadBar(self, dbName, collectionName, hours):
         """从数据库中读取Bar数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(days)
+        startDate = self.today - timedelta(hour = hours)
         for collectionName_ in collectionName:
             d = {'datetime':{'$gte':startDate}}
             
@@ -488,9 +488,9 @@ class CtaEngine(object):
             return l
 
     #----------------------------------------------------------------------
-    def loadTick(self, dbName, collectionName, days):
+    def loadTick(self, dbName, collectionName, hours):
         """从数据库中读取Tick数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(days)
+        startDate = self.today - timedelta(hour = hours)
         for collectionName_ in collectionName:
 
             d = {'datetime':{'$gte':startDate}}
