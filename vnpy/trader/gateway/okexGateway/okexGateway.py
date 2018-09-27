@@ -1567,7 +1567,7 @@ class FuturesApi(OkexFuturesApi):
             # self.localOrderDict[str(self.localNo)] = order
             # self.localNoDict[str(self.localNo)] = vtOrderID
             self.rest_qry_order(symbol,contract_type,order_id)
-            self.writeLog('gw_send_order not validate')
+            self.writeLog('gw_send_order not validate, go_rest_qry_order')
          
         # self.localOrderDict[str(self.localNo)] = order
         # self.localNoDict[str(self.localNo)] = vtOrderID
@@ -1649,7 +1649,7 @@ class FuturesApi(OkexFuturesApi):
                     del self.sendOrderDict[str(order.exchangeOrderID)]
                     del self.wsOrderDict[str(order.exchangeOrderID)]
                     del self.exchangeOrderDict[str(order.exchangeOrderID)]
-                    self.writeLog('gw_remove_finished(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
+                    self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
 
             elif len(self.orphanDict)>0:
@@ -1702,10 +1702,10 @@ class FuturesApi(OkexFuturesApi):
                     qryDict[symbol].append(orderid)
         for symbol in qryDict.keys():
             contract_type = symbol[4:]
-            symbol = symbol[:3]+'_usd'
+            qrysymbol = symbol[:3]+'_usd'
             idlist = ','.join(qryDict[symbol][:50])
-            self.batchQryOrder(symbol,contract_type,idlist)    
-        self.writeLog(u'对本地unfilled的交易所id批量轮询，(品种字典：%s)'%qryDict)
+            self.batchQryOrder(qrysymbol,contract_type,idlist)    
+        self.writeLog(u'对本地unfilled的exchangeorderid批量轮询，(品种字典：%s)'%qryDict)
         del qryDict
 
     #----------------------------------------
