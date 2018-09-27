@@ -14,16 +14,18 @@
 
 ## 项目使用方法：
 
-    实盘：
+实盘：
 
-    在下载的文件中，打开example文件夹，按照设置的说明填写配置文件，双击打开 “VNPY - 交易界面.bat” 这个文件，即可进行实盘。同时，我们为数字货币准备了专用的交易界面Crypto_Trader，同样在example文件夹内，双击打开 “VNPY - 数字货币.bat”这个文件，即可进行实盘。
+在下载的文件中，打开example文件夹，按照设置的说明填写配置文件，双击打开 “VNPY - 交易界面.bat” 这个文件，即可进行实盘。
+同时，我们为数字货币准备了专用的交易界面Crypto_Trader，同样在example文件夹内，双击打开 “VNPY - 数字货币.bat”这个文件，即可进行实盘。
 
-    回测：
+回测：
 
-    1、在MongoDB存入历史数据，范例可在下载的文件内找到loadData文件夹，配置好数据库连接，即可导入提供的数据样本，时间跨度2018年1月1日到1月31日，
+1、在MongoDB存入历史数据，范例可在下载的文件内找到loadData文件夹，配置好数据库连接，即可导入提供的数据样本，时间跨度2018年1月1日到1月31日，
 点击此处查看：[载入数据配置说明](https://github.com/xingetouzi/vnpy_fxdayu/blob/master/LoadData/Readme.md)； 
     
-    2、在example文件夹内，有两个和回测有关的配置文件，runBacktesting 是回测，runOptimization 是对回测进行优化。同样的，提供了运行的快捷方式，双击 “VNPY-回测” 可以进行回测，双击 “VNPY-并行优化” 可以得到优化结果
+2、在example文件夹内，有两个和回测有关的配置文件，runBacktesting 是回测，runOptimization 是对回测进行优化。
+同样的，提供了运行的快捷方式，双击 “VNPY-回测” 可以进行回测，双击 “VNPY-并行优化” 可以得到优化结果
 
 ## 最新功能：
 
