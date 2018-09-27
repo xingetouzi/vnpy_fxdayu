@@ -637,8 +637,11 @@ class AccountMonitor(BasicMonitor):
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
         d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
         self.setHeaderDict(d)
+        if not d['coinSymbol']:
+            self.setDataKey('vtAccountID')
+        else:
+            self.setDataKey('coinSymbol')
         
-        self.setDataKey('vtAccountID')
         self.setEventType(EVENT_ACCOUNT)
         self.setFont(BASIC_FONT)
         self.setSaveData(True)
