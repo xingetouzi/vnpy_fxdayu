@@ -11,7 +11,7 @@ from vnpy.trader.app.ctaStrategy.ctaBacktesting import BacktestingEngine, Optimi
 from vnpy.trader.app.ctaStrategy.ctaBase import *
 
 if __name__ == '__main__':
-    from strategy.MultiSignal import MultiSignalStrategy    
+    from strategyBollBand import BollBandsStrategy    
 
     # 创建回测引擎
     engine = BacktestingEngine()
@@ -45,9 +45,9 @@ if __name__ == '__main__':
     start = time.time()
     
     # 运行单进程优化函数，自动输出结果，耗时：359秒
-    # engine.runOptimization(MultiSignalStrategy, setting)            
+    # engine.runOptimization(BollBandsStrategy, setting)            
     
     # 多进程优化，耗时：89秒
-    engine.runParallelOptimization(MultiSignalStrategy, setting)
+    engine.runParallelOptimization(BollBandsStrategy, setting)
     
     print(u'耗时：%s' %(time.time()-start))

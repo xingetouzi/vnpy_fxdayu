@@ -78,7 +78,12 @@ class BacktestingEngine(object):
         self.dbName = ''            # 回测数据库名
         self.symbol = ''            # 回测集合名
         self.backtestData = []      # 回测用历史数据
+
+
         self.cachePath = os.path.join(os.path.expanduser("~"), ".vnpy_data")       # 本地数据缓存地址
+        self.logActive = False      # 回测日志开关
+        self.logPath = None         # 回测日志自定义路径
+        self.logFolderName = u'策略报告_' + datetime.now().strftime("%Y%m%d-%H%M%S") # 当次日志文件夹名称
 
         self.dataStartDate = None       # 回测数据开始日期，datetime对象
         self.dataEndDate = None         # 回测数据结束日期，datetime对象
@@ -184,6 +189,11 @@ class BacktestingEngine(object):
     def setPriceTick(self, priceTick):
         """设置价格最小变动"""
         self.priceTick = priceTick
+
+    def setLog(self, active = False, path = None):
+        """设置是否出交割单和日志"""
+        self.logPath = path
+        self.logActive = active
 
     #------------------------------------------------
     # 数据回放相关
@@ -353,10 +363,20 @@ class BacktestingEngine(object):
 
         self.output(u'数据回放结束')
 
-        dataframe = pd.DataFrame(self.logList)
-        filename = os.getcwd() + '\\' + u'策略日志_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
-        dataframe.to_csv(filename,index=False,sep=',')  
-        self.output(u'策略日志已生成') 
+        # 日志输出模块
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"日志.csv" )
+            dataframe.to_csv(filename,index=False,sep=',')  
+            self.output(u'策略日志已生成') 
         
     #----------------------------------------------------------------------
     def newBar(self, bar):
@@ -936,10 +956,19 @@ class BacktestingEngine(object):
             self.output(u'无交易结果')
             return {}
 
-        resultDF = pd.DataFrame(deliverSheet)
-        filename = os.getcwd() + '\\' + u'交割单_' + datetime.now().strftime("%Y%m%d-%H%M%S") +'.csv'
-        resultDF.to_csv(filename,index=False,sep=',')   
-        self.output(u'交割单已生成')
+        # 交割单输出模块
+        if self.logActive:
+            resultDF = pd.DataFrame(deliverSheet)
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"交割单.csv" )
+            resultDF.to_csv(filename,index=False,sep=',')  
+            self.output(u'交割单已生成') 
 
         # 然后基于每笔交易的结果，我们可以计算具体的盈亏曲线和最大回撤等        
         capital = 0             # 资金
@@ -1074,10 +1103,24 @@ class BacktestingEngine(object):
             plt.tight_layout()
             plt.xticks(xindex, tradeTimeIndex, rotation=30)  # 旋转15
             
-            
         else:
             self.output("交易记录没有达到10笔！")
             return
+        
+        # 输出回测统计图
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"回测统计图.png" )
+            plt.savefig(filename)
+            self.output(u'策略回测统计图已保存') 
         plt.show()
     
     #----------------------------------------------------------------------
@@ -1370,6 +1413,24 @@ class BacktestingEngine(object):
         pKDE.set_title('Daily Pnl Distribution')
         df['netPnl'].hist(bins=50)
         
+        
+        
+        
+        # 输出回测绩效图
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"回测绩效图.png" )
+            plt.savefig(filename)
+            self.output(u'策略回测绩效图已保存') 
+
         plt.show()
        
         

@@ -1594,7 +1594,7 @@ class FuturesApi(OkexFuturesApi):
     def order_arbitration(self, orderinfo, source = 'onorder'):
         """将sendorder发出的和futureordersinfo收到的订单信息对应起来"""
 
-        order = orderinfo
+        order = deepcopy(orderinfo)
 
         if source == 'sendorder':
             if str(orderinfo.exchangeOrderID) in self.wsOrderDict.keys():
@@ -1606,6 +1606,7 @@ class FuturesApi(OkexFuturesApi):
                 order.thisTradedVolume = order.tradedVolume - order2.tradedVolume
                 self.orderDict[str(order.vtOrderID)] = order
                 self.gateway.onOrder(order)
+                self.exchangeOrderDict[str(order.exchangeOrderID)] = order.vtOrderID
                 return True
             else:
                 self.writeLog('rest quicker in order_arb_sendorder, waiting wsonorder id:%s'%orderinfo.exchangeOrderID)
@@ -1621,6 +1622,7 @@ class FuturesApi(OkexFuturesApi):
                 self.orderDict[order.vtOrderID] = order
                 self.gateway.onOrder(order)
                 self.sendOrderDict[str(order.exchangeOrderID)] = order 
+                self.exchangeOrderDict[str(order.exchangeOrderID)] = order.vtOrderID
                 if order.tradedVolume > order2.tradedVolume:
                     trade = VtTradeData()
                     trade.gatewayName = self.gatewayName
@@ -1851,6 +1853,9 @@ class FuturesApi(OkexFuturesApi):
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
+                        if vtOrderID == 'fromws':
+                            self.writeLog(u'no vtorderID found in id = %s'%order_id)
+                            continue
                         order = self.orderDict[vtOrderID]
 
                         order.status = statusMap[orderdetail['status']]
@@ -1970,6 +1975,9 @@ class FuturesApi(OkexFuturesApi):
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
+                        if vtOrderID == 'fromws':
+                            self.writeLog(u'no vtorderID found in id = %s'%order_id)
+                            continue
                         order = self.orderDict[vtOrderID]
 
                         order.status = statusMap[orderdetail['status']]
