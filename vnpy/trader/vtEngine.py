@@ -227,7 +227,7 @@ class MainEngine(object):
         gatewayName = contract.gatewayName
         gateway = self.getGateway(gatewayName)
         if gateway:
-            data = gateway.loadHistoryBar(vtSymbol,type_,size)
+            data = gateway.loadHistoryBar(vtSymbol,type_,size,since)
         return data
 
     def qryAllOrders(self, vtSymbol,orderId,status=None):

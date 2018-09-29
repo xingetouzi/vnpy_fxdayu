@@ -5,7 +5,6 @@ vn.ctp的gateway接入
 考虑到现阶段大部分CTP中的ExchangeID字段返回的都是空值
 vtSymbol直接使用symbol
 '''
-
 import os
 import json
 from copy import copy
@@ -15,6 +14,8 @@ from vnpy.api.ctp import MdApi, TdApi, defineDict
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES
+import pandas as pd
+from jaqs.data import DataView,RemoteDataService
 from .language import text
 
 
@@ -123,6 +124,9 @@ class CtpGateway(VtGateway):
             brokerID = str(setting['brokerID'])
             tdAddress = str(setting['tdAddress'])
             mdAddress = str(setting['mdAddress'])
+            jaqsUser = str(setting['jaqs_username'])
+            jaqsPass = str(setting['jaqs_password'])
+
             
             # 如果json文件提供了验证码
             if 'authCode' in setting: 
@@ -143,7 +147,19 @@ class CtpGateway(VtGateway):
         # 创建行情和交易接口对象
         self.mdApi.connect(userID, password, brokerID, mdAddress)
         self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
-        
+
+        # 连接jaqs
+        if jaqsUser and jaqsPass:
+            data_config = {
+                        "remote.data.address": "tcp://data.quantos.org:8910",
+                        "remote.data.username": jaqsUser,
+                        "remote.data.password": jaqsPass
+                        }
+            self.ds = RemoteDataService()
+            self.ds.init_from_config(data_config)
+        # log.logContent = u'jaqs连接成功'
+        # self.onLog(log)
+
         # 初始化并启动查询
         self.initQuery()
     
@@ -222,7 +238,63 @@ class CtpGateway(VtGateway):
         self.qryEnabled = qryEnabled
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
-        pass
+        if size:
+            log = VtLogData()
+            log.gatewayName = self.gatewayName
+            log.logContent = u'CTP初始化数据请使用since参数，size无效'
+            self.onLog(log)
+            return
+
+        if type_ != '1min':
+            log = VtLogData()
+            log.gatewayName = self.gatewayName
+            log.logContent = u'CTP初始化数据只接受1分钟bar'
+            self.onLog(log)
+            return
+
+        symbol = vtSymbol.split(':')[0]
+        exchange = vtSymbol.split(':')[1]
+
+        if exchangeMap[EXCHANGE_SHFE] in exchange:
+            exchange = 'SHF'
+        elif exchangeMap[EXCHANGE_CFFEX] in exchange:
+            exchange = 'CFE'
+        elif exchangeMap[EXCHANGE_CZCE] in exchange:
+            exchange = 'CZC'
+        # else:
+        #     log = VtLogData()
+        #     log.gatewayName = self.gatewayName
+        #     log.logContent = u'CTP没有该品种交易所信息'
+        #     self.onLog(log)
+        #     return
+        symbol = symbol[:-4]+ exchange
+        # result= []
+        start_time = since
+        end_time = datetime.now().strftime('%Y%m%d')
+        if self.ds:
+            tradeDays=self.ds.query_trade_dates(start_time,end_time)
+            i=0
+
+            for trade_date in tradeDays:
+                minutebar,msg=self.ds.bar(symbol='j.DCE',start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
+                trade_datetime = []
+                for j in range(0,len(minutebar)):
+                    date,time = minutebar['date'][j],minutebar['time'][j]        
+                    year,month,day=date // 10000, date // 100 % 100,date % 100,
+                    hour,minute,second =time // 10000 , time // 100 % 100, time % 100
+                    stamp = pd.datetime(year,month,day,hour,minute,second)
+                    trade_datetime.insert(j,stamp)
+
+                minutebar['datetime']=trade_datetime
+                minute=minutebar[['datetime','open','close','high','low','volume']]
+
+                if i>0:
+                    result=result.append(minute)
+                else:
+                    result= minute
+                    i+=1
+            return result.to_dict(orient = 'list')
+
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
     def initPosition(self,vtSymbol):
@@ -356,7 +428,7 @@ class CtpMdApi(MdApi):
         
         tick.symbol = symbol
         tick.exchange = symbolExchangeDict[tick.symbol]
-        tick.vtSymbol = symbol #  ':'.join([tick.symbol, tick.exchange])
+        tick.vtSymbol =  ':'.join([tick.symbol, tick.exchange])
         
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
@@ -602,7 +674,7 @@ class CtpTdApi(TdApi):
         order.gatewayName = self.gatewayName
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol
+        order.vtSymbol = ':'.join([order.symbol, order.exchange])    
         order.orderID = data['OrderRef']
         order.vtOrderID = ':'.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
@@ -723,11 +795,12 @@ class CtpTdApi(TdApi):
             
             pos.gatewayName = self.gatewayName
             pos.symbol = data['InstrumentID']
-            pos.vtSymbol = pos.symbol
             pos.direction = posiDirectionMapReverse.get(data['PosiDirection'], '')
-            pos.vtPositionName = ':'.join([pos.vtSymbol, pos.direction]) 
-        
+            
         exchange = self.symbolExchangeDict.get(pos.symbol, EXCHANGE_UNKNOWN)
+
+        pos.vtSymbol = ':'.join([pos.symbol, exchange]) 
+        pos.vtPositionName = ':'.join([pos.vtSymbol, pos.direction]) 
         
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
         if exchange == EXCHANGE_SHFE:
@@ -829,7 +902,7 @@ class CtpTdApi(TdApi):
 
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
-        contract.vtSymbol = contract.symbol #':'.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = ':'.join([contract.symbol, contract.exchange])
         contract.name = data['InstrumentName']#.decode('GBK')
 
         # 合约数值
@@ -1034,7 +1107,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol #':'.join([order.symbol, order.exchange])
+        order.vtSymbol = ':'.join([order.symbol, order.exchange])
         
         order.orderID = data['OrderRef']
         # CTP的报单号一致性维护需要基于frontID, sessionID, orderID三个字段
@@ -1069,7 +1142,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         trade.symbol = data['InstrumentID']
         trade.exchange = exchangeMapReverse[data['ExchangeID']]
-        trade.vtSymbol = trade.symbol #':'.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = ':'.join([trade.symbol, trade.exchange])
         
         trade.tradeID = data['TradeID']
         trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
@@ -1099,7 +1172,7 @@ class CtpTdApi(TdApi):
         order.gatewayName = self.gatewayName
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol
+        order.vtSymbol =':'.join([ order.symbol , order.exchange])     
         order.orderID = data['OrderRef']
         order.vtOrderID = ':'.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
@@ -1431,7 +1504,7 @@ class CtpTdApi(TdApi):
         """发单"""
         self.reqID += 1
         self.orderRef += 1
-        symbol = orderReq.symbol.split(':')
+        symbol = orderReq.symbol
         req = {}
         
         req['InstrumentID'] = symbol[0]
@@ -1475,7 +1548,7 @@ class CtpTdApi(TdApi):
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
         self.reqID += 1
-        symbol = cancelOrderReq.symbol#.split(':')
+        symbol = cancelOrderReq.symbol
         req = {}
         
         req['InstrumentID'] = symbol

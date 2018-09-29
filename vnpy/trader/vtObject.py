@@ -234,7 +234,6 @@ class VtAccountData(VtBaseData):
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
 
         # OKEX 数据
-        self.coinSymbol = EMPTY_STRING 
         self.risk_rate = EMPTY_FLOAT 
 
         

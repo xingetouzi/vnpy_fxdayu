@@ -12,7 +12,7 @@ import os
 import json
 from datetime import datetime
 from time import sleep
-from copy import copy
+from copy import copy, deepcopy
 from threading import Condition
 from queue import Queue, Empty
 from threading import Thread
@@ -1209,17 +1209,18 @@ class FuturesApi(OkexFuturesApi):
             return
         # print(data,"持仓的币种")
         contracts = data['data']['info']
-        x = 0
+        flag = 0
         # 帐户信息
         for symbol in contracts.keys():
             fund = contracts[symbol]
 
-            try:
+            if 'account_rights' in fund.keys():
                 balance= float(fund['account_rights'])
                 if balance:                   ##过滤掉没有持仓的币种
                     account = VtAccountData()
-                    account.coinSymbol = symbol
                     account.gatewayName = self.gatewayName
+                    account.accountID = symbol + '_usd'
+                    account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
                     account.risk_rate = fund['risk_rate']
                     account.balance = balance
                     profit_real = fund['profit_real']
@@ -1229,19 +1230,20 @@ class FuturesApi(OkexFuturesApi):
                     keep_deposit = fund['keep_deposit']
                     account.margin = '%10.9f' %keep_deposit
                     self.gateway.onAccount(account)    
-                    x = 1
+                    flag = 1
                 
-            except:
+            elif 'balance' in fund.keys():
                 balance= float(fund['balance'])
                 if balance:                     ##过滤掉没有持仓的币种
                     account = VtAccountData()
-                    account.coinSymbol = symbol
                     account.gatewayName = self.gatewayName
+                    account.accountID = symbol + '_usd'
+                    account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
                     account.available = fund['rights']
                     account.balance = balance
                     self.gateway.onAccount(account)    
                 self.writeLog(u'期货账户信息查询成功, 该账户是逐仓模式')
-        if x == 1:
+        if flag:
             self.writeLog(u'期货账户信息查询成功, 该账户是全仓模式')
         
         # 查询委托
@@ -1337,8 +1339,9 @@ class FuturesApi(OkexFuturesApi):
         # 帐户信息更新
 
         account = VtAccountData()
-        account.coinSymbol = rawData['symbol'][:3]
         account.gatewayName = self.gatewayName
+        account.accountID = rawData['symbol']
+        account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
         account.balance = rawData['balance']
         profit_real = rawData['profit_real']
         account.closeProfit = '%10.8f' % profit_real
@@ -1572,7 +1575,6 @@ class FuturesApi(OkexFuturesApi):
         # self.localOrderDict[str(self.localNo)] = order
         # self.localNoDict[str(self.localNo)] = vtOrderID
         
-        
         return vtOrderID
     #---------------------------------------------------------------------------
     def cancelOrder(self, req):
@@ -1706,8 +1708,9 @@ class FuturesApi(OkexFuturesApi):
             contract_type = symbol[4:]
             qrysymbol = symbol[:3]+'_usd'
             idlist = ','.join(qryDict[symbol][:50])
-            self.batchQryOrder(qrysymbol,contract_type,idlist)    
-        self.writeLog(u'对本地unfilled的exchangeorderid批量轮询，(品种字典：%s)'%qryDict)
+            self.batchQryOrder(qrysymbol,contract_type,idlist)  
+        if qryDict:  
+            self.writeLog(u'对本地挂单的exchangeorderid批量轮询，(品种字典：%s)'%qryDict)
         del qryDict
 
     #----------------------------------------
