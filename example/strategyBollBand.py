@@ -85,6 +85,7 @@ class BollBandsStrategy(CtaTemplate):
         elif engine == 'trading':
             # 实盘从交易所载入1分钟实时历史数据，并采用回放计算的方式初始化策略参数
             # 通用可选参数：["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]
+            # CTP 只提供 1min 数据，因为数据源没有限制长度，所以不接受数量请求，请使用since = '20180901'这样的参数请求
             kline1,kline60,kline15 ={},{},{}
             for s in self.symbolList:
                 kline60[s] = self.loadHistoryBar(s, '60min',1000)[:-20]
@@ -100,7 +101,7 @@ class BollBandsStrategy(CtaTemplate):
                     self.onBar(bar)
 
         # 如果交易所没有提供下载历史最新的数据接口，可使用以下方法从本地数据库加载实盘需要的数据：
-        # initdata = self.loadBar()  # 如果是tick数据库可以使用self.loadTick()
+        # initdata = self.loadBar(90)  # 如果是tick数据库可以使用self.loadTick(), 参数为天数
         # for bar in initdata:
         #     self.onBar(bar)  # 将历史数据直接推送到onBar,如果是tick数据要推到self.onTick(tick)
 
@@ -250,13 +251,13 @@ class BollBandsStrategy(CtaTemplate):
         """收到委托变化推送（必须由用户继承实现）"""
         # 对于无需做细粒度委托控制的策略，可以忽略onOrder
         if order.status == STATUS_UNKNOWN:
-            mail(u'出现未知订单，需要策略师外部干预,ID:%s, symbol:%s,direction:%s,offset:%s'
+            self.mail(u'出现未知订单，需要策略师外部干预,ID:%s, symbol:%s,direction:%s,offset:%s'
                  %(order.vtOrderID, order.vtSymbol, order.direction, order.offset))     # 在交易通讯异常时，系统返回未知状态的order对象给策略，需要额外措施处理
         if order.tradedVolume != 0 :
             # tradedVolume 不等于 0 表示有订单成交
             content = u'成交信息播报,ID:%s, symbol:%s, directionL%s, offset:%s, price:%s'\
                       %(order.vtOrderID, order.vtSymbol, order.direction, order.offset, order.price)
-            mail(content)
+            self.mail(content)
 
     #----------------------------------------------------------------------
     def onTrade(self, trade):

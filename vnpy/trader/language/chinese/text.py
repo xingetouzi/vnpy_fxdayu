@@ -49,7 +49,6 @@ AVAILABLE = u'可用'
 COMMISSION = u'手续费'
 MARGIN = u'保证金'
 CLOSE_PROFIT = u'已实现收益'
-COIN_SYMBOL = u'合约帐户币种'
 RISK_RATE = u'保证金率'
 
 TRADING = u'交易'
