@@ -9,13 +9,7 @@ import talib as ta
 class BollBandsStrategy(CtaTemplate):
     className = 'BollBandsStrategy'
     author = 'xingetouzi'
-
-    # 策略交易标的的列表
-    symbolList = []         # 初始化为空
-    tradeList = []
-    posDict = {}            # 初始化仓位字典
-    eveningDict = {}        # 初始化可平仓
-    bondDict = {}           # 初始化保证金
+    version = '1.1.11'
 
     # 策略参数
     fastWindow = 55         # 快速均线参数
@@ -83,14 +77,23 @@ class BollBandsStrategy(CtaTemplate):
             self.initBacktesingData()    
 
         elif engine == 'trading':
-            # 实盘从交易所载入1分钟实时历史数据，并采用回放计算的方式初始化策略参数
+            # 实盘从交易所载入1分钟实时历史数据，并采用回放计算的方式初始化策略参数, 交易所提供的数量上限为2000条数据
             # 通用可选参数：["1min","5min","15min","30min","60min","120min","240min","1day","1week","1month"]
             # CTP 只提供 1min 数据，因为数据源没有限制长度，所以不接受数量请求，请使用since = '20180901'这样的参数请求
+            
+            # CTP 加载历史数据的方式:
+            for s in self.symbolList:
+                kline = self.loadHistoryBar(s,'1min', since = '20180901')
+                for bar in kline:
+                    self.onBar(bar)
+
+            """
+            # 数字货币加载历史数据方式:
             kline1,kline60,kline15 ={},{},{}
             for s in self.symbolList:
-                kline60[s] = self.loadHistoryBar(s, '60min',1000)[:-20]
-                kline15[s] = self.loadHistoryBar(s, '15min',1000)[:-80]
-                 kline1[s] = self.loadHistoryBar(s, '1min',1200)
+                kline60[s] = self.loadHistoryBar(s, '60min', 1000)[:-20]
+                kline15[s] = self.loadHistoryBar(s, '15min', 1000)[:-80]
+                 kline1[s] = self.loadHistoryBar(s, '1min', 1200)
             # 更新数据矩阵 (optional)
             for s in self.symbolList:
                 for bar in kline60[s]:
@@ -99,11 +102,14 @@ class BollBandsStrategy(CtaTemplate):
                     self.am15Dict[s].updateBar(bar)
                 for bar in kline1[s]:
                     self.onBar(bar)
+            """
 
-        # 如果交易所没有提供下载历史最新的数据接口，可使用以下方法从本地数据库加载实盘需要的数据：
-        # initdata = self.loadBar(90)  # 如果是tick数据库可以使用self.loadTick(), 参数为天数
-        # for bar in initdata:
-        #     self.onBar(bar)  # 将历史数据直接推送到onBar,如果是tick数据要推到self.onTick(tick)
+            """
+            如果交易所没有提供下载历史最新的数据接口，可使用以下方法从本地数据库加载实盘需要的数据：
+            initdata = self.loadBar(90)  # 如果是tick数据库可以使用self.loadTick(), 参数为天数
+            for bar in initdata:
+                self.onBar(bar)  # 将历史数据直接推送到onBar,如果是tick数据要推到self.onTick(tick)
+            """
 
         self.putEvent()  # putEvent 能刷新策略UI界面的信息
         '''
