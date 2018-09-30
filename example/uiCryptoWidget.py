@@ -633,7 +633,6 @@ class AccountMonitor(BasicMonitor):
         d = OrderedDict()
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         d['accountID'] = {'chinese':vtText.ACCOUNT_ID, 'cellType':BasicCell}
-        d['coinSymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
         d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':NumCell}
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
         d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
@@ -642,11 +641,7 @@ class AccountMonitor(BasicMonitor):
         d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':PnlCell}
 
         self.setHeaderDict(d)
-        if not d['coinSymbol']:
-            self.setDataKey('vtAccountID')
-        else:
-            self.setDataKey('coinSymbol')
-        
+        self.setDataKey('vtAccountID')
         self.setEventType(EVENT_ACCOUNT)
         self.setFont(BASIC_FONT)
         self.setSaveData(True)
