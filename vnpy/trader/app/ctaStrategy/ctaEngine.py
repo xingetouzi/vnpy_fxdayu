@@ -19,7 +19,6 @@
 
 
 import json
-import math
 import os
 import traceback
 import importlib
@@ -36,23 +35,10 @@ from vnpy.trader.vtGlobal import globalSetting
 import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
-from functools import lru_cache
-
+from decimal import *
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
-
-
-@lru_cache(1024)
-def roundNumberPriceTick(priceTick): 
-    strPriceTick = str(priceTick)
-    if "." in strPriceTick:
-        decimal = strPriceTick.split(".")[1]
-        return len(("." + decimal).strip("0")) - 1
-    else:
-        l1 = len(strPriceTick)
-        l2 = len(("." + strPriceTick).strip("0")) - 1
-        return l2 - l1
 
 ########################################################################
 class CtaEngine(object):
@@ -191,6 +177,8 @@ class CtaEngine(object):
 
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
+
+
 
     def batchCancelOrder(self,vtOrderIDList):
         """批量撤单"""
@@ -335,8 +323,6 @@ class CtaEngine(object):
             try:
                 # 添加datetime字段
                 if not tick.datetime:
-                    if len(tick.time.split('.'))>1:
-                        tick.time = tick.time[:-2]
                     tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
             except ValueError:
                 self.writeCtaLog(traceback.format_exc())
@@ -347,12 +333,9 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 45 and tick.datetime.minute != self.minute_temp:
+                    if tick.datetime.second == 36 and tick.datetime.minute != self.minute_temp:
                         self.minute_temp = tick.datetime.minute
-                        self.qryOrder(strategy.name)
-                    elif tick.datetime.second == 15 and tick.datetime.minute != self.minute_temp:
-                        self.minute_temp = tick.datetime.minute
-                        self.qryOrder(strategy.name)
+                        self.qryAllOrders(strategy.name)
                     
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -422,12 +405,6 @@ class CtaEngine(object):
             elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
                 posName = trade.vtSymbol + "_SHORT"
                 strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol
-                strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_NONE:
-                posName = trade.vtSymbol
-                strategy.posDict[str(posName)] -= trade.volume
 
             self.callStrategyFunc(strategy, strategy.onTrade, trade)
     #----------------------------------
@@ -460,12 +437,6 @@ class CtaEngine(object):
                             strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
                         if 'bondDict' in strategy.syncList:
                             strategy.bondDict[str(posName2)]=pos.frozen
-                # elif productType == 'SPOT':
-                #     posName = pos.vtSymbol
-                #     if 'posDict' in strategy.syncList:
-                #         strategy.posDict[str(posName)] = pos.position
-                #     if 'bondDict' in strategy.syncList:
-                #         strategy.bondDict[str(posName)] = pos.frozen
 
                         # 保存策略持仓到数据库
                         self.saveSyncData(strategy)  
@@ -500,9 +471,9 @@ class CtaEngine(object):
             self.mainEngine.dbInsert(dbName, collectionName_, data.__dict__)
 
     #----------------------------------------------------------------------
-    def loadBar(self, dbName, collectionName, days):
+    def loadBar(self, dbName, collectionName, hours):
         """从数据库中读取Bar数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(days)
+        startDate = self.today - timedelta(hour = hours)
         for collectionName_ in collectionName:
             d = {'datetime':{'$gte':startDate}}
             
@@ -517,9 +488,9 @@ class CtaEngine(object):
             return l
 
     #----------------------------------------------------------------------
-    def loadTick(self, dbName, collectionName, days):
+    def loadTick(self, dbName, collectionName, hours):
         """从数据库中读取Tick数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(days)
+        startDate = self.today - timedelta(hour = hours)
         for collectionName_ in collectionName:
 
             d = {'datetime':{'$gte':startDate}}
@@ -617,9 +588,6 @@ class CtaEngine(object):
 
             if not strategy.inited:
                 strategy.inited = True
-                strategy.posDict = {}
-                strategy.eveningDict = {}
-                strategy.bondDict = {}
                 self.initPosition(strategy)
                 self.callStrategyFunc(strategy, strategy.onInit)
                 self.subscribeMarketData(strategy)                      # 加载同步数据后再订阅行情
@@ -862,10 +830,12 @@ class CtaEngine(object):
         self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
         content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
         self.writeCtaLog(content)
-
-    def roundToPriceTick(priceTick, price):
+        
+    #----------------------------------------------------------------------    
+    def roundToPriceTick(self, priceTick, price):
         """取整价格到合约最小价格变动"""
-        newPrice = round(round(price/priceTick,0)*priceTick, roundNumberPriceTick(priceTick))
+        d = Decimal(str(price))
+        newPrice = float(d.quantize(Decimal(str(priceTick))))
         return newPrice
 
     #----------------------------------------------------------------------
@@ -920,54 +890,46 @@ class CtaEngine(object):
         return histbar
 
     def initPosition(self,strategy):
-        # 因交易所更改仓位的读取方式，暂时取消使用defaultdict初始化posdict
-        # for item in strategy.syncList:
-        #     d = strategy.__getattribute__(item)
-        #     d = defaultdict(None)
-        
-        # 该方法初始化仓位信息比较复杂，但可以不受交易所影响
         for i in range(len(strategy.symbolList)):
             symbol = strategy.symbolList[i]
-            if 'week' in  symbol or 'quarter' in symbol:
-                if 'posDict' in strategy.syncList:
-                    strategy.posDict[symbol+"_LONG"] = 0
-                    strategy.posDict[symbol+"_SHORT"] = 0
-                if 'eveningDict' in strategy.syncList:
-                    strategy.eveningDict[symbol+"_LONG"] = 0
-                    strategy.eveningDict[symbol+"_SHORT"] = 0
-                if 'bondDict' in strategy.syncList:
-                    strategy.bondDict[symbol+"_LONG"] = 0
-                    strategy.bondDict[symbol+"_SHORT"] = 0
-            else:
-                if 'accountDict' in strategy.syncList:
-                    symbol = symbol.split('.')[0]
-                    name = str.lower(symbol.replace('_',''))
-                    if 'btc' in name[-3:]:
-                        a = name.split('btc')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['btc'] = 0
-                    elif 'usdt' in name[-4:]:
-                        a = name.split('usdt')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['usdt'] = 0
-                    elif 'bnb' in name[-3:]:
-                        a = name.split('bnb')[0]
-                        strategy.accountDict[a] = 0
-                        strategy.accountDict['bnb'] = 0
+            if 'posDict' in strategy.syncList:
+                strategy.posDict[symbol+"_LONG"] = 0
+                strategy.posDict[symbol+"_SHORT"] = 0
+            if 'eveningDict' in strategy.syncList:
+                strategy.eveningDict[symbol+"_LONG"] = 0
+                strategy.eveningDict[symbol+"_SHORT"] = 0
+            if 'bondDict' in strategy.syncList:
+                strategy.bondDict[symbol+"_LONG"] = 0
+                strategy.bondDict[symbol+"_SHORT"] = 0
+
+            if 'accountDict' in strategy.syncList:
+                symbol = symbol.split('.')[0]
+                name = str.lower(symbol.replace('_',''))
+                if 'btc' in name[-3:]:
+                    a = name.split('btc')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['btc'] = 0
+                elif 'usdt' in name[-4:]:
+                    a = name.split('usdt')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['usdt'] = 0
+                elif 'bnb' in name[-3:]:
+                    a = name.split('bnb')[0]
+                    strategy.accountDict[a] = 0
+                    strategy.accountDict['bnb'] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
             self.mainEngine.initPosition(vtSymbol)
 
-    def qryOrder(self,name,status=None):
-        s = self.strategyOrderDict[name]
-        
-        if len(list(s)):
-            for vtOrderID in list(s):
-                if STOPORDERPREFIX not in vtOrderID:
-                    order = self.mainEngine.getOrder(vtOrderID)
-                    if order:
-                        self.mainEngine.qryOrder(order.vtSymbol, order.exchangeOrderID, status = None)
+    def qryAllOrders(self,name):
+
+        if name in self.strategyDict:
+            strategy = self.strategyDict[name]
+            s = self.strategyOrderDict[name]
+            for symbol in strategy.symbolList:
+                self.mainEngine.qryAllOrders(symbol, -1, status = 1)
+                self.writeCtaLog("ctaEngine对策略%s发出%s的挂单轮询请求，本地订单数量%s"%(name,symbol,len(list(s))))
 
     def restoreStrategy(self, name):
         """恢复策略"""
@@ -982,6 +944,9 @@ class CtaEngine(object):
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据                
                 self.loadSyncData(strategy)
                 self.writeCtaLog(u'策略%s： 恢复策略状态成功' %name)
+
+            else:
+                self.writeCtaLog(u'策略%s： 策略无法从当前状态恢复' %name)
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
@@ -1036,7 +1001,7 @@ class CtaEngine(object):
         STRATEGY_GET_CLASS = {}
 
         # 获取目录路径
-        path = os.path.abspath(os.path.dirname(__file__))
+        path = os.getcwd()
 
         # 遍历strategy目录下的文件
         for root, subdirs, files in os.walk(path):

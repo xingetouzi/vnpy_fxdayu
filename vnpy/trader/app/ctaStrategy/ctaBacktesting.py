@@ -78,7 +78,12 @@ class BacktestingEngine(object):
         self.dbName = ''            # 回测数据库名
         self.symbol = ''            # 回测集合名
         self.backtestData = []      # 回测用历史数据
+
+
         self.cachePath = os.path.join(os.path.expanduser("~"), ".vnpy_data")       # 本地数据缓存地址
+        self.logActive = False      # 回测日志开关
+        self.logPath = None         # 回测日志自定义路径
+        self.logFolderName = u'策略报告_' + datetime.now().strftime("%Y%m%d-%H%M%S") # 当次日志文件夹名称
 
         self.dataStartDate = None       # 回测数据开始日期，datetime对象
         self.dataEndDate = None         # 回测数据结束日期，datetime对象
@@ -92,6 +97,8 @@ class BacktestingEngine(object):
         self.tradeDict = OrderedDict()  # 成交字典
         
         self.logList = []               # 日志记录
+        
+        self.orderList = []             # 订单记录
         
         # 当前最新数据，用于模拟成交用
         self.tickDict = defaultdict(lambda: None)
@@ -182,6 +189,11 @@ class BacktestingEngine(object):
     def setPriceTick(self, priceTick):
         """设置价格最小变动"""
         self.priceTick = priceTick
+
+    def setLog(self, active = False, path = None):
+        """设置是否出交割单和日志"""
+        self.logPath = path
+        self.logActive = active
 
     #------------------------------------------------
     # 数据回放相关
@@ -280,20 +292,20 @@ class BacktestingEngine(object):
                                     file_path = os.path.join(save_path, "%s.h5" % (date,))
                                     file_data.to_hdf(file_path, key="d")
                     else:
-                        self.output("We use full range of local data in %s "%symbol)
+                        self.output(" 当前品种 %s 的数据，全部来自于本地缓存"%symbol)
 
                 else:
-                    self.output("We don\'t have %s in database"%symbol)
-                    self.output("Our database have these symbols: %s"%self.dbClient[self.dbName].collection_names())
+                    self.output("我们的数据库没有 %s 这个品种"%symbol)
+                    self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
         except:
-            self.output('No Mongo connection, attempt using local data')
+            self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: (x.datetime))
             self.output(u'载入完成，数据量：%s' %(len(dataList)))
             return dataList
         else:
-            self.output(u'！！没有数据 没有数据 没有数据！！')
+            self.output(u'！！ 数据量为 0 ！！')
             return []
         
     #----------------------------------------------------------------------
@@ -317,7 +329,10 @@ class BacktestingEngine(object):
         # 策略初始化
         self.output(u'策略初始化')
         # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
-        self.initData = self.loadHistoryData(self.strategy.symbolList,self.strategyStartDate,self.dataStartDate)
+        if self.strategyStartDate == self.dataStartDate:
+            self.output(u'策略无请求历史数据初始化')
+        else:
+            self.initData = self.loadHistoryData(self.strategy.symbolList,self.strategyStartDate,self.dataStartDate)
         self.strategy.inited = True
         self.strategy.onInit()
         self.output(u'策略初始化完成')
@@ -347,6 +362,21 @@ class BacktestingEngine(object):
                 start = end
 
         self.output(u'数据回放结束')
+
+        # 日志输出模块
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"日志.csv" )
+            dataframe.to_csv(filename,index=False,sep=',')  
+            self.output(u'策略日志已生成') 
         
     #----------------------------------------------------------------------
     def newBar(self, bar):
@@ -598,12 +628,16 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_SELL:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
+            if order.totalVolume > self.strategy.posDict[order.vtSymbol+'_LONG']:
+                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
         elif orderType == CTAORDER_SHORT:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_OPEN
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
-            order.offset = OFFSET_CLOSE     
+            order.offset = OFFSET_CLOSE  
+            if order.totalVolume > self.strategy.posDict[order.vtSymbol+'_SHORT']:
+                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
 
         if priceType == PRICETYPE_LIMITPRICE:
             order.price = self.roundToPriceTick(price)
@@ -787,6 +821,7 @@ class BacktestingEngine(object):
             return {}
         # 首先基于回测后的成交记录，计算每笔交易的盈亏
         resultList = []             # 交易结果列表
+        deliverSheet = []
 
         longTrade = defaultdict(list)  # 未平仓的多头交易
         shortTrade = defaultdict(list)  # 未平仓的空头交易
@@ -816,6 +851,7 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.dt,
                                                -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
+                        deliverSheet.append(result.__dict__)
                         
                         posList.extend([-1,0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -860,6 +896,7 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.dt,
                                                closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
+                        deliverSheet.append(result.__dict__)
                         
                         posList.extend([1,0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -897,7 +934,9 @@ class BacktestingEngine(object):
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
                                        trade.volume, self.rate, self.slippage, self.size,self.levelRate)
+
                 resultList.append(result)
+                deliverSheet.append(result.__dict__)
 
         for tradeList in shortTrade.values():
 
@@ -910,11 +949,27 @@ class BacktestingEngine(object):
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
                                        -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
                 resultList.append(result)
+                deliverSheet.append(result.__dict__)
+
         # 检查是否有交易
         if not resultList:
             self.output(u'无交易结果')
             return {}
-        
+
+        # 交割单输出模块
+        if self.logActive:
+            resultDF = pd.DataFrame(deliverSheet)
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"交割单.csv" )
+            resultDF.to_csv(filename,index=False,sep=',')  
+            self.output(u'交割单已生成') 
+
         # 然后基于每笔交易的结果，我们可以计算具体的盈亏曲线和最大回撤等        
         capital = 0             # 资金
         maxCapital = 0          # 资金最高净值
@@ -1048,10 +1103,24 @@ class BacktestingEngine(object):
             plt.tight_layout()
             plt.xticks(xindex, tradeTimeIndex, rotation=30)  # 旋转15
             
-            
         else:
             self.output("交易记录没有达到10笔！")
             return
+        
+        # 输出回测统计图
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"回测统计图.png" )
+            plt.savefig(filename)
+            self.output(u'策略回测统计图已保存') 
         plt.show()
     
     #----------------------------------------------------------------------
@@ -1344,6 +1413,24 @@ class BacktestingEngine(object):
         pKDE.set_title('Daily Pnl Distribution')
         df['netPnl'].hist(bins=50)
         
+        
+        
+        
+        # 输出回测绩效图
+        if self.logActive:
+            dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"回测绩效图.png" )
+            plt.savefig(filename)
+            self.output(u'策略回测绩效图已保存') 
+
         plt.show()
        
         
@@ -1361,7 +1448,8 @@ class TradingResult(object):
         self.entryDt = entryDt          # 开仓时间datetime    
         self.exitDt = exitDt            # 平仓时间
         
-        self.volume = volume        # 交易数量（+/-代表方向）
+        self.volume = volume            # 交易数量（+/-代表方向）
+
         if levelRate:
             self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
         else:
@@ -1380,8 +1468,6 @@ class TradingResult(object):
             self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
         
-        print("单笔盈亏：",self.pnl,"开仓：",entryDt, ", ",self.entryPrice,"平仓:",exitDt,", ",self.exitPrice,"交易数量：",volume,"合约面值：",size,"滑点：",self.slippage,"手续费：",self.commission)
-
 
 ########################################################################
 class DailyResult(object):

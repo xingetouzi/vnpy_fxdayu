@@ -6,7 +6,6 @@ vn.ctp的gateway接入
 vtSymbol直接使用symbol
 '''
 
-
 import os
 import json
 from copy import copy
@@ -224,7 +223,7 @@ class CtpGateway(VtGateway):
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         pass
-    def qryOrder(self, vtSymbol, order_id, status= None):
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
     def initPosition(self,vtSymbol):
         pass
@@ -357,12 +356,12 @@ class CtpMdApi(MdApi):
         
         tick.symbol = symbol
         tick.exchange = symbolExchangeDict[tick.symbol]
-        tick.vtSymbol = tick.symbol #'.'.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = symbol #  VN_SEPARATOR.join([tick.symbol, tick.exchange])
         
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
         tick.openInterest = data['OpenInterest']
-        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])
+        tick.time = VN_SEPARATOR.join([data['UpdateTime'], str(data['UpdateMillisec'])])
         
         # 上期所和郑商所可以直接使用，大商所需要转换
         tick.date = data['ActionDay']
@@ -384,7 +383,6 @@ class CtpMdApi(MdApi):
         # 大商所日期转换
         if tick.exchange is EXCHANGE_DCE:
             tick.date = datetime.now().strftime('%Y%m%d')
-        
         self.gateway.onTick(tick)
         
     #---------------------------------------------------------------------- 
@@ -606,7 +604,7 @@ class CtpTdApi(TdApi):
         order.exchange = exchangeMapReverse[data['ExchangeID']]
         order.vtSymbol = order.symbol
         order.orderID = data['OrderRef']
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
         order.status = STATUS_REJECTED
@@ -716,7 +714,7 @@ class CtpTdApi(TdApi):
             return
         
         # 获取持仓缓存对象
-        posName = '.'.join([data['InstrumentID'], data['PosiDirection']])
+        posName = VN_SEPARATOR.join([data['InstrumentID'], data['PosiDirection']])
         if posName in self.posDict:
             pos = self.posDict[posName]
         else:
@@ -727,7 +725,7 @@ class CtpTdApi(TdApi):
             pos.symbol = data['InstrumentID']
             pos.vtSymbol = pos.symbol
             pos.direction = posiDirectionMapReverse.get(data['PosiDirection'], '')
-            pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction]) 
+            pos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, pos.direction]) 
         
         exchange = self.symbolExchangeDict.get(pos.symbol, EXCHANGE_UNKNOWN)
         
@@ -774,7 +772,7 @@ class CtpTdApi(TdApi):
     
         # 账户代码
         account.accountID = data['AccountID']
-        account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
+        account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
     
         # 数值相关
         account.preBalance = data['PreBalance']
@@ -831,7 +829,7 @@ class CtpTdApi(TdApi):
 
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
-        contract.vtSymbol = contract.symbol #'.'.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = contract.symbol #VN_SEPARATOR.join([contract.symbol, contract.exchange])
         contract.name = data['InstrumentName']#.decode('GBK')
 
         # 合约数值
@@ -1036,14 +1034,14 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol #'.'.join([order.symbol, order.exchange])
+        order.vtSymbol = order.symbol #VN_SEPARATOR.join([order.symbol, order.exchange])
         
         order.orderID = data['OrderRef']
         # CTP的报单号一致性维护需要基于frontID, sessionID, orderID三个字段
         # 但在本接口设计中，已经考虑了CTP的OrderRef的自增性，避免重复
         # 唯一可能出现OrderRef重复的情况是多处登录并在非常接近的时间内（几乎同时发单）
         # 考虑到VtTrader的应用场景，认为以上情况不会构成问题
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])        
         
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
@@ -1071,13 +1069,13 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         trade.symbol = data['InstrumentID']
         trade.exchange = exchangeMapReverse[data['ExchangeID']]
-        trade.vtSymbol = trade.symbol #'.'.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = trade.symbol #VN_SEPARATOR.join([trade.symbol, trade.exchange])
         
         trade.tradeID = data['TradeID']
-        trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
+        trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
         
         trade.orderID = data['OrderRef']
-        trade.vtOrderID = '.'.join([self.gatewayName, trade.orderID])
+        trade.vtOrderID = VN_SEPARATOR.join([self.gatewayName, trade.orderID])
         
         # 方向
         trade.direction = directionMapReverse.get(data['Direction'], '')
@@ -1103,7 +1101,7 @@ class CtpTdApi(TdApi):
         order.exchange = exchangeMapReverse[data['ExchangeID']]
         order.vtSymbol = order.symbol
         order.orderID = data['OrderRef']
-        order.vtOrderID = '.'.join([self.gatewayName, order.orderID])        
+        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])        
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
         order.offset = offsetMapReverse.get(data['CombOffsetFlag'], OFFSET_UNKNOWN)
         order.status = STATUS_REJECTED
@@ -1433,10 +1431,10 @@ class CtpTdApi(TdApi):
         """发单"""
         self.reqID += 1
         self.orderRef += 1
-        
+        symbol = orderReq.symbol.split(VN_SEPARATOR)
         req = {}
         
-        req['InstrumentID'] = orderReq.symbol
+        req['InstrumentID'] = symbol[0]
         req['LimitPrice'] = orderReq.price
         req['VolumeTotalOriginal'] = int(orderReq.volume)
         
@@ -1467,21 +1465,20 @@ class CtpTdApi(TdApi):
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
             req['TimeCondition'] = defineDict['THOST_FTDC_TC_IOC']
             req['VolumeCondition'] = int(defineDict['THOST_FTDC_VC_CV'])
-        
         self.reqOrderInsert(req, self.reqID)
         
         # 返回订单号（字符串），便于某些算法进行动态管理
-        vtOrderID = '.'.join([self.gatewayName, str(self.orderRef)])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(self.orderRef)])
         return vtOrderID
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
         self.reqID += 1
-
+        symbol = cancelOrderReq.symbol#.split(VN_SEPARATOR)
         req = {}
         
-        req['InstrumentID'] = cancelOrderReq.symbol
+        req['InstrumentID'] = symbol
         req['ExchangeID'] = cancelOrderReq.exchange
         req['OrderRef'] = cancelOrderReq.orderID
         req['FrontID'] = cancelOrderReq.frontID

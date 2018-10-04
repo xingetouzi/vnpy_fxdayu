@@ -136,6 +136,7 @@ class VtTradeData(VtBaseData):
         self.price_avg=EMPTY_FLOAT              # 成交均价
         self.fee=EMPTY_FLOAT                    # 成交手续费
         self.status = EMPTY_UNICODE
+        self.orderTime = EMPTY_STRING           # 成交单的委托时间
 
    
 
@@ -174,6 +175,7 @@ class VtOrderData(VtBaseData):
         self.deliverTime = EMPTY_STRING
         self.rejectedInfo = EMPTY_UNICODE
         self.fee = EMPTY_FLOAT
+        self.createDate = EMPTY_STRING
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号

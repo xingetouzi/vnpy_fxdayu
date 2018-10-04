@@ -59,6 +59,7 @@ class MainEngine(object):
     def addGateway(self, gatewayModule):
         """添加底层接口"""
         gatewayName = gatewayModule.gatewayName
+        gatewayTypeMap = {}
         
         # 创建接口实例
         if type(gatewayName) == list:
@@ -93,6 +94,30 @@ class MainEngine(object):
             }
             self.gatewayDetailList.append(d)
         
+        for i in range(len(self.gatewayDetailList)):
+            s = self.gatewayDetailList[i]['gatewayName'].split('_connect.json')[0]
+            gatewayTypeMap[s]=self.gatewayDetailList[i]['gatewayType']
+            
+        path = os.getcwd()
+        # 遍历当前目录下的所有文件
+        for root, subdirs, files in os.walk(path):
+            for name in files:
+                # 只有文件名中包含_connect.json的文件，才是密钥配置文件
+                if '_connect.json' in name:
+                    gw = name.replace('_connect.json', '')                    
+                    if not gw in gatewayTypeMap.keys():
+                        for existnames in list(gatewayTypeMap.keys()):
+                            if existnames in gw and existnames!=gw:
+                                d= {
+                                    'gatewayName' : gw,
+                                    'gatewayDisplayName' :  gw,
+                                    'gatewayType': gatewayTypeMap[existnames]
+                                }
+                                self.gatewayDetailList.append(d)
+                                self.gatewayDict[gw] = gatewayModule.gatewayClass(self.eventEngine, 
+                                                                    gw)
+
+                    
     #----------------------------------------------------------------------
     def addApp(self, appModule):
         """添加上层应用"""
@@ -190,24 +215,27 @@ class MainEngine(object):
     #------------------------------------------------
     def initPosition(self, vtSymbol):
         """策略初始化时查询特定接口的持仓"""
-        gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
+        contract = self.getContract(vtSymbol)
+        gatewayName = contract.gatewayName
+        gateway = self.getGateway(gatewayName)
         if gateway:
             gateway.initPosition(vtSymbol)
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
         """策略初始化时下载历史数据"""
-        gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
+        contract = self.getContract(vtSymbol)
+        gatewayName = contract.gatewayName
+        gateway = self.getGateway(gatewayName)
         if gateway:
             data = gateway.loadHistoryBar(vtSymbol,type_,size)
         return data
 
-    def qryOrder(self, vtSymbol,orderId,status=None):
-        gatewayName = vtSymbol.split(':')
-        gateway = self.getGateway(gatewayName[1])
+    def qryAllOrders(self, vtSymbol,orderId,status=None):
+        contract = self.getContract(vtSymbol)
+        gatewayName = contract.gatewayName
+        gateway = self.getGateway(gatewayName)
         if gateway:
-            gateway.qryOrder(vtSymbol,orderId,status)
+            gateway.qryAllOrders(vtSymbol,orderId,status)
 
     #----------------------------------------------------------------------
     def exit(self):

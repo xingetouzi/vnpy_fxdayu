@@ -38,6 +38,8 @@ class CtaTemplate(object):
     symbolList = []  # 策略的标的列表
     barsList = []
     ticksList = []
+    posDict = {}
+    eveningDict = {}
 
     # 参数列表，保存了参数的名称
     paramList = ['name',
@@ -220,12 +222,14 @@ class CtaTemplate(object):
 
     def loadHistoryBar(self,vtSymbol,type_,size= None,since = None):
         """策略开始前下载历史数据"""
-        if type_ in ["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]:
+
+        if type_ in ["1min","5min","15min","30min","60min","120min","240min","360min","480min","1day","1week","1month"]:
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
             return data
+            
         else:
             self.writeCtaLog(
-                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","4hour","1day","1week","1month"]，同时size不得大于2000')
+                u'下载历史数据参数错误，请参考以下参数["1min","5min","15min","30min","60min","120min","240min","360min","480min","1day","1week","1month"]，同时size建议不大于2000')
             return
         
     def qryOrder(self, vtSymbol, status= None):
@@ -248,9 +252,9 @@ class CtaTemplate(object):
                     self.onBar(bar)  # 将历史数据直接推送到onBar
 
             elif self.ctaEngine.mode =='tick':
-                initdata = self.loadBar()
+                initdata = self.loadTick()
                 for tick in initdata:
-                    self.onTick(tick)  # 将历史数据直接推送到onTick
+                    self.onTick(tick)  # 将历史数据直接推送到onTick  
     
     def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
         if xmin: 
@@ -563,9 +567,13 @@ class BarGenerator(object):
         self.xminBar.volume += int(bar.volume)
         
         # X分钟已经走完
-        if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
-            # 推送
-            self.onXminBar(self.xminBar)
+        if self.xmin < 61:
+            if not (bar.datetime.minute+1) % self.xmin:  # 可以用X整除
+                # 推送
+                self.onXminBar(self.xminBar)
+        elif self.xmin > 60:
+            if not (bar.datetime.hour*60) % self.xmin and bar.datetime.minute == 0: # 小时线
+                self.onXminBar(self.xminBar)
 
             # 清空老K线缓存对象
             self.xminBar = None

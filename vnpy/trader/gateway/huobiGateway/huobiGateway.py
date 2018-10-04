@@ -161,8 +161,17 @@ class HuobiGateway(VtGateway):
     
     def loadHistoryBar(self, vtSymbol, type_, size, since= None):
         """接收历史数据"""
-        KLINE_PERIOD=['1min', '5min', '15min', '30min', '60min', '1day', '1mon', '1week', '1year']
-        if type_ not in KLINE_PERIOD:
+        KLINE_PERIOD_MAP={}
+        KLINE_PERIOD_MAP['1min'] = '1m'
+        KLINE_PERIOD_MAP['5min'] = '5m'
+        KLINE_PERIOD_MAP['15min'] = '15m'
+        KLINE_PERIOD_MAP['30min'] = '30m'
+        KLINE_PERIOD_MAP['60min'] = '1h'
+        KLINE_PERIOD_MAP['1day'] = '1d'
+        KLINE_PERIOD_MAP['1week'] = '1w'
+        KLINE_PERIOD_MAP['1month'] = '1M'
+
+        if type_ not in KLINE_PERIOD_MAP.keys():
             self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
             self.writeLog("HUOBI Type_ hint：1min,5min,15min,30min,60min,1day,1week,1year")
             return '-1'
@@ -171,8 +180,10 @@ class HuobiGateway(VtGateway):
         data = self.tradeApi.loadHistoryBar(symbol,period,size)
         return data
     def initPosition(self,vtSymbol):
-        pass
 
+        pass
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
+        pass
 
 ########################################################################
 class HuobiDataApi(DataApi):
@@ -228,7 +239,7 @@ class HuobiDataApi(DataApi):
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
         tick.exchange = EXCHANGE_HUOBI
-        tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = '.'.join([tick.symbol, self.gatewayName])
         self.tickDict[symbol] = tick
 
         self.subscribeMarketDepth(symbol)
@@ -554,7 +565,7 @@ class HuobiTradeApi(TradeApi):
 
             contract.symbol = d['base-currency'] + d['quote-currency']
             contract.exchange = EXCHANGE_HUOBI
-            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+            contract.vtSymbol = '.'.join([contract.symbol, self.gatewayName])
 
             contract.name = '/'.join([d['base-currency'].upper(), d['quote-currency'].upper()])
             contract.priceTick = 1 / pow(10, d['price-precision'])
@@ -601,7 +612,7 @@ class HuobiTradeApi(TradeApi):
                 pos.symbol = d['currency']
                 pos.exchange = EXCHANGE_HUOBI
                 pos.offset = OFFSET_NONE
-                pos.vtSymbol = '.'.join([pos.symbol, pos.exchange])
+                pos.vtSymbol = '.'.join([pos.symbol, self.gatewayName])
                 pos.direction = DIRECTION_LONG
                 pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
 
@@ -668,7 +679,7 @@ class HuobiTradeApi(TradeApi):
                 order.symbol = d['symbol']
                 order.exchange = EXCHANGE_HUOBI
                 order.offset = OFFSET_NONE
-                order.vtSymbol = '.'.join([order.symbol, order.exchange])
+                order.vtSymbol = '.'.join([order.symbol, self.gatewayName])
 
                 order.price = float(d['price'])
                 order.totalVolume = float(d['amount'])
@@ -735,7 +746,7 @@ class HuobiTradeApi(TradeApi):
 
             trade.symbol = d['symbol']
             trade.exchange = EXCHANGE_HUOBI
-            trade.vtSymbol = '.'.join([trade.symbol, trade.exchange])
+            trade.vtSymbol = '.'.join([trade.symbol, self.gatewayName])
 
             if 'buy' in d['type']:
                 trade.direction = DIRECTION_LONG
