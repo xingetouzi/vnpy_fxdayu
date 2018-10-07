@@ -276,7 +276,7 @@ class CtpGateway(VtGateway):
             i=0
 
             for trade_date in tradeDays:
-                minutebar,msg=self.ds.bar(symbol='j.DCE',start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
+                minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
                 trade_datetime = []
                 for j in range(0,len(minutebar)):
                     date,time = minutebar['date'][j],minutebar['time'][j]        
