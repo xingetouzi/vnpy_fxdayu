@@ -5,3 +5,4 @@ SortedContainers
 snappy
 flask-restful
 flask-socketio
+jaqs
