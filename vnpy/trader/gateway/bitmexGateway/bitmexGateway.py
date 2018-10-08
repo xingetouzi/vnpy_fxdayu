@@ -195,7 +195,7 @@ class RestApi(BitmexRestApi):
         """"""
         self.orderId += 1
         orderId = self.date + self.orderId
-        vtOrderID = ':'.join([self.gatewayName, str(orderId)])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(orderId)])
         
         req = {
             'symbol': orderReq.symbol,
@@ -281,7 +281,7 @@ class WebsocketApi(BitmexWebsocketApi):
             tick.gatewayName = self.gatewayName
             tick.symbol = symbol
             tick.exchange = EXCHANGE_BITMEX
-            tick.vtSymbol = ':'.join([tick.symbol, tick.exchange])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
             self.tickDict[symbol] = tick
             
         self.start()
@@ -418,17 +418,17 @@ class WebsocketApi(BitmexWebsocketApi):
         
         trade.symbol = d['symbol']
         trade.exchange = EXCHANGE_BITMEX
-        trade.vtSymbol = ':'.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.exchange])
         if d['clOrdID']:
             orderID = d['clOrdID']
         else:
             orderID = d['orderID']
         trade.orderID = orderID
-        trade.vtOrderID = ':'.join([trade.gatewayName, trade.orderID])
+        trade.vtOrderID = VN_SEPARATOR.join([trade.gatewayName, trade.orderID])
         
         
         trade.tradeID = tradeID
-        trade.vtTradeID = ':'.join([trade.gatewayName, trade.tradeID])
+        trade.vtTradeID = VN_SEPARATOR.join([trade.gatewayName, trade.tradeID])
         
         trade.direction = directionMapReverse[d['side']]
         trade.price = d['lastPx']
@@ -452,14 +452,14 @@ class WebsocketApi(BitmexWebsocketApi):
             
             order.symbol = d['symbol']
             order.exchange = EXCHANGE_BITMEX
-            order.vtSymbol = ':'.join([order.symbol, order.exchange])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
             
             if d['clOrdID']:
                 orderID = d['clOrdID']
             else:
                 orderID = sysID
             order.orderID = orderID
-            order.vtOrderID = ':'.join([self.gatewayName, order.orderID])
+            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
             
             order.direction = directionMapReverse[d['side']]
             
@@ -484,10 +484,10 @@ class WebsocketApi(BitmexWebsocketApi):
         
         pos.symbol = d['symbol']
         pos.exchange = EXCHANGE_BITMEX
-        pos.vtSymbol = ':'.join([pos.symbol, pos.exchange])
+        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.exchange])
         
         pos.direction = DIRECTION_NET
-        pos.vtPositionName = ':'.join([pos.vtSymbol, pos.direction])
+        pos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, pos.direction])
         pos.position = d['currentQty']
         pos.frozen = 0      # 期货没有冻结概念，会直接反向开仓
         
@@ -505,7 +505,7 @@ class WebsocketApi(BitmexWebsocketApi):
             account.gatewayName = self.gatewayName
         
             account.accountID = accoundID
-            account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
+            account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
             
             self.accountDict[accoundID] = account
         
@@ -527,7 +527,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         contract.symbol = d['symbol']
         contract.exchange = EXCHANGE_BITMEX
-        contract.vtSymbol = ':'.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
         contract.name = contract.vtSymbol
         contract.productClass = PRODUCT_FUTURES
         contract.priceTick = d['tickSize']
