@@ -893,6 +893,8 @@ class FuturesApi(OkexFuturesApi):
         self.exchangeOrderDict = {}     # 存储交易所返回的id和本地id映射
         self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
         self.orphanDict ={}             # 存储丢单信息
+        self.filledList =[]
+        self.contact_flag = 0
 
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
@@ -1177,6 +1179,7 @@ class FuturesApi(OkexFuturesApi):
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
             if tick.localTime.minute != self.minute_temp:
+                self.contact_flag =1
                 self.contactOrders()
                 self.minute_temp = tick.localTime.minute
 
@@ -1268,7 +1271,7 @@ class FuturesApi(OkexFuturesApi):
         if orderId not in self.exchangeOrderDict.keys():
             self.exchangeOrderDict[orderId] = 'fromws'
         self.writeLog('check wsorderdict when receive id %s ::: %s'%(
-            orderId,self.wsOrderDict.items())) 
+            orderId,self.wsOrderDict.keys())) 
 
         contract_id_ = rawData['contract_id']
         name = rawData['contract_name'][:3]
@@ -1648,7 +1651,6 @@ class FuturesApi(OkexFuturesApi):
                     trade.status = order.status
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
-
                 if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
                     del self.sendOrderDict[str(order.exchangeOrderID)]
                     del self.wsOrderDict[str(order.exchangeOrderID)]
@@ -1971,10 +1973,13 @@ class FuturesApi(OkexFuturesApi):
         if 'result' in data.keys():
             if data['result']:
                 orderinfo = data['orders']
-                self.writeLog(u'***batchQryOrder**found %s orders,**%s**'%(len(orderinfo),data))
+                # self.writeLog(u'***batchQryOrder**found %s orders,**%s**'%(len(orderinfo),data))
                 for i in range(len(orderinfo)):
                     orderdetail = orderinfo[i]
                     order_id = str(orderdetail['order_id'])
+                    if order_id in self.filledList:
+                        self.filledList.remove(order_id)
+                        continue
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
@@ -2007,3 +2012,4 @@ class FuturesApi(OkexFuturesApi):
                     
             else:
                 self.writeLog('batchQryOrder: it returned false')
+            

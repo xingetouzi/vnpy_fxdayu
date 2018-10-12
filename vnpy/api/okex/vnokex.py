@@ -716,12 +716,12 @@ class OkexFuturesApi(OkexApi):
 
     def futureKline(self, symbol, type, contract_type, size=None, since=None):
         params = self._chg_dic_to_str(locals())
-        print(params)
+        # print(params)
         url = self._get_url_func("future_kline", params=params)
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, timeout=10)
         # print(r)
         text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
+        df = pd.DataFrame(text[:-1], columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
         df["datetime"] = df["datetime"].map(
             lambda x: datetime.datetime.fromtimestamp(x / 1000))
         # delta = datetime.timedelta(hours=8)
