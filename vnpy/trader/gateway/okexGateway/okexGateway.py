@@ -894,7 +894,7 @@ class FuturesApi(OkexFuturesApi):
         self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
         self.orphanDict ={}             # 存储丢单信息
         self.filledList =[]
-        self.contact_flag = 0
+        self.tradetick = 0
 
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
@@ -1006,6 +1006,7 @@ class FuturesApi(OkexFuturesApi):
         'low': '677.024', 'buy': '714.448', 'hold_amount': '599090', 'sell': '715.374', 
         'contractId': 201807060050052, 'unitAmount': '10', 'limitHigh': '735.946'}
         """
+        
         channel = data['channel']
         # print('gw on tick',datetime.now(),data['data']['last'])
         symbol = self.channelSymbolMap[channel]
@@ -1026,10 +1027,13 @@ class FuturesApi(OkexFuturesApi):
             tick = self.tickDict[symbol]
         
         d = data['data']
-        tick.highPrice = float(d['high'])
-        tick.lowPrice = float(d['low'])
-        tick.lastPrice = float(d['last'])
+        # tick.highPrice = float(d['high'])
+        # tick.lowPrice = float(d['low'])
+        # tick.lastPrice = float(d['last'])
         tick.volume = float(d['vol'].replace(',', ''))
+        tick.upperLimit = float(d['limitHigh'])
+        tick.lowerLimit = float(d['limitLow'])
+        tick.holdAmount = float(d['hold_amount'])
         tick.volumeChange = 0                                   # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
 
@@ -1132,7 +1136,7 @@ class FuturesApi(OkexFuturesApi):
         tick.date, tick.time = self.generateDateTime(d['timestamp'])
         tick.volumeChange = 0                                    # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
-        if tick.lastPrice and tick.lastVolume:
+        if tick.lastPrice and tick.holdAmount:
             newtick = copy(tick)
             self.gateway.onTick(newtick)
     
@@ -1166,20 +1170,31 @@ class FuturesApi(OkexFuturesApi):
         else:
             tick = self.tickDict[symbol]
         
+        if not self.tradetick:   # 第一次收到的 tick trade只保留最后一个
+            d = data['data'][-1]
+            tick.lastPrice = float(d[1])
+            tick.lastVolume = float(d[2])
+            # tick.time = d[3]+".000000"                             # 时间戳不准确，使用的是orderbook的时间
+            tick.type = d[4]
+            tick.volumeChange = 1                                    # 是否更新最新成交量的标记
+            tick.localTime = datetime.now()
+            self.tradetick = 1
+            if tick.bidPrice1 and tick.holdAmount:
+                newtick = copy(tick)
+                self.gateway.onTick(newtick)
+            return
         for i in range(len(data['data'])):
             d = data['data'][i]
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
-            tick.time = d[3]+".000000"
+            # tick.time = d[3]+".000000"
             tick.type = d[4]
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
-            
-            if tick.bidPrice1:
+            if tick.bidPrice1 and tick.holdAmount:
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
             if tick.localTime.minute != self.minute_temp:
-                self.contact_flag =1
                 self.contactOrders()
                 self.minute_temp = tick.localTime.minute
 
