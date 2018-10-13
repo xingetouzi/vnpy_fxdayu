@@ -76,9 +76,6 @@ class VtTickData(VtBaseData):
         self.askVolume3 = EMPTY_FLOAT
         self.askVolume4 = EMPTY_FLOAT
         self.askVolume5 = EMPTY_FLOAT       
-
-
-    
     
 ########################################################################
 class VtBarData(VtBaseData):
@@ -168,14 +165,14 @@ class VtOrderData(VtBaseData):
         self.thisTradedVolume = EMPTY_FLOAT     # 本次成交数量
         self.status = EMPTY_UNICODE             # 报单状态
         self.priceType = EMPTY_STRING
-        self.orderTime = EMPTY_STRING           # 发单时间
+        self.orderTime = None           # 发单时间
         self.cancelTime = EMPTY_STRING          # 撤单时间
         self.exchangeOrderID = EMPTY_STRING     # 
         self.byStrategy = EMPTY_STRING
-        self.deliverTime = EMPTY_STRING
+        self.deliverTime = None
         self.rejectedInfo = EMPTY_UNICODE
         self.fee = EMPTY_FLOAT
-        self.createDate = EMPTY_STRING
+        self.createDate = None
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号
