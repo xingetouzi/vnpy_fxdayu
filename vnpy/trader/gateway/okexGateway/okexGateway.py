@@ -1667,7 +1667,7 @@ class FuturesApi(OkexFuturesApi):
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
                 if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
-                    self.filledList[0:99] = self.filledList[1:99]
+                    self.filledList[0:99] = self.filledList[1:100]
                     self.filledList[-1] = str(order.exchangeOrderID)
                     del self.sendOrderDict[str(order.exchangeOrderID)]
                     del self.wsOrderDict[str(order.exchangeOrderID)]
@@ -2001,6 +2001,7 @@ class FuturesApi(OkexFuturesApi):
                             del self.wsOrderDict[str(order.exchangeOrderID)]
                         if order_id in self.exchangeOrderDict.keys():
                             del self.exchangeOrderDict[str(order.exchangeOrderID)]
+                        self.writeLog('gw_batchQryOrder_again_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                         continue
 
                     if order_id in self.exchangeOrderDict.keys():
