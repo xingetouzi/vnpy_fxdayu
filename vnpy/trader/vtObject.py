@@ -76,9 +76,6 @@ class VtTickData(VtBaseData):
         self.askVolume3 = EMPTY_FLOAT
         self.askVolume4 = EMPTY_FLOAT
         self.askVolume5 = EMPTY_FLOAT       
-
-
-    
     
 ########################################################################
 class VtBarData(VtBaseData):

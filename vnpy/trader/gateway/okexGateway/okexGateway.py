@@ -893,7 +893,7 @@ class FuturesApi(OkexFuturesApi):
         self.exchangeOrderDict = {}     # 存储交易所返回的id和本地id映射
         self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
         self.orphanDict ={}             # 存储丢单信息
-        self.filledList =[]
+        self.filledList =['']*100       # 缓存交易所id，长度100个
         self.tradetick = 0
 
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
@@ -1033,7 +1033,7 @@ class FuturesApi(OkexFuturesApi):
         tick.volume = float(d['vol'].replace(',', ''))
         tick.upperLimit = float(d['limitHigh'])
         tick.lowerLimit = float(d['limitLow'])
-        tick.holdAmount = float(d['hold_amount'])
+        tick.openInterest = float(d['hold_amount'])
         tick.volumeChange = 0                                   # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
 
@@ -1136,7 +1136,7 @@ class FuturesApi(OkexFuturesApi):
         tick.date, tick.time = self.generateDateTime(d['timestamp'])
         tick.volumeChange = 0                                    # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
-        if tick.lastPrice and tick.holdAmount:
+        if tick.lastPrice and tick.openInterest:
             newtick = copy(tick)
             self.gateway.onTick(newtick)
     
@@ -1179,7 +1179,7 @@ class FuturesApi(OkexFuturesApi):
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
             self.tradetick = 1
-            if tick.bidPrice1 and tick.holdAmount:
+            if tick.bidPrice1 and tick.openInterest:
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
             return
@@ -1191,7 +1191,7 @@ class FuturesApi(OkexFuturesApi):
             tick.type = d[4]
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
-            if tick.bidPrice1 and tick.holdAmount:
+            if tick.bidPrice1 and tick.openInterest:
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
             if tick.localTime.minute != self.minute_temp:
@@ -1667,6 +1667,8 @@ class FuturesApi(OkexFuturesApi):
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
                 if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
+                    self.filledList[0:99] = self.filledList[1:99]
+                    self.filledList[-1] = str(order.exchangeOrderID)
                     del self.sendOrderDict[str(order.exchangeOrderID)]
                     del self.wsOrderDict[str(order.exchangeOrderID)]
                     del self.exchangeOrderDict[str(order.exchangeOrderID)]
@@ -1993,7 +1995,12 @@ class FuturesApi(OkexFuturesApi):
                     orderdetail = orderinfo[i]
                     order_id = str(orderdetail['order_id'])
                     if order_id in self.filledList:
-                        self.filledList.remove(order_id)
+                        if order_id in self.sendOrderDict.keys():
+                            del self.sendOrderDict[str(order.exchangeOrderID)]
+                        if order_id in self.wsOrderDict.keys():
+                            del self.wsOrderDict[str(order.exchangeOrderID)]
+                        if order_id in self.exchangeOrderDict.keys():
+                            del self.exchangeOrderDict[str(order.exchangeOrderID)]
                         continue
 
                     if order_id in self.exchangeOrderDict.keys():
