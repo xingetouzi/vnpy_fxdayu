@@ -34,51 +34,70 @@ class VtTickData(VtBaseData):
         
         # 成交数据
         self.lastPrice = EMPTY_FLOAT            # 最新成交价
-        self.lastVolume = EMPTY_FLOAT             # 最新成交量
+        self.lastVolume = EMPTY_FLOAT           # 最新成交量
         self.volume = EMPTY_FLOAT               # 今天总成交量
         self.openInterest = EMPTY_INT           # 持仓量
         self.time = EMPTY_STRING                # 时间 11:20:56.5
         self.date = EMPTY_STRING                # 日期 20151009
         self.datetime = None                    # python的datetime时间对象
         self.type = EMPTY_STRING                # 主动买或主动卖
-        self.volumeChange = EMPTY_INT
-        self.localTime = EMPTY_STRING
+        self.volumeChange = EMPTY_INT           # 标记tick的更新源
+        self.localTime = None                   # 本地时间，datetime 格式
+
         # 常规行情
         self.openPrice = EMPTY_FLOAT            # 今日开盘价
         self.highPrice = EMPTY_FLOAT            # 今日最高价
         self.lowPrice = EMPTY_FLOAT             # 今日最低价
-        self.preClosePrice = EMPTY_FLOAT
+        self.preClosePrice = EMPTY_FLOAT        # 前一日的收盘价
         
         self.upperLimit = EMPTY_FLOAT           # 涨停价
         self.lowerLimit = EMPTY_FLOAT           # 跌停价
         
-        # 五档行情
+        # 十档行情
         self.bidPrice1 = EMPTY_FLOAT
         self.bidPrice2 = EMPTY_FLOAT
         self.bidPrice3 = EMPTY_FLOAT
         self.bidPrice4 = EMPTY_FLOAT
         self.bidPrice5 = EMPTY_FLOAT
+        self.bidPrice6 = EMPTY_FLOAT
+        self.bidPrice7 = EMPTY_FLOAT
+        self.bidPrice8 = EMPTY_FLOAT
+        self.bidPrice9 = EMPTY_FLOAT
+        self.bidPrice10 = EMPTY_FLOAT
         
         self.askPrice1 = EMPTY_FLOAT
         self.askPrice2 = EMPTY_FLOAT
         self.askPrice3 = EMPTY_FLOAT
         self.askPrice4 = EMPTY_FLOAT
-        self.askPrice5 = EMPTY_FLOAT        
+        self.askPrice5 = EMPTY_FLOAT      
+        self.askPrice6 = EMPTY_FLOAT
+        self.askPrice7 = EMPTY_FLOAT
+        self.askPrice8 = EMPTY_FLOAT
+        self.askPrice9 = EMPTY_FLOAT
+        self.askPrice10 = EMPTY_FLOAT   
         
         self.bidVolume1 = EMPTY_FLOAT
         self.bidVolume2 = EMPTY_FLOAT
         self.bidVolume3 = EMPTY_FLOAT
         self.bidVolume4 = EMPTY_FLOAT
         self.bidVolume5 = EMPTY_FLOAT
+        self.bidVolume6 = EMPTY_FLOAT
+        self.bidVolume7 = EMPTY_FLOAT
+        self.bidVolume8 = EMPTY_FLOAT
+        self.bidVolume9 = EMPTY_FLOAT
+        self.bidVolume10 = EMPTY_FLOAT
         
         self.askVolume1 = EMPTY_FLOAT
         self.askVolume2 = EMPTY_FLOAT
         self.askVolume3 = EMPTY_FLOAT
         self.askVolume4 = EMPTY_FLOAT
         self.askVolume5 = EMPTY_FLOAT       
+        self.askVolume6 = EMPTY_FLOAT
+        self.askVolume7 = EMPTY_FLOAT
+        self.askVolume8 = EMPTY_FLOAT
+        self.askVolume9 = EMPTY_FLOAT
+        self.askVolume10 = EMPTY_FLOAT  
 
-
-    
     
 ########################################################################
 class VtBarData(VtBaseData):
@@ -125,20 +144,19 @@ class VtTradeData(VtBaseData):
         
         self.orderID = EMPTY_STRING             # 订单编号
         self.vtOrderID = EMPTY_STRING           # 订单在vt系统中的唯一编号，通常是 Gateway名:订单编号
-        self.exchangeOrderID = EMPTY_STRING
+        self.exchangeOrderID = EMPTY_STRING     # 交易所ID
 
         # 成交相关
         self.direction = EMPTY_UNICODE          # 成交方向
         self.offset = EMPTY_UNICODE             # 成交开平仓
-        self.price = EMPTY_FLOAT                # 成交价格
+        self.price = EMPTY_FLOAT                # 成交价格(在 okex 是挂单价格)
         self.volume = EMPTY_FLOAT               # 成交数量
-        self.tradeTime = EMPTY_STRING           # 成交时间
-        self.price_avg=EMPTY_FLOAT              # 成交均价
-        self.fee=EMPTY_FLOAT                    # 成交手续费
+        self.tradeTime = None                   # 成交时间
+        self.price_avg = EMPTY_FLOAT            # 成交均价
+        self.fee = EMPTY_FLOAT                  # 成交手续费
         self.status = EMPTY_UNICODE
         self.orderTime = EMPTY_STRING           # 成交单的委托时间
 
-   
 
 ########################################################################
 class VtOrderData(VtBaseData):
@@ -162,20 +180,19 @@ class VtOrderData(VtBaseData):
         self.offset = EMPTY_UNICODE             # 报单开平仓
         self.price = EMPTY_FLOAT                # 报单价格
         self.price_avg = EMPTY_FLOAT            # 报单均价
-        self.contractType = EMPTY_STRING        # OKEX的期货
         self.totalVolume = EMPTY_FLOAT          # 报单总数量
         self.tradedVolume = EMPTY_FLOAT         # 报单成交数量
         self.thisTradedVolume = EMPTY_FLOAT     # 本次成交数量
         self.status = EMPTY_UNICODE             # 报单状态
-        self.priceType = EMPTY_STRING
-        self.orderTime = None           # 发单时间
+        self.priceType = EMPTY_UNICODE           
+        self.orderTime = None                   # 本地发单时间
         self.cancelTime = EMPTY_STRING          # 撤单时间
-        self.exchangeOrderID = EMPTY_STRING     # 
-        self.byStrategy = EMPTY_STRING
-        self.deliverTime = None
-        self.rejectedInfo = EMPTY_UNICODE
-        self.fee = EMPTY_FLOAT
-        self.createDate = None
+        self.exchangeOrderID = EMPTY_STRING     # 交易所返回的id
+        self.byStrategy = EMPTY_STRING          # 发出该订单的策略
+        self.deliverTime = None                 # 更新时间
+        self.rejectedInfo = EMPTY_UNICODE       # 拒单理由
+        self.fee = EMPTY_FLOAT                  # 挂单手续费
+        self.createDate = None                  # 订单记录的发单时间
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号
@@ -196,20 +213,15 @@ class VtPositionData(VtBaseData):
 
         self.exchange = EMPTY_STRING            # 交易所代码
         self.vtSymbol = EMPTY_STRING            # 合约在vt系统中的唯一代码，合约代码:交易所代码  
-        self.contractType = EMPTY_STRING
         # 持仓相关
         self.direction = EMPTY_STRING           # 持仓方向
         self.position = EMPTY_FLOAT             # 持仓量
         self.frozen = EMPTY_FLOAT               # 冻结数量
         self.available = EMPTY_FLOAT            # 可用持仓 （现货）
         self.price = EMPTY_FLOAT                # 持仓均价
-        self.priceType = EMPTY_STRING
         self.vtPositionName = EMPTY_STRING      # 持仓在vt系统中的唯一代码，通常是vtSymbol:方向
         self.ydPosition = EMPTY_FLOAT           # 昨持仓
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
-        self.amount = EMPTY_FLOAT
-        self.byStrategy = EMPTY_STRING
-
 
 ########################################################################
 class VtAccountData(VtBaseData):
@@ -237,7 +249,6 @@ class VtAccountData(VtBaseData):
         self.risk_rate = EMPTY_FLOAT 
 
         
-
 ########################################################################
 class VtErrorData(VtBaseData):
     """错误数据类"""
@@ -281,7 +292,6 @@ class VtContractData(VtBaseData):
         self.exchange = EMPTY_STRING            # 交易所代码
         self.vtSymbol = EMPTY_STRING            # 合约在vt系统中的唯一代码，通常是 合约代码:交易所代码
         self.name = EMPTY_UNICODE               # 合约中文名
-        self.contractType = EMPTY_STRING
         
         self.productClass = EMPTY_UNICODE       # 合约类型
         self.size = EMPTY_INT                   # 合约大小
@@ -303,7 +313,6 @@ class VtSubscribeReq(object):
         """Constructor"""
         self.symbol = EMPTY_STRING              # 代码
         self.exchange = EMPTY_STRING            # 交易所
-        self.contractType=EMPTY_STRING
 
         # 以下为IB相关
         self.productClass = EMPTY_UNICODE       # 合约类型
@@ -324,14 +333,13 @@ class VtOrderReq(object):
         self.exchange = EMPTY_STRING            # 交易所
         self.vtSymbol = EMPTY_STRING            # VT合约代码
         self.price = EMPTY_FLOAT                # 价格
-        self.contractType = EMPTY_STRING
         self.volume = EMPTY_FLOAT               # 数量
 
         self.priceType = EMPTY_STRING           # 价格类型
         self.direction = EMPTY_STRING           # 买卖
         self.offset = EMPTY_STRING              # 开平
-        self.byStrategy =EMPTY_STRING
-        self.levelRate = EMPTY_INT
+        self.byStrategy =EMPTY_STRING           # 发出该请求的策略
+        self.levelRate = EMPTY_INT              # 杠杆率
         
         # 以下为IB相关
         self.productClass = EMPTY_UNICODE       # 合约类型
@@ -358,9 +366,4 @@ class VtCancelOrderReq(object):
         self.orderID = EMPTY_STRING             # 报单号
         self.frontID = EMPTY_STRING             # 前置机号
         self.sessionID = EMPTY_STRING           # 会话号
-
-  
-
-    
-    
-    
+   
