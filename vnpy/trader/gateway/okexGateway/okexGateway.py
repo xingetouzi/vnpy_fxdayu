@@ -1011,7 +1011,8 @@ class FuturesApi(OkexFuturesApi):
         contractType = self.channelcontractTypeMap[channel]
         symbol = symbol+'_'+contractType                         # 从回报获取品种名称
         
-        contract_id_ = str(rawData['contractId'])
+        d = data['data']
+        contract_id_ = str(d['contractId'])
         self.contractidDict[contract_id_] = symbol    # 映射contractid 和 symbol
         
         if symbol not in self.tickDict:
@@ -1025,7 +1026,6 @@ class FuturesApi(OkexFuturesApi):
         else:
             tick = self.tickDict[symbol]
         
-        d = data['data']
         tick.highPrice = float(d['high'])
         tick.lowPrice = float(d['low'])
         # tick.lastPrice = float(d['last'])
