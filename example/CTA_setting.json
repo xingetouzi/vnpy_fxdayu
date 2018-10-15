@@ -2,7 +2,7 @@
     {
         "name": "BB",
         "className": "BollBandsStrategy",
-        "symbolList": ["eos_this_week:OKEX_1","eos_quarter:OKEX_1"],
+        "symbolList": ["cu1811:SHFE","j1811:DCE"],
         "mailAdd":[""]
     }
 ]
