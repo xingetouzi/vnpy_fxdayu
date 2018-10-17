@@ -1,6 +1,7 @@
 # encoding: UTF-8
 
 from .ctaEngine import CtaEngine
+from .ctaBarManager import CtaEngine
 from .uiCtaWidget import CtaEngineManager
 
 appName = 'CtaStrategy'
