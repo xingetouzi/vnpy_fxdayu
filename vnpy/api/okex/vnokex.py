@@ -13,12 +13,13 @@ from urllib.error import HTTPError
 import datetime
 import ssl
 import websocket    
+import zlib
 
 # 常量定义
-# OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket'
-# OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi'
-OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket'
-OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi'
+OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket?compress=true'
+OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi?compress=true'
+# OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket?compress=true'
+# OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi?compress=true'
 
 SPOT_CURRENCY = ["usdt",
                  "btc",
@@ -48,20 +49,6 @@ SPOT_SYMBOL = ["ltc_btc",
                "hsr_usdt",
                "neo_usdt",
                "gas_usdt"]
-
-KLINE_PERIOD = ["1min",
-                "3min",
-                "5min",
-                "15min",
-                "30min",
-                "1hour",
-                "2hour",
-                "4hour",
-                "6hour",
-                "12hour",
-                "day",
-                "3day",
-                "week"]
 
 ########################################################################
 class OkexApi(object):    
@@ -157,10 +144,20 @@ class OkexApi(object):
     #----------------------------------------------------------------------
     def readData(self, evt):
         """解码推送收到的数据"""
-        data = json.loads(evt)
-        # print(data)
+        decomp = bytes.decode(self.inflate(evt))
+        #print(decomp)
+        data = json.loads(decomp)
+        #print(data)
         return data
 
+    def inflate(self, data):
+        decompress = zlib.decompressobj(
+                -zlib.MAX_WBITS  # see above
+        )
+        
+        inflated = decompress.decompress(data)
+        inflated += decompress.flush()
+        return inflated
     #----------------------------------------------------------------------
     def closeHeartbeat(self):
         """关闭接口"""
@@ -627,12 +624,12 @@ class OkexFuturesApi(OkexApi):
     
     # RESTFUL 接口
     def _post_url_func(self, url):
-        return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + ".do"
-        # return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + ".do"
+        # return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + ".do"
+        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + ".do"
     
     def _get_url_func(self, url, params=""):
-        return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + params
-        # return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
+        # return 'https://okexcomweb.bafang.com/api' + "/" + "v1" + "/" + url + params
+        return 'https://www.okex.com/api' + "/" + "v1" + "/" + url + params
     
     def _chg_dic_to_str(self, dictionary):
         keys = list(dictionary.keys())
