@@ -11,7 +11,7 @@ from weakref import proxy
 from dateutil.parser import parse
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.app.ctaStrategy.ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
-from vnpy.api.oanda.utils import Logger
+from vnpy.trader.utils import Logger
 
 from .ctaEngine import CtaEngine as OriginCtaEngine
 from .ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
@@ -28,7 +28,7 @@ def standardize_freq(freq):
     if m is None:
         raise ValueError("%s is not a valid bar frequance" % freq)
     else:
-        return m[1] + (m[2] or "m")[0].lower()
+        return m.group(1) + (m.group(2) or "m")[0].lower()
 
 _base_freq_seconds =  {
     "s": 1,
@@ -380,6 +380,8 @@ class BarManager(object):
         # FIXME: unify the frequancy representation.
         # FIXME: unify interface in backtesting and realtrading.
         if self.is_backtesting():
+            if self._engine.mode == self._engine.TICK_MODE:
+                return None
             manager = self._managers.get(symbol, None)
             if manager is None:
                 return None
