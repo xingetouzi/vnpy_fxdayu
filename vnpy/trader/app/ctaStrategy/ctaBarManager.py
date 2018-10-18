@@ -448,7 +448,7 @@ class BarManager(object):
                 k = "on1mBar"
             m = _on_bar_re.match(k)
             if m is not None:
-                freq = m[1] + m[2]
+                freq = m.group(1) + m.group(2)
                 for vtSymbol in symbols:
                     self.register(vtSymbol, freq, v)
         for k, v in strategy.__class__.__dict__.items():
@@ -456,7 +456,7 @@ class BarManager(object):
                 k = "on1mBar"
             m = _on_bar_re.match(k)
             if m is not None:
-                freq = m[1] + m[2]
+                freq = m.group(1) + m.group(2)
                 func = partial(v, strategy)
                 for vtSymbol in symbols:
                     self.register(vtSymbol, freq, func)
