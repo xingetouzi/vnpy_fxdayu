@@ -149,7 +149,7 @@ class VtTradeData(VtBaseData):
         # 成交相关
         self.direction = EMPTY_UNICODE          # 成交方向
         self.offset = EMPTY_UNICODE             # 成交开平仓
-        self.price = EMPTY_FLOAT                # 成交价格(在 okex 是挂单价格)
+        self.price = EMPTY_FLOAT                # 成交价格
         self.volume = EMPTY_FLOAT               # 成交数量
         self.tradeTime = None                   # 成交时间
         self.price_avg = EMPTY_FLOAT            # 成交均价
