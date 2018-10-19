@@ -38,12 +38,6 @@ priceTypeMap = {}
 priceTypeMap[PRICETYPE_LIMITPRICE] = 'Limit'
 priceTypeMap[PRICETYPE_MARKETPRICE] = 'Market'
 
-priceTypeMapTemp = {
-    0: PRICETYPE_LIMITPRICE,
-    1: PRICETYPE_MARKETPRICE,
-}
-        
-
 ########################################################################
 class BitmexGateway(VtGateway):
     """Bitfinex接口"""
@@ -158,6 +152,25 @@ class BitmexGateway(VtGateway):
 
     def queryPosition(self):
         pass
+        
+    def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
+        KlinePeriodMap = {}
+        KlinePeriodMap['1min'] = '1m'
+        KlinePeriodMap['5min'] = '5m'
+        KlinePeriodMap['60min'] = '1h'
+        KlinePeriodMap['1day'] = '1d'
+        if type_ not in KlinePeriodMap.keys():
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("BITMEX Type_ hint：1min,5min,60min,1day")
+            return '-1'
+
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
+        return self.restApi.rest_future_bar(symbol, KlinePeriodMap[type_], size, since)
+
+
+
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
+        pass
 
 ########################################################################
 class RestApi(BitmexRestApi):
@@ -196,11 +209,12 @@ class RestApi(BitmexRestApi):
         self.orderId += 1
         orderId = self.date + self.orderId
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(orderId)])
+        symbol = orderReq.symbol.split(VN_SEPARATOR)[0]
         
         req = {
             'symbol': orderReq.symbol,
             'side': directionMap[orderReq.direction],
-            'ordType': priceTypeMap[priceTypeMapTemp[orderReq.priceType]],            
+            'ordType': priceTypeMap[orderReq.priceType],            
             'price': orderReq.price,
             'orderQty': orderReq.volume,
             'clOrdID': str(orderId)
@@ -238,6 +252,10 @@ class RestApi(BitmexRestApi):
         e.errorID = code
         e.errorID = error
         self.gateway.onError(e)
+    
+    def rest_future_bar(self,symbol, type_, size, since = None):
+        kline = self.restKline(symbol, type_, size, since)
+        return kline
         
 
 ########################################################################
@@ -281,7 +299,7 @@ class WebsocketApi(BitmexWebsocketApi):
             tick.gatewayName = self.gatewayName
             tick.symbol = symbol
             tick.exchange = EXCHANGE_BITMEX
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             self.tickDict[symbol] = tick
             
         self.start()
@@ -399,6 +417,7 @@ class WebsocketApi(BitmexWebsocketApi):
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
+        tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         
         self.gateway.onTick(tick)
     
@@ -418,7 +437,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         trade.symbol = d['symbol']
         trade.exchange = EXCHANGE_BITMEX
-        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.gatewayName])
         if d['clOrdID']:
             orderID = d['clOrdID']
         else:
@@ -452,7 +471,7 @@ class WebsocketApi(BitmexWebsocketApi):
             
             order.symbol = d['symbol']
             order.exchange = EXCHANGE_BITMEX
-            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
             
             if d['clOrdID']:
                 orderID = d['clOrdID']
@@ -484,7 +503,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         pos.symbol = d['symbol']
         pos.exchange = EXCHANGE_BITMEX
-        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.exchange])
+        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
         
         pos.direction = DIRECTION_NET
         pos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, pos.direction])
@@ -527,7 +546,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         contract.symbol = d['symbol']
         contract.exchange = EXCHANGE_BITMEX
-        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
         contract.name = contract.vtSymbol
         contract.productClass = PRODUCT_FUTURES
         contract.priceTick = d['tickSize']
