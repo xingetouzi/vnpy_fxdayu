@@ -1201,7 +1201,7 @@ class BacktestingEngine(object):
 
         for setting in settingList:
             self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
-            l.append(pool.apply_async(optimize, (strategyClass, setting,
+            l.append(pool.apply_async(optimize, (self.__class__, strategyClass, setting,
                                                  targetName, self.mode, 
                                                  self.startDate, self.initHours, self.endDate,
                                                  self.slippage, self.rate, self.size, self.priceTick,
@@ -1663,12 +1663,12 @@ def formatNumber(n):
     return format(rn, ',')  # 加上千分符
 
 #----------------------------------------------------------------------
-def optimize(strategyClass, setting, targetName,
+def optimize(backtestEngineClass, strategyClass, setting, targetName,
              mode, startDate, initHours, endDate,
              slippage, rate, size, priceTick,
              dbName, symbol):
     """多进程优化时跑在每个进程中运行的函数"""
-    engine = BacktestingEngine()
+    engine = backtestEngineClass()
     engine.setBacktestingMode(mode)
     engine.setStartDate(startDate, initHours)
     engine.setEndDate(endDate)
