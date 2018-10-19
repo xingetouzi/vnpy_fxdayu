@@ -570,6 +570,8 @@ class BacktestingEngine(object):
                     elif sellCross and so.offset == OFFSET_NONE: 
                         self.strategy.posDict[symbol] -= so.volume
                         trade.price = min(bestCrossPrice, so.price)
+
+                    trade.price_avg = trade.price
                     
                     self.limitOrderCount += 1
                     orderID = str(self.limitOrderCount)
