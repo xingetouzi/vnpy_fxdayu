@@ -1,9 +1,10 @@
 import logging
 import json
 import traceback
+import time
 from functools import partial
 from collections import OrderedDict
-from threading import Thread
+from threading import Thread, current_thread
 from concurrent.futures import Future
 
 import asyncio
@@ -11,59 +12,24 @@ import aiohttp
 import requests
 
 from vnpy.api.oanda.const import OandaOrderState
+from vnpy.api.oanda.config import *
 from vnpy.api.oanda.models import *
 from vnpy.api.oanda.snapshot import *
-from vnpy.api.oanda.utils import raise_error_status
+from vnpy.api.oanda.ioloop import BackroundEventLoopProxy
+from vnpy.api.oanda.base import FirstAccountFilter
+from vnpy.api.oanda.workers import TransactionsStreamWorker, HeartbeatTickSubscriber
+from vnpy.api.oanda.utils import fetch, fetch_stream
+from vnpy.trader.utils import Logger
 
-async def fetch(session, url, method="GET", json=None):
-    func = getattr(session, method.lower())
-    if json:
-        func = partial(func, url, json=json)
-    else:
-        func = partial(func, url)
-    async with func() as resp:
-        ret = await resp.json()
-        return resp.status, ret
-
-async def fetch_stream(session, url):
-    async with session.get(url) as response:
-        async for data in response.content:
-            yield data
-    return
-
-class AccountFilter(object):
-    def filter_accounts(self, accounts):
-        raise NotImplementedError
-
-
-class FirstAccountFilter(object):
-    def filter_accounts(self, accounts):
-        ids = list(accounts.keys())
-        new = OrderedDict()
-        new[ids[0]] = accounts[ids[0]]
-        return new
-
-
-class OandaApi(object):
+class OandaApi(Logger):
     """Oanda交易接口"""
-    # 查询仓位信息等是直接从交易所查询还是从本地缓存中读取
-    DEFAULT_QUERY_METHOD = "DIRECT" # DIRECT or LOCAL
     DEFAULT_ACCOUNT_FILTER = FirstAccountFilter
-
     REST_HOST = "https://api-fxtrade.oanda.com"
     STREAM_HOST = "https://stream-fxtrade.oanda.com"
-    MSG_SEP = b"\n"
-    ACCOUNTS_ENDPOINT = "/v3/accounts"
-    ACCOUNT_SUMMARY_ENDPOINT = "/v3/accounts/{accountID}/summary"
-    INSTRUMENTS_ENDPOINT = "/v3/accounts/{accountID}/instruments"
-    ORDER_ENDPOINT = "/v3/accounts/{accountID}/orders"
-    POSITION_ENDPOINT = "/v3/accounts/{accountID}/positions"
-    PRICE_ENDPOINT = "/v3/accounts/{accountID}/pricing"
-    PRICE_STREAM_ENDPOINT = "/v3/accounts/{accountID}/pricing/stream"
-    TRANSACTION_STREAM_ENDPOINT = "/v3/accounts/{accountID}/transactions/stream"
 
     def __init__(self, ioloop=None, run_ioloop=True):
         self._ioloop = ioloop or asyncio.new_event_loop()
+        self._proxy = BackroundEventLoopProxy(self._ioloop)
         self._run_ioloop = run_ioloop
         self._token = None
         self._thread = None
@@ -73,9 +39,8 @@ class OandaApi(object):
         self._logged = False
         self._account_props = OrderedDict()
         self._accounts = {}
-        self._instruments = []
-        self._tick_task = None
-        self._account_tasks = {}
+        self._transactor_worker = TransactionsStreamWorker(self)
+        self._tick_worker = HeartbeatTickSubscriber(self)
 
     @property
     def headers(self):
@@ -100,29 +65,40 @@ class OandaApi(object):
             self._session = self.new_session()
         return self._session
 
-    def _do_create_task(self, future, coro, ioloop):
-        try:
-            ret = ioloop.create_task(coro)
-            future.set_result(ret)
-        except Exception as e:
-            future.set_exception(e)
+    @property
+    def ioloop(self):
+        return self._ioloop
 
-    def _create_task(self, coro, ioloop=None):
-        ioloop = ioloop or self._ioloop
-        future = Future()
-        p = partial(self._do_create_task, future, coro, ioloop=ioloop)
-        ioloop.call_soon_threadsafe(p)
-        return future.result()
+    @property
+    def accounts(self):
+        return self._accounts
 
-    def _cancel_task(self, task, ioloop=None):
-        ioloop = ioloop or self._ioloop
-        ioloop.call_soon_threadsafe(task.cancel)
+    def get_accounts(self):
+        return self._accounts
+
+    @property
+    def default_account_id(self):
+        gen = iter(self._account_props.values())
+        return next(gen).id
+
+    def get_account(self, account_id=None):
+        account_id = account_id or self.default_account_id
+        return self._accounts[account_id]
+
+    def get_rest_host(self):
+        return self.REST_HOST
+
+    def get_stream_host(self):
+        return self.STREAM_HOST
+
+    def is_running(self):
+        return self._running
 
     def run(self, ioloop):
         ioloop = ioloop or self._ioloop
         # ioloop.set_debug(True)
         asyncio.set_event_loop(ioloop)
-        ioloop.run_forever()
+        BackroundEventLoopProxy(ioloop).run_forever()
         ioloop.close()
 
     def join(self, timeout=None):
@@ -131,12 +107,8 @@ class OandaApi(object):
 
     def close(self):
         self._running = False
-        if self._tick_task:
-            self._cancel_task(self._tick_task)
-        for task in self._account_tasks.values():
-            self._cancel_task(task)
-        self._tick_task = None
-        self._account_tasks = {}
+        self._transactor_worker.close()
+        self._tick_worker.close()
         if self._ioloop.is_running and self.run_ioop_in_thread:
             self._ioloop.call_soon_threadsafe(self._ioloop.stop)
 
@@ -159,15 +131,6 @@ class OandaApi(object):
         self._thread = Thread(target=self.run, args=(self._ioloop,))
         self._thread.daemon = True
         self._thread.start()
-    
-    def _subscribe_account(self, account_id):
-        task = self._create_task(self._listen_transactions(account_id))
-        self._account_tasks[account_id] = task
-
-    def _subscribe_instruments(self, instruments=None):
-        if self._tick_task:
-            self._cancel_task(self.tick_task)
-        self._tick_task = self._create_task(self._do_subscribe_instruments(instruments))
 
     def _init_accounts(self, accounts):
         for account in accounts:
@@ -177,7 +140,7 @@ class OandaApi(object):
             self._accounts[prop.id] = OandaAccount(prop.id)
 
     def login(self):
-        url = self.REST_HOST + self.ACCOUNTS_ENDPOINT
+        url = self.REST_HOST + ACCOUNTS_ENDPOINT
         r = requests.get(url, headers=self.headers)
         try:
             if r.status_code == 200:
@@ -192,52 +155,9 @@ class OandaApi(object):
         return False
 
     def init(self):
-        for prop in self. _account_props.values():
-            self._subscribe_account(prop.id)
-        fut = self.qry_instruments(block=False)
-        def update_instruments(f):
-            rep = f.result()
-            self._instruments = rep.instruments
-    
-        t = Thread(target=update_instruments, args=(fut, ))
-        t.daemon = True
-        t.start()
-
-    @property
-    def default_account_id(self):
-        gen = iter(self._account_props.values())
-        return next(gen).id
-
-    async def _do_subscribe_instruments(self, instruments):
-        while self._running:
-            instruments = instruments or [inst.name for inst in self._instruments]
-            if instruments:
-                try:
-                    account_id = self.default_account_id
-                    url = (self.STREAM_HOST + self.PRICE_STREAM_ENDPOINT + "?instruments={instruments}").format(
-                        accountID = account_id,
-                        instruments = "%2C".join(instruments),
-                    )
-                    async for data in fetch_stream(self.session, url):
-                        self._on_tick(data.strip(self.MSG_SEP))
-                        if not self._running:
-                                break
-                except Exception as e:
-                    self.on_error(e)
-            await asyncio.sleep(5)
-    
-    async def _listen_transactions(self, account_id=None):
-        account_id = account_id or self.default_account_id
-        while self._running:
-            try:
-                url = (self.STREAM_HOST + self.TRANSACTION_STREAM_ENDPOINT).format(accountID=account_id)
-                async for data in fetch_stream(self.session, url):
-                    self._on_transaction(data.strip(self.MSG_SEP))
-                    if not self._running:
-                        break
-            except Exception as e:
-                self.on_error(e)
-            await asyncio.sleep(0)
+        self._transactor_worker.start()
+        self._tick_worker.start()
+        self.qry_instruments(account_id=self.default_account_id, block=False)
 
     def subscribe(self, instruments=None):
         """
@@ -252,7 +172,7 @@ class OandaApi(object):
 
         if isinstance(instruments, str):
             instruments = instruments.split(",")
-        self._subscribe_instruments(instruments)
+        self._tick_worker.subscribe(self.default_account_id, instruments)
     
     async def _async_request(self, method, url, data=None, callback=None):
         status, data = await fetch(self.session, url, method=method, json=data)
@@ -290,18 +210,14 @@ class OandaApi(object):
         except Exception as e:
             if push:
                 self.on_error(err)
-            print(traceback.format_exc())
+            self.log(traceback.format_exc(), level=logging.ERROR)
             raise err
-    
-    def get_account(self, account_id=None):
-        account_id = account_id or self.default_account_id
-        return self._accounts[account_id]
 
     def send_order(self, req, account_id=None):
         assert isinstance(req, OandaOrderRequest), "type '%s' is not valid oanda order request" % type(req)
         account = self.get_account(account_id)
         data = {"order": req.to_dict(drop_none=True)}
-        url = (self.REST_HOST + self.ORDER_ENDPOINT).format(accountID=account.id)
+        url = (self.get_rest_host() + ORDER_ENDPOINT).format(accountID=account.id)
         rep_map = {
             201: OandaOrderCreatedResponse,
             400: OandaOrderRejectedResponse,
@@ -312,96 +228,85 @@ class OandaApi(object):
     def cancel_order(self, req, account_id=None):
         assert isinstance(req, OandaOrderSpecifier), "type '%s' is not valid oanda order request" % type(req)
         account = self.get_account(account_id)
-        url = "/".join([self.REST_HOST + self.ORDER_ENDPOINT, req.to_url(), "cancel"]).format(accountID=account.id)
+        url = "/".join([self.get_rest_host() + ORDER_ENDPOINT, req.to_url(), "cancel"]).format(accountID=account.id)
         rep_map = {
             200: OandaOrderCancelledResponse,
             404: OandaOrderCancelRejectedResponse,
         }
         return self._request_and_handle(url, rep_map, method="PUT", block=False)
 
-    def qry_instruments(self, instruments=None, account_id=None, block=True):
+    def qry_instruments(self, instruments=None, account_id=None, block=True, push=None):
         account_id = account_id or self.default_account_id
         req = OandaInstrumentsQueryRequest()
         req.instruments = instruments
-        url = (self.REST_HOST + self.INSTRUMENTS_ENDPOINT).format(accountID=account_id) + "/" + req.to_url()
+        url = (self.get_rest_host() + INSTRUMENTS_ENDPOINT).format(accountID=account_id) + "/" + req.to_url()
         rep_map = {
             200: OandaInstrumentsQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block)
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
-    def qry_orders(self, req=None, account_id=None, block=True):
+    def qry_orders(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
         req = req or OandaOrderQueryRequest()
-        url = (self.REST_HOST + self.ORDER_ENDPOINT).format(accountID=account.id)
+        url = (self.get_rest_host() + ORDER_ENDPOINT).format(accountID=account.id)
         url = url + req.to_url()
         rep_map = {
             200: OandaOrderQueryResponse,
         }
-        return self._request_and_handle(url, rep_map, block=block)
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
-    def qry_positions(self, req=None, account_id=None, block=True):
+    def qry_positions(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
         req = req or OandaPositionQueryRequest()
-        url = (self.REST_HOST + self.POSITION_ENDPOINT).format(accountID=account.id)
+        url = (self.get_rest_host() + POSITION_ENDPOINT).format(accountID=account.id)
         url = url + req.to_url()
         rep_map = {
             200: OandaPositionsQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block)
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
-    def qry_account(self, req=None, account_id=None, block=True):
+    def qry_account(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
         req = req or OandaAccountQueryRequest()
-        url = (self.REST_HOST + self.ACCOUNT_SUMMARY_ENDPOINT).format(accountID=account.id)
+        url = (self.get_rest_host() + ACCOUNT_SUMMARY_ENDPOINT).format(accountID=account.id)
         url = url + req.to_url()
         rep_map = {
             200: OandaAccountSummaryQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block)
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
-    def _on_transaction(self, raw):
-        data = json.loads(raw)
-        trans = OandaTransactionFactory().new(data)
-        if trans is not None:
-            if trans.type == OandaTransactionType.HEARTBEAT.value:
-                self._on_transaction_heartbeat(trans)
-            else:
-                self.on_transaction(trans)
+    def qry_transaction_sinceid(self, id=None, account_id=None, block=True, push=None):
+        account = self.get_account(account_id)
+        id = str(id or self._account_trans_lastid)
+        url = (self.get_rest_host() + TRANSACTION_SINCEID_ENDPOINT).format(accountID=account_id) + "?id=%s" % id
+        rep_map = {
+            200: OandaTransactionsQueryResponse
+        }
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
-    def _on_tick(self, raw):
-        data = json.loads(raw)
-        if data["type"] == "HEARTBEAT": 
-            self._on_tick_heartbeat(data)
-        else:
-            self.on_tick(OandaTick.from_dict(data))
-
-    def _on_tick_heartbeat(self, data):
-        pass
-
-    def _on_transaction_heartbeat(self, trans):
-        pass
+    def query_raw_url(self, url, rep_map=None, data=None, method="GET", block=True, push=None):
+        return self._request_and_handle(url, rep_map, method=method, data=data, block=block, push=push)
 
     def on_transaction(self, trans):
-        print(trans)
+        self.debug(trans)
 
     def on_tick(self, tick):
-        print(tick)
+        self.debug(tick)
 
     def on_response(self, response):
-        print(response)
+        self.debug(response)
 
     def on_error(self, e):
-        print(e)
-        logging.exception(e)
+        self.error(e)
 
     def on_login_success(self):
-        print("oanda api login success")
+        self.info("oanda api login success")
 
     def on_login_failed(self):
-        print("oanda api login failed")
+        self.info("oanda api login failed")
 
     def on_close(self):
-        print("oanda api closed")
+        self.info("oanda api closed")
 
 
 class OandaPracticeApi(OandaApi):
@@ -416,7 +321,7 @@ if __name__ == "__main__":
     api.connect(token)
     # api.send_order("EUR/USD", 100, 0.1, order_type="LIMIT")
     api.subscribe()
-    print(api.qry_order())
+    print(api.qry_orders())
     print(api.qry_positions())
     print(api.qry_account())
     print(api.qry_instruments())

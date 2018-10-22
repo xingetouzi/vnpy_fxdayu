@@ -1021,3 +1021,6 @@ class CtaEngine(object):
                         traceback.print_exc()
 
         return STRATEGY_GET_CLASS
+
+    def getGateway(self, gatewayName):
+        return self.mainEngine.gatewayDict.get(gatewayName, None)

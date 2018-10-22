@@ -234,7 +234,7 @@ class OkexGateway(VtGateway):
             data = self.spotApi.rest_spot_orders(symbol,order_id,status)
         return data
 
-    def batchCancelOrder(cancelOrderReqList):
+    def batchCancelOrder(self, cancelOrderReqList):
         self.futuresApi.batchCancelOrder(cancelOrderReqList)
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):

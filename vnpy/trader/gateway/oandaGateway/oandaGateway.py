@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 from vnpy.trader.vtGateway import VtGateway, EVENT_TIMER
@@ -198,6 +199,9 @@ class VnOandaApi(OandaApi):
         log.logContent = content
         self.gateway.onLog(log)
 
+    def log(self, msg, level=logging.INFO):
+        self.writeLog("%s" % msg)
+
     def on_login_success(self):
         self.writeLog("oanda api 登录成功")
 
@@ -212,11 +216,10 @@ class VnOandaApi(OandaApi):
             req = OandaMarketOrderRequest.from_vnpy(orderReq)
         elif orderReq.priceType == PRICETYPE_LIMITPRICE:
             req = OandaLimitOrderRequest.from_vnpy(orderReq)
-        print(orderReq.__dict__)
-        print(req.__dict__)
         self.orderID += 1
         req.set_client_order_id("-".join([self.client_dt, str(self.orderID)]))
-        return self.send_order(req)
+        self.send_order(req)
+        return VNSEPERATOR.join([str(self.orderID), self.gateway.gatewayName])
 
     def cancelOrder(self, cancelOrderReq):
         req = OandaOrderSpecifier.from_vnpy(cancelOrderReq)
