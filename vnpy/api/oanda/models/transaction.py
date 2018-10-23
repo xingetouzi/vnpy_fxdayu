@@ -89,10 +89,10 @@ class OandaOrderTransaction(OandaTransaction):
         order.symbol = self.instrument
         order.totalVolume = abs(self.units)
         order.orderTime = self.time
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.exchangeOrderID = self.id
         order.gatewayName = gateway.gatewayName
-        order.vtOrderID = VN_SEPARATOR.join([order.gatewayName, order.orderID])
+        order.vtOrderID = VN_SEPARATOR.join([order.orderID, order.gatewayName])
         order.direction = DIRECTION_LONG if self.units >= 0 else DIRECTION_SHORT
         order.offset = OandaOrderPositionFill(self.positionFill).to_vnpy()
         if self.PRICE_TYPE:
@@ -311,7 +311,7 @@ class OandaOrderFillTransaction(OandaTransaction):
         base.symbol = self.instrument
         base.exchange = EXCHANGE_OANDA
         base.gatewayName = gateway.gatewayName
-        base.vtSymbol = VN_SEPARATOR.join([base.symbol, base.exchange])
+        base.vtSymbol = VN_SEPARATOR.join([base.symbol, base.gatewayName])
         base.orderID = clOrderID
         base.vtOrderID = VN_SEPARATOR.join([base.orderID, base.gatewayName])
         base.exchangeOrderID = self.orderID

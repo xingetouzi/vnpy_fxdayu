@@ -171,9 +171,9 @@ class VnOandaApi(OandaApi):
             func = self.func_map[k]
             lst = dct.get(k, [])
             for event in lst:
-                if k in {VtOrderData, VtTradeData}:
-                    print(type(event))
-                    print(event.__dict__)
+                # if k in {VtOrderData, VtTradeData}:
+                #     print(type(event))
+                #     print(event.__dict__)
                 func(event)
 
     def on_tick(self, tick):
@@ -212,11 +212,11 @@ class VnOandaApi(OandaApi):
             req = OandaMarketOrderRequest.from_vnpy(orderReq)
         elif orderReq.priceType == PRICETYPE_LIMITPRICE:
             req = OandaLimitOrderRequest.from_vnpy(orderReq)
-        print(orderReq.__dict__)
-        print(req.__dict__)
         self.orderID += 1
-        req.set_client_order_id("-".join([self.client_dt, str(self.orderID)]))
-        return self.send_order(req)
+        clOrderId = "-".join([self.client_dt, str(self.orderID)])
+        req.set_client_order_id(clOrderId)
+        self.send_order(req)
+        return VN_SEPARATOR.join([clOrderId, self.gateway.gatewayName])
 
     def cancelOrder(self, cancelOrderReq):
         req = OandaOrderSpecifier.from_vnpy(cancelOrderReq)
