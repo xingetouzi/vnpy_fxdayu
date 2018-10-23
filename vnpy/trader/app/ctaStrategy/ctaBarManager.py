@@ -59,7 +59,6 @@ class BarUtilsMixin(object):
         bar.openInterest += tick.openInterest
         return bar
 
-    @profile
     def align_bar(self, bar, freq):
         if freq is not None:
             bar.datetime = self.align_datetime(bar.datetime, freq)
@@ -303,7 +302,6 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 self._begin_gen_bars(freq, bar)
         return finished_bar
 
-    @profile
     def _update_with_bar(self, bar, freq):
         current_bar = self._current_bars.get(freq, None)
         dt = self.align_datetime(bar.datetime, freq)
@@ -373,7 +371,6 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         for _, freq in freq_unit_s:
             self.push_bar(freq, bars_to_push[freq])
 
-    # @profile
     def on_bar(self, bar):
         """on_bar can only process 1min bar"""
         bars_to_push = {}
