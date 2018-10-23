@@ -423,6 +423,6 @@ class OandaTransactionFactory(six.with_metaclass(Singleton, object)):
             if cls:
                 return cls.from_dict(dct)
             else:
-                return None
+                return OandaTransaction.from_dict(dct)
         else:
             return None

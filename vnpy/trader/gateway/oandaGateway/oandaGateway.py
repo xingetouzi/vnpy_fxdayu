@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 
 from vnpy.trader.vtGateway import VtGateway, EVENT_TIMER
@@ -197,6 +198,9 @@ class VnOandaApi(OandaApi):
         log.gatewayName = self.gateway.gatewayName
         log.logContent = content
         self.gateway.onLog(log)
+
+    def log(self, msg, level=logging.INFO):
+        self.writeLog("%s" % msg)
 
     def on_login_success(self):
         self.writeLog("oanda api 登录成功")

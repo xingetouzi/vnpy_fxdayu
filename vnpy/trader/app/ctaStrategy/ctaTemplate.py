@@ -141,7 +141,7 @@ class CtaTemplate(object):
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
-            return ''
+            return []
 
     # ----------------------------------------------------------------------
     def cancelOrder(self, vtOrderID):
