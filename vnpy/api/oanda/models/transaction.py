@@ -84,6 +84,7 @@ class OandaOrderTransaction(OandaTransaction):
 
     def to_vnpy_order(self, gateway):
         order = VtOrderData()
+        order.gatewayName = gateway.gatewayName
         order.orderID = self.clientExtensions.id
         order.exchange = EXCHANGE_OANDA
         order.symbol = self.instrument
@@ -91,7 +92,6 @@ class OandaOrderTransaction(OandaTransaction):
         order.orderTime = self.time
         order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.exchangeOrderID = self.id
-        order.gatewayName = gateway.gatewayName
         order.vtOrderID = VN_SEPARATOR.join([order.orderID, order.gatewayName])
         order.direction = DIRECTION_LONG if self.units >= 0 else DIRECTION_SHORT
         order.offset = OandaOrderPositionFill(self.positionFill).to_vnpy()
