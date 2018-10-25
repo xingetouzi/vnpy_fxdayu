@@ -11,7 +11,7 @@ from datetime import datetime
 
 
 MAX_NUMBER = 10000000000000
-MAX_DECIMAL = 4
+MAX_DECIMAL = 8
 
 
 #----------------------------------------------------------------------

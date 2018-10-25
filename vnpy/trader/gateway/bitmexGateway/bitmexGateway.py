@@ -80,6 +80,7 @@ class BitmexGateway(VtGateway):
             apiSecret = str(setting['apiSecret'])
             sessionCount = int(setting['sessionCount'])
             symbols = setting['symbols']
+            testnet = setting.get('testnet', False)
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -88,6 +89,8 @@ class BitmexGateway(VtGateway):
             return
 
         # 创建行情和交易接口对象
+        self.restApi.testnet = testnet
+        self.wsApi.testnet = testnet
         self.restApi.connect(apiKey, apiSecret, sessionCount)
         self.wsApi.connect(apiKey, apiSecret, symbols)
 

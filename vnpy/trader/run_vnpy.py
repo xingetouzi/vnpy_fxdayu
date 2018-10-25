@@ -18,9 +18,9 @@ from vnpy.trader.uiMainWindow import MainWindow
 
 # 加载底层接口
 if is_windows:
-    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGateway,bitmexGateway)
+    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGateway,bitmexGateway,oandaGateway)
 else:
-    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,bitmexGateway)
+    from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,bitmexGateway,oandaGateway)
     ctpGateway = None
 
 # 加载上层应用
@@ -52,6 +52,7 @@ def main():
     me.addGateway(huobiGateway)
     me.addGateway(binanceGateway)
     me.addGateway(bitmexGateway)
+    me.addGateway(oandaGateway)
 
     if is_windows:
         me.addGateway(ctpGateway)
