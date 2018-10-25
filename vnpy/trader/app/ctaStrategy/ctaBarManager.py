@@ -166,7 +166,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 return
         # TODO: fetch bar according to current hist_bars.
         try:
-            bars = self._parent.load_history_bar(self._symbol, freq, size=self._size)        
+            bars = self._parent.load_history_bar(self._symbol, freq, size=self._size+1)        
         except Exception as e:
             if self.is_backtesting():
                 raise e
@@ -232,7 +232,6 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             if index is None:
                 self.error("品种%s的%sK线无法拼接成功" % (self._symbol, freq))
                 self._ready.remove(freq)
-                return
         else:
             if index is not None:
                 self._ready.add(freq)
@@ -244,7 +243,8 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 for bar in union_bars:
                     self._am[freq].updateBar(bar)
                 self._finished_bars[freq] = gen_bars[index:]
-                self.info("品种%s的%sK线准备就绪" % (self._symbol, freq))  
+                self.info("品种%s的%sK线准备就绪" % (self._symbol, freq))
+        return self.is_ready(freq)
 
     def cal_concat_index(self, freq, bars1, bars2):
         unit_s = freq2seconds(freq)
@@ -252,6 +252,8 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             return 0
         if not bars2:
             return None
+        if bars1[-1].datetime >= bars2[-1].datetime:
+            return len(bars2)
         next_ts = dt2ts(bars1[-1].datetime) + unit_s
         ts_bars = [dt2ts(bar.datetime) for bar in bars2]
         if next_ts >= ts_bars[0]: # concatable
@@ -361,8 +363,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 bar_finished = bar_1min_finished
             if bar_finished:
                 self.fetch_hist_bars(freq)
-                ready = self.check_ready(freq)
-                if ready:
+                if self.is_ready(freq):
                     bars_to_push[freq] = bar_finished
         # wait all local bar data has been update.
         freq_unit_s = [(freq2seconds(freq), freq) for freq in bars_to_push.keys()]
