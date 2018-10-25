@@ -521,6 +521,7 @@ class TradeMonitor(BasicMonitor):
         d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
         d['price_avg'] = {'chinese':vtText.PRICE_AVG, 'cellType':NumCell}
         d['volume'] = {'chinese':vtText.VOLUME, 'cellType':NumCell}
+        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
         d['tradeTime'] = {'chinese':vtText.TRADE_TIME, 'cellType':BasicCell}
         self.setHeaderDict(d)
         
@@ -557,7 +558,6 @@ class OrderMonitor(BasicMonitor):
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
         d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}        
         d['rejectedInfo'] = {'chinese':vtText.ORDER_REJECTED_INFO, 'cellType':BasicCell}
-        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
         d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
         d['byStrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}
         self.setHeaderDict(d)
@@ -633,7 +633,6 @@ class AccountMonitor(BasicMonitor):
         d = OrderedDict()
         d['gatewayName'] = {'chinese':vtText.GATEWAY, 'cellType':BasicCell}
         d['accountID'] = {'chinese':vtText.ACCOUNT_ID, 'cellType':BasicCell}
-        d['coinSymbol'] = {'chinese':vtText.COIN_SYMBOL, 'cellType':BasicCell}
         d['risk_rate'] = {'chinese':vtText.RISK_RATE, 'cellType':NumCell}
         d['balance'] = {'chinese':vtText.BALANCE, 'cellType':NumCell}
         d['available'] = {'chinese':vtText.AVAILABLE, 'cellType':NumCell}
@@ -642,11 +641,7 @@ class AccountMonitor(BasicMonitor):
         d['positionProfit'] = {'chinese':vtText.POSITION_PROFIT, 'cellType':PnlCell}
 
         self.setHeaderDict(d)
-        if not d['coinSymbol']:
-            self.setDataKey('vtAccountID')
-        else:
-            self.setDataKey('coinSymbol')
-        
+        self.setDataKey('vtAccountID')
         self.setEventType(EVENT_ACCOUNT)
         self.setFont(BASIC_FONT)
         self.setSaveData(True)

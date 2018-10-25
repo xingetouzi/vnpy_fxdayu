@@ -8,4 +8,3 @@ def hmac_new(key, data, digestmod=None):
         bkey = key.encode()
         bdata = data.encode()
         return hmac.new(bkey, bdata, digestmod=digestmod)
-

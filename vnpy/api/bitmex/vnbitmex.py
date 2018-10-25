@@ -5,19 +5,21 @@ import hashlib
 import json
 import ssl
 import traceback
-
+from copy import copy
+from threading import Thread, Event, Timer, current_thread
 from queue import Queue, Empty
 from multiprocessing.dummy import Pool
 from time import time, sleep
+from datetime import datetime,timedelta
+from functools import partial
 
-from copy import copy
-from threading import Thread, Event, Timer, current_thread
+import requests
+import websocket
+import pandas as pd
 
 from six.moves.urllib.parse import urlparse, urlencode
 from six.moves import input
 
-import requests
-import websocket
 
 from vnpy.api.bitmex.utils import hmac_new
 
@@ -74,13 +76,41 @@ class BitmexRestApi(object):
             self.pool.join()
     
     #----------------------------------------------------------------------
-    def addReq(self, method, path, callback, params=None, postdict=None):
+    def addReq(self, method, path, callback, on_error=None, params=None, postdict=None):
         """添加请求"""
         self.reqid += 1
-        req = (method, path, callback, params, postdict, self.reqid)
+        req = (method, path, callback, on_error, params, postdict, self.reqid)
         self.queue.put(req)
         return self.reqid
     
+    @staticmethod
+    def _set_fut_result(fut, rep, exception=None): 
+        try:
+            if exception:
+                fut.set_exception(exception)
+            else:
+                fut.set_result(rep)
+        except Exception as e:
+            fut.set_exception(e)
+
+    def blockReq(self, method, path, params=None, postdict=None, timeout=60):
+        def on_rep(fut, data, reqid):
+            self._set_fut_result(fut, data)
+
+        def on_error(fut, code, data, reqid):
+            e = HTTPError()
+            e.code = code
+            e.reason = data
+            self._set_fut_result(fut, None, exception=e)
+
+        fut = Future()
+        self.addReq(
+            method, path, 
+            partial(on_rep, fut), on_error=partial(on_error, fut), 
+            params=params, postdict=postdict)
+        rep = fut.result(timeout=timeout) # default timeout 60 seconds.
+        return rep
+
     #----------------------------------------------------------------------
     def processReq(self, req, i):
         """处理请求"""
@@ -108,7 +138,10 @@ class BitmexRestApi(object):
         if code == 200:
             callback(d, reqid)
         else:
-            self.onError(code, d)    
+            if on_error:
+                on_error(code, d, reqid)
+            else:
+                self.onError(code, d, reqid)    
     
     #----------------------------------------------------------------------
     def run(self, i):
@@ -139,7 +172,7 @@ class BitmexRestApi(object):
         return signature
     
     #----------------------------------------------------------------------
-    def onError(self, code, error):
+    def onError(self, code, error, reqid):
         """错误回调"""
         print('on error')
         print(code, error)
@@ -149,6 +182,37 @@ class BitmexRestApi(object):
         """通用回调"""
         print('on data')
         print(data, reqid)
+
+    def restKline(self,symbol, type_, size, since = None):
+        params = {"symbol":symbol,"binSize":type_,"count":size,"reverse":True}
+        url = REST_HOST + "/" + "trade/bucketed"
+        data = requests.get(url, headers=self.header, params = params,timeout=10)
+        # print(data.json())
+        null =0
+        text = eval(data.text)
+        # df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
+        df = pd.DataFrame(text, columns=["timestamp","symbol", "open", "high", "low", "close", "trades","volume","vwap","lastSize","turnover","homeNotional","foreignNotional"])
+
+        df["datetime"] = df["timestamp"].map(
+            lambda x: x.replace('-','').replace('T',' ').replace('.000Z',''))
+        delta = timedelta(hours=8)
+        df["datetime"] = df["datetime"].map(
+            lambda x: datetime.strptime(x,"%Y%m%d %H:%M:%S")+delta)   # 如果服务器有时区差别
+        df["open"] = df["open"].map(
+            lambda x: float(x))
+        df["high"] = df["high"].map(
+            lambda x: float(x))
+        df["low"] = df["low"].map(
+            lambda x: float(x))
+        df["close"] = df["close"].map(
+            lambda x: float(x))
+        df["volume"] = df["volume"].map(
+            lambda x: float(x))
+        df.sort_values(by = ['datetime'], ascending=True, inplace=True)
+        
+        print(df['datetime'],df['open'])
+        print(df.to_dict())
+        return df.to_dict()
 
 
 ########################################################################

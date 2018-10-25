@@ -5,7 +5,8 @@ from vnpy.api.oanda.models.transaction import *
 
 __all__ = ["OandaOrderCreatedResponse", "OandaOrderRejectedResponse", "OandaOrderCancelledResponse",
      "OandaOrderCancelRejectedResponse", "OandaInstrumentsQueryResponse", "OandaAccountSummaryQueryResponse",
-     "OandaOrderQueryResponse", "OandaPositionsQueryResponse", "OandaPositionQueryResponse"]
+     "OandaOrderQueryResponse", "OandaPositionsQueryResponse", "OandaPositionQueryResponse",
+     "OandaTransactionsQueryResponse"]
 
 def union_vnpy_data_dicts(dcts):
     keys = reduce(lambda x, y: x.union(set(y)), [dct.keys() for dct in dcts], set())
@@ -214,10 +215,32 @@ class OandaPositionQueryResponse(OandaVnpyConvertableData):
 
     @classmethod
     def from_dict(cls, dct):
-        obj = super(OandaPositionQueryResponse, self).from_dict(dct)
+        obj = cls()
+        obj.__dict__ = super(OandaPositionQueryResponse, self).from_dict(dct).__dict__
         obj.position = obj.position and OandaPosition.from_dict(obj.position)
 
     def to_vnpy(self, gateway):
         if self.position:
             return self.position.to_vnpy(gateway)
         return None
+
+
+class OandaTransactionsQueryResponse(OandaVnpyConvertableData):
+    KEYS = ["transactions", "lastTransactionID"]
+    
+    def __init__(self):
+        self.transactions = []
+        self.lastTransactionID = None
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls()
+        obj.__dict__ = super(OandaTransactionsQueryResponse, self).from_dict(dct).__dict__
+        obj.transactions = obj.transactions or []
+        obj.transactions = [OandaTransactionFactory.new(trans) for trans in obj.transactions]
+        return obj
+
+    def to_vnpy(self, gateway, excludes=None):
+        excludes = set()
+        dcts = [trans.to_vnpy(gateway) for trans in self.transactions if trans.id not in excludes]
+        return union_vnpy_data_dicts(dcts)

@@ -1,6 +1,8 @@
 # encoding: UTF-8
 
-from .ctaEngine import CtaEngine
+from .ctaBarManager import CtaEngine
+from .ctaBarManager import CtaTemplate
+from .ctaBarManager import BacktestingEngine
 from .uiCtaWidget import CtaEngineManager
 
 appName = 'CtaStrategy'

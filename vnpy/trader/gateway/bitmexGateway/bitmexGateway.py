@@ -5,6 +5,7 @@ vnpy.api.bitmex的gateway接入
 '''
 from __future__ import print_function
 
+import functools
 import os
 import json
 import hashlib
@@ -13,11 +14,14 @@ import traceback
 from datetime import datetime, timedelta
 from copy import copy
 from math import pow
+from concurrent.futures import Future
+from urllib.error import HTTPError
 
 from vnpy.api.bitmex import BitmexRestApi, BitmexWebsocketApiWithHeartbeat as BitmexWebsocketApi
 from vnpy.api.bitmex.utils import hmac_new
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from vnpy.app.ctaStrategy import CtaTemplate
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -37,12 +41,6 @@ directionMapReverse = {v:k for k,v in directionMap.items()}
 priceTypeMap = {}
 priceTypeMap[PRICETYPE_LIMITPRICE] = 'Limit'
 priceTypeMap[PRICETYPE_MARKETPRICE] = 'Market'
-
-priceTypeMapTemp = {
-    0: PRICETYPE_LIMITPRICE,
-    1: PRICETYPE_MARKETPRICE,
-}
-        
 
 ########################################################################
 class BitmexGateway(VtGateway):
@@ -98,6 +96,16 @@ class BitmexGateway(VtGateway):
     def subscribe(self, subscribeReq):
         """订阅行情"""
         pass
+    
+    def setLeverage(self, symbol, leverage):
+        fut = Future()
+        rep = fut.result()
+        return rep
+
+    def getLeverage(self, symbol):
+        fut = Future()
+        rep = fut.result()
+        return rep
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -161,8 +169,38 @@ class BitmexGateway(VtGateway):
 
     def queryPosition(self):
         pass
+        
+    def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
+        KlinePeriodMap = {}
+        KlinePeriodMap['1min'] = '1m'
+        KlinePeriodMap['5min'] = '5m'
+        KlinePeriodMap['60min'] = '1h'
+        KlinePeriodMap['1day'] = '1d'
+        if type_ not in KlinePeriodMap.keys():
+            self.writeLog("不支持的历史数据初始化方法，请检查type_参数")
+            self.writeLog("BITMEX Type_ hint：1min,5min,60min,1day")
+            return '-1'
+
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
+        return self.restApi.rest_future_bar(symbol, KlinePeriodMap[type_], size, since)
+
+
+
+    def qryAllOrders(self, vtSymbol, order_id, status= None):
+        pass
 
 ########################################################################
+def catch_error_with_gateway(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            err = VtErrorData()
+            err.errorMsg = e
+            self.gateway.onError(e)
+            return None
+
 class RestApi(BitmexRestApi):
     """REST API实现"""
 
@@ -199,16 +237,18 @@ class RestApi(BitmexRestApi):
         self.orderId += 1
         orderId = self.date + self.orderId
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(orderId)])
+        symbol = orderReq.symbol.split(VN_SEPARATOR)[0]
         
         req = {
             'symbol': orderReq.symbol,
             'side': directionMap[orderReq.direction],
-            'ordType': priceTypeMap[priceTypeMapTemp[orderReq.priceType]],            
+            'ordType': priceTypeMap[orderReq.priceType],            
             'price': orderReq.price,
             'orderQty': orderReq.volume,
             'clOrdID': str(orderId)
         }
-
+        
+        self.addReq('')
         self.addReq('POST', '/order', self.onSendOrder, postdict=req)
         
         return vtOrderID
@@ -233,14 +273,38 @@ class RestApi(BitmexRestApi):
     def onCancelOrder(self, data, reqid):
         """"""
         pass
-    
+
+    @catch_error_with_gateway
+    def setLeverage(self, symbol, leverage):
+        assert 0<=leverage<=20, "杠杆率应该在0到20之间"
+        req = {"leverage": leverage, "symbol": symbol}
+        rep = self.blockReq('POST', '/position/leverage', postdict=req)
+        if "leverage" in rep:
+            return int(rep["leverage"])
+        else:
+            raise ValueError("setLeverage返回未知数据: %s" % rep)
+
+    @catch_error_with_gateway
+    def getLeverage(self, symbol):
+        fut = Future()
+        rep = self.blockReq("GET", "/position", params={"symbol": symbol})
+        if "leverage" in rep:
+            return int(rep["leverage"])
+        else:
+            raise ValueError("getLeverage返回未知数据: %s" % rep)
+
     #----------------------------------------------------------------------
-    def onError(self, code, error):
+    def onError(self, code, error, reqid):
         """"""
         e = VtErrorData()
         e.errorID = code
-        e.errorID = error
+        e.errMsg = error
+        e.additionalInfo = "请求编号:%s" % reqid
         self.gateway.onError(e)
+    
+    def rest_future_bar(self,symbol, type_, size, since = None):
+        kline = self.restKline(symbol, type_, size, since)
+        return kline
         
 
 ########################################################################
@@ -284,7 +348,7 @@ class WebsocketApi(BitmexWebsocketApi):
             tick.gatewayName = self.gatewayName
             tick.symbol = symbol
             tick.exchange = EXCHANGE_BITMEX
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             self.tickDict[symbol] = tick
             
         self.start()
@@ -402,6 +466,7 @@ class WebsocketApi(BitmexWebsocketApi):
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
+        tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         
         self.gateway.onTick(tick)
     
@@ -421,7 +486,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         trade.symbol = d['symbol']
         trade.exchange = EXCHANGE_BITMEX
-        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.gatewayName])
         if d['clOrdID']:
             orderID = d['clOrdID']
         else:
@@ -455,7 +520,7 @@ class WebsocketApi(BitmexWebsocketApi):
             
             order.symbol = d['symbol']
             order.exchange = EXCHANGE_BITMEX
-            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
             
             if d['clOrdID']:
                 orderID = d['clOrdID']
@@ -487,7 +552,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         pos.symbol = d['symbol']
         pos.exchange = EXCHANGE_BITMEX
-        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.exchange])
+        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
         
         pos.direction = DIRECTION_NET
         pos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, pos.direction])
@@ -530,7 +595,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         contract.symbol = d['symbol']
         contract.exchange = EXCHANGE_BITMEX
-        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
         contract.name = contract.vtSymbol
         contract.productClass = PRODUCT_FUTURES
         contract.priceTick = d['tickSize']
@@ -543,6 +608,20 @@ class WebsocketApi(BitmexWebsocketApi):
         """接口断开"""
         self.gateway.connected = False
         self.writeLog(u'Websocket API连接断开')
+
+
+class BitmexCtaTemplate(CtaTemplate):
+    def setLeverage(self, symbol, leverage):
+        symbolName, gatewayName = symbol.split(VN_SEPARATOR)[-1]
+        gateway = self.engine.getGateway()
+        assert isinstance(gateway, BitmexGateway), "只能对bitmex交易所的symbol调用setLeverage方法" 
+        return gateway.setLeverage(symbolName, leverage)
+
+    def getLeverage(self, symbol):
+        symbolName, gatewayName = symbol.split(VN_SEPARATOR)[-1]
+        gateway = self.engine.getGateway()
+        assert isinstance(gateway, BitmexGateway), "只能对bitmex交易所的symbol调用getLeverage方法" 
+        return gateway.getLeverage(symbolName, leverage)
 
 #----------------------------------------------------------------------
 def printDict(d):

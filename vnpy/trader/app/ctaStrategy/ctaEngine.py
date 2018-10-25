@@ -413,33 +413,28 @@ class CtaEngine(object):
         pos = event.dict_['data']
 
         symbol = pos.vtSymbol
-        if 'quarter' in symbol or 'week' in symbol or 'bitmex' in symbol:
-            productType = 'FUTURE'
-        else:
-            productType = 'SPOT'
 
         for strategy in self.strategyDict.values():
             if strategy.inited and pos.vtSymbol in strategy.symbolList:
-                if productType == 'FUTURE':
-                    if pos.direction == DIRECTION_LONG:
-                        posName = pos.vtSymbol + "_LONG"
-                        if 'posDict' in strategy.syncList:
-                            strategy.posDict[str(posName)] = pos.position
-                        if 'eveningDict' in strategy.syncList:
-                            strategy.eveningDict[str(posName)] = pos.position - pos.frozen
-                        if 'bondDict' in strategy.syncList:
-                            strategy.bondDict[str(posName)]=pos.frozen
-                    elif pos.direction == DIRECTION_SHORT:
-                        posName2 = pos.vtSymbol + "_SHORT"
-                        if 'posDict' in strategy.syncList:
-                            strategy.posDict[str(posName2)] = pos.position
-                        if 'eveningDict' in strategy.syncList:
-                            strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
-                        if 'bondDict' in strategy.syncList:
-                            strategy.bondDict[str(posName2)]=pos.frozen
+                if pos.direction == DIRECTION_LONG:
+                    posName = pos.vtSymbol + "_LONG"
+                    if 'posDict' in strategy.syncList:
+                        strategy.posDict[str(posName)] = pos.position
+                    if 'eveningDict' in strategy.syncList:
+                        strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                    if 'bondDict' in strategy.syncList:
+                        strategy.bondDict[str(posName)]=pos.frozen
+                elif pos.direction == DIRECTION_SHORT:
+                    posName2 = pos.vtSymbol + "_SHORT"
+                    if 'posDict' in strategy.syncList:
+                        strategy.posDict[str(posName2)] = pos.position
+                    if 'eveningDict' in strategy.syncList:
+                        strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                    if 'bondDict' in strategy.syncList:
+                        strategy.bondDict[str(posName2)]=pos.frozen
 
-                        # 保存策略持仓到数据库
-                        self.saveSyncData(strategy)  
+                    # 保存策略持仓到数据库
+                    self.saveSyncData(strategy)  
 
     #------------------------------------------------------
     def processAccountEvent(self,event):
@@ -448,12 +443,11 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                if account.coinSymbol:
-                    accountName = account.coinSymbol
-                    if 'accountDict' in strategy.syncList:
-                        strategy.accountDict[str(accountName)] = account.position
-                    if 'frozenDict' in strategy.syncList:
-                        strategy.bondDict[str(accountName)] = account.frozen
+                accountName = account.accountID
+                if 'accountDict' in strategy.syncList:
+                    strategy.accountDict[str(accountName)] = account.position
+                if 'frozenDict' in strategy.syncList:
+                    strategy.bondDict[str(accountName)] = account.frozen
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -473,7 +467,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadBar(self, dbName, collectionName, hours):
         """从数据库中读取Bar数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(hour = hours)
+        startDate = self.today - timedelta(hours = hours)
         for collectionName_ in collectionName:
             d = {'datetime':{'$gte':startDate}}
             
@@ -490,7 +484,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadTick(self, dbName, collectionName, hours):
         """从数据库中读取Tick数据，startDate是datetime对象"""
-        startDate = self.today - timedelta(hour = hours)
+        startDate = self.today - timedelta(hours = hours)
         for collectionName_ in collectionName:
 
             d = {'datetime':{'$gte':startDate}}
@@ -929,7 +923,7 @@ class CtaEngine(object):
             s = self.strategyOrderDict[name]
             for symbol in strategy.symbolList:
                 self.mainEngine.qryAllOrders(symbol, -1, status = 1)
-                self.writeCtaLog("ctaEngine对策略%s发出%s的挂单轮询请求，本地订单数量%s"%(name,symbol,len(list(s))))
+                # self.writeCtaLog("ctaEngine对策略%s发出%s的挂单轮询请求，本地订单数量%s"%(name,symbol,len(list(s))))
 
     def restoreStrategy(self, name):
         """恢复策略"""
@@ -1007,7 +1001,7 @@ class CtaEngine(object):
         for root, subdirs, files in os.walk(path):
             for name in files:
                 # 只有文件名中包含strategy且非.pyc的文件，才是策略文件
-                if 'strategy' in name and '.pyc' not in name:
+                if 'Strategy' in name and '.pyc' not in name:
                     # 模块名称需要上前缀
                     moduleName = name.replace('.py', '')
 
@@ -1027,3 +1021,6 @@ class CtaEngine(object):
                         traceback.print_exc()
 
         return STRATEGY_GET_CLASS
+
+    def getGateway(self, gatewayName):
+        return self.mainEngine.gatewayDict.get(gatewayName, None)

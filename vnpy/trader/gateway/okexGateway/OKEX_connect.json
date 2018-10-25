@@ -1,6 +1,6 @@
 {
-    "apiKey": "",
-    "secretKey": "",
+    "apiKey": "8db1a936-7203-40da-8d2a-bba0ce5ea082",
+    "secretKey": "D7D698F4F856F116D554C3AF6D9E97F9",
     "trace": false,
     "symbols":["btc_usdt","ltc_btc","bch_eth"],
     "contracts":["btc_this_week","btc_next_week","btc_quarter",
