@@ -1,4 +1,5 @@
-
+import sys
+import os
 import click
 
 CONTEXT_SETTINGS = {
@@ -23,6 +24,7 @@ def cli(ctx, verbose):
 def run(crypto=False):
     from vnpy.trader.run import main
     from vnpy.trader.run_crypto import main as main_crypto
+    sys.path.append(os.path.abspath(os.getcwd()))
     if crypto:
         main_crypto()
     else:
