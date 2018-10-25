@@ -28,10 +28,10 @@ def freq2seconds(freq):
     return num * _base_freq_seconds[freq[-1]]
 
 def dt2ts(dt):
-    return dt.timestamp()
+    return dt.replace(tzinfo=timezone.utc).timestamp()
 
 def ts2dt(ts):
-    return datetime.fromtimestamp(ts)
+    return datetime.utcfromtimestamp(ts)
 
 def dt2str(dt):
     return dt.strftime("%Y%m%d%H%M%S")
