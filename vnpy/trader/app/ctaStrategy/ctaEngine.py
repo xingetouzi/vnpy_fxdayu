@@ -449,6 +449,21 @@ class CtaEngine(object):
                 if 'frozenDict' in strategy.syncList:
                     strategy.bondDict[str(accountName)] = account.frozen
 
+    #--------------------------
+    def processErrorEvent(self,event):
+        """报错推送"""
+        error = event.dict_['data']
+
+        for sym in list(self.tickStrategyDict.keys()):
+            if error.gatewayName in sym:
+                strategy = self.tickStrategyDict[sym]
+                if strategy.trading:
+                    content = u'Encounter Error from gateway:%s, \n Msg:%s \n ErrorTime:%s '%(
+                        error.gatewayName,error.errorMsg,error.ErrorTime)
+                    self.writeCtaLog(content)
+                    if strategy.mailAdd:
+                        self.mail(content,strategy,True)
+                        
     #--------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
@@ -457,6 +472,7 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
+        self.eventEngine.register(EVENT_ERROR, self.processErrorEvent)
 
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
@@ -716,6 +732,7 @@ class CtaEngine(object):
         """触发策略状态变化事件（通常用于通知GUI更新）"""
         event = Event(EVENT_CTA_STRATEGY+name)
         self.eventEngine.put(event)
+        self.saveVarData(strategy)
 
     #----------------------------------------------------------------------
     def callStrategyFunc(self, strategy, func, params=None):
@@ -731,7 +748,7 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            self.mail(content,strategy)
+            self.mail(content,strategy,True)
             self.writeCtaLog(content)
 
     #----------------------------------------------------------------------------------------
@@ -931,12 +948,11 @@ class CtaEngine(object):
             strategy = self.strategyDict[name]
 
             if not strategy.inited and not strategy.trading:
-                strategy.inited = True
-                strategy.trading = True
-
-                self.callStrategyFunc(strategy, strategy.onRestore)
+                self.callStrategyFunc(strategy, strategy.onInit)
                 self.loadVarData(strategy)            # 初始化完成后加载同步数据                
                 self.loadSyncData(strategy)
+                strategy.inited = True
+                strategy.trading = True
                 self.writeCtaLog(u'策略%s： 恢复策略状态成功' %name)
 
             else:
@@ -944,7 +960,7 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
-    def mail(self,my_context,strategy):
+    def mail(self,my_context,strategy, sys = False):
         mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
         mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
         if "" in [mailaccount,mailpass,mailserver,mailport]:
@@ -975,7 +991,11 @@ class CtaEngine(object):
             msg['To']=to_receiver#formataddr(["收件人昵称",to_receiver])
             if cc_receiver:
                 msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
-            msg['Subject'] = '策略信息播报'
+            
+            if sys:
+                msg['subject'] = 'VNPY系统预警'
+            else:
+                msg['Subject'] = '策略信息播报'
     
             server=smtplib.SMTP_SSL(mailserver, mailport)
             server.login(mailaccount, mailpass)

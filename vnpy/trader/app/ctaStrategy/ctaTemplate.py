@@ -235,10 +235,6 @@ class CtaTemplate(object):
     def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""
         return self.ctaEngine.qryOrder(vtSymbol,self.name,status)
-
-    def onRestore(self):
-        """恢复策略（必须由用户继承实现）"""
-        raise NotImplementedError
         
     def mail(self,my_context):
         """邮件发送模块"""

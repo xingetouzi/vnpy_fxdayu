@@ -234,7 +234,7 @@ class OkexGateway(VtGateway):
             data = self.spotApi.rest_spot_orders(symbol,order_id,status)
         return data
 
-    def batchCancelOrder(cancelOrderReqList):
+    def batchCancelOrder(self, cancelOrderReqList):
         self.futuresApi.batchCancelOrder(cancelOrderReqList)
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
@@ -891,9 +891,10 @@ class FuturesApi(OkexFuturesApi):
         self.sendOrderDict = {}         # 存储rest返回的订单信息
         self.exchangeOrderDict = {}     # 存储交易所返回的id和本地id映射
         self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
-        self.orphanDict ={}             # 存储丢单信息
+        # self.orphanDict ={}             # 存储丢单信息
         self.filledList =['']*100       # 缓存交易所id，长度100个
         self.tradetick = 0
+        self.recordPrevConnection = None   # 缓存连接时间
 
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
@@ -917,7 +918,7 @@ class FuturesApi(OkexFuturesApi):
         """错误推送"""
         error = VtErrorData()
         error.gatewayName = self.gatewayName
-        error.errorMsg = str(data)
+        error.errorMsg = data
         self.gateway.onError(error)
         
     #----------------------------------------------------------------------
@@ -933,7 +934,13 @@ class FuturesApi(OkexFuturesApi):
         
         self.login()
         self.writeLog(u'期货服务器连接成功')
-        
+
+        temp = self.recordPrevConnection
+        self.recordPrevConnection = datetime.now()
+        if temp:
+            if (self.recordPrevConnection - temp).seconds < 60:
+                self.onError('Reconnect within 60 seconds')
+
         # 推送合约数据
         for symbol in self.contracts:
             contract = VtContractData()
@@ -1447,27 +1454,27 @@ class FuturesApi(OkexFuturesApi):
         contract_type = req.symbol[4:]
 
         # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
-        if not self.gateway.connected:
-            self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
+        # if not self.gateway.connected:
+            # self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
+            # order = VtOrderData()
+            # order.vtOrderID = vtOrderID
+            # order.orderID = self.localNo
+            # order.symbol= req.symbol
 
-            order.vtSymbol = req.vtSymbol
-            order.status = STATUS_REJECTED
-            order.gatewayName = self.gatewayName
-            order.rejectedInfo = 'BAD NETWORK'
-            order.byStrategy = req.byStrategy
-            order.direction = req.direction
-            order.offset = req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.gateway.onOrder(copy(order))
-            self.orderDict[vtOrderID] = order #更新order信息
-            return vtOrderID
+            # order.vtSymbol = req.vtSymbol
+            # order.status = STATUS_REJECTED
+            # order.gatewayName = self.gatewayName
+            # order.rejectedInfo = 'BAD NETWORK'
+            # order.byStrategy = req.byStrategy
+            # order.direction = req.direction
+            # order.offset = req.offset
+            # order.price = req.price
+            # order.totalVolume = req.volume
+            # order.orderTime = datetime.now()
+            # order.deliverTime = datetime.now()
+            # self.gateway.onOrder(copy(order))
+            # self.orderDict[vtOrderID] = order #更新order信息
+            # return ''
         
         # 下单判断状态 2 ： 发单失败，返回失败请求
         # result = self.futuresTrade(
@@ -1477,29 +1484,31 @@ class FuturesApi(OkexFuturesApi):
                 symbol, contract_type ,req.price, req.volume, type_, req.priceType ,req.levelRate)  # restful
         
         except:
-            self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
+            # self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
+            # order = VtOrderData()
+            # order.vtOrderID = vtOrderID
+            # order.orderID = self.localNo
+            # order.symbol= req.symbol
 
-            order.vtSymbol = req.vtSymbol
-            order.status = STATUS_UNKNOWN
-            order.gatewayName = self.gatewayName
-            order.rejectedInfo = 'RESTFUL REQUEST ERROR'
-            order.byStrategy = req.byStrategy
-            order.direction = req.direction
-            order.offset = req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.orderDict[vtOrderID] = order   #更新order信息
-            self.gateway.onOrder(copy(order))
-            self.exchangeOrderDict[vtOrderID]= vtOrderID
-            self.orphanDict[vtOrderID] = order
-            
-            return vtOrderID        
+            # order.vtSymbol = req.vtSymbol
+            # order.status = STATUS_UNKNOWN
+            # order.gatewayName = self.gatewayName
+            # order.rejectedInfo = 'RESTFUL REQUEST ERROR'
+            # order.byStrategy = req.byStrategy
+            # order.direction = req.direction
+            # order.offset = req.offset
+            # order.price = req.price
+            # order.totalVolume = req.volume
+            # order.orderTime = datetime.now()
+            # order.deliverTime = datetime.now()
+            # self.orderDict[vtOrderID] = order   #更新order信息
+            # self.gateway.onOrder(copy(order))
+            # self.exchangeOrderDict[vtOrderID]= vtOrderID
+            # self.orphanDict[vtOrderID] = order
+            content =  u'Restful SendOrder Timeout, %s' %req.symbol
+            self.onError(content)
+            # self.writeLog("from_error_msg:%s"%data)
+            return ''        
         
         if 'result' in data.keys():
             self.writeLog(u'gw_sendorder_check下单返回信息:%s' %data)
@@ -1652,26 +1661,26 @@ class FuturesApi(OkexFuturesApi):
                     self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
 
-            elif len(self.orphanDict)>0:
-                self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in list(self.orphanDict.values()):
-                    if order.vtSymbol == orphanOrder.vtSymbol and not order.orderTime:
-                        ordertimediff = orphanOrder.createDate - order.orderTime
-                        if ordertimediff.seconds < 10 :
-                            if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
-                                order.vtOrderID = orphanOrder.vtOrderID
-                                order.orderID = orphanOrder.orderID
-                                order.byStrategy = orphanOrder.byStrategy
-                                self.gateway.onOrder(order)
-                                del self.orphanDict[order.vtOrderID]
-                    else:
-                        symbol = order.symbol[:3]+ '_usd'
-                        contract_type = order.symbol[4:]
-                        try:
-                            self.rest_qry_order(symbol,contract_type,order.exchangeOrderID)
-                        except:
-                            self.writeLog(u'***rest_qry_order**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
-                        self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
+            # elif len(self.orphanDict)>0:
+            #     self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
+            #     for orphanOrder in list(self.orphanDict.values()):
+            #         if order.vtSymbol == orphanOrder.vtSymbol and not order.orderTime:
+            #             ordertimediff = orphanOrder.createDate - order.orderTime
+            #             if ordertimediff.seconds < 10 :
+            #                 if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
+            #                     order.vtOrderID = orphanOrder.vtOrderID
+            #                     order.orderID = orphanOrder.orderID
+            #                     order.byStrategy = orphanOrder.byStrategy
+            #                     self.gateway.onOrder(order)
+            #                     del self.orphanDict[order.vtOrderID]
+            #         else:
+            #             symbol = order.symbol[:3]+ '_usd'
+            #             contract_type = order.symbol[4:]
+            #             try:
+            #                 self.rest_qry_order(symbol,contract_type,order.exchangeOrderID)
+            #             except:
+            #                 self.writeLog(u'***rest_qry_order**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
+            #             self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
 
             else:
                 self.writeLog('ws quicker in order_arb_onorder,waiting sendorder rest id:%s'%orderinfo.exchangeOrderID)

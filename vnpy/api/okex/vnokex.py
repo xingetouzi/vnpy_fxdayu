@@ -16,7 +16,7 @@ import websocket
 import zlib
 
 # 常量定义
-OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket?compress=true'
+OKEX_SPOT_HOST = 'wss://real.okex.com:10441/websocket?compress=true'
 OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi?compress=true'
 # OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket?compress=true'
 # OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi?compress=true'
