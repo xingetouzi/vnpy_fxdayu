@@ -41,7 +41,7 @@ class ArrayManager(OriginArrayManager):
 
 class BarUtilsMixin(object):
     def align_datetime(self, dt, freq):
-        return ts2dt(align_timestamp(dt2ts(dt), freq))
+        return align_datetime(dt, freq)
 
     def merge_bar_with_bar(self, bar1, bar2):
         bar1.high = max(bar1.high, bar2.high)
@@ -61,16 +61,17 @@ class BarUtilsMixin(object):
 
     def align_bar(self, bar, freq):
         if freq is not None:
-            bar.datetime = self.align_datetime(bar.datetime, freq)
-            s = bar.datetime.strftime('%Y%m%d%H:%M:%S.%f')
-            bar.date = s[:8]
-            bar.time = s[8:]
+            return self.override_bar_with_datetime(bar, self.align_datetime(bar.datetime, freq))
         return bar
     
+    def override_bar_with_datetime(self, bar, dt):
+        bar.datetime = dt
+        s = bar.datetime.strftime('%Y%m%d%H:%M:%S.%f')
+        bar.date = s[:8]
+        bar.time = s[8:]
+        return bar
+
     def override_bar_with_bar(self, bar1, bar2, freq=None):
-        bar1.vtSymbol = bar2.vtSymbol
-        bar1.symbol = bar2.symbol
-        bar1.exchange = bar2.exchange
         bar1.open = bar2.open
         bar1.high = bar2.high
         bar1.low = bar2.low
@@ -83,9 +84,6 @@ class BarUtilsMixin(object):
         return self.align_bar(bar1, freq)
         
     def override_bar_with_tick(self, bar, tick, freq=None):
-        bar.vtSymbol = tick.vtSymbol
-        bar.symbol = tick.symbol
-        bar.exchange = tick.exchange
         bar.open = tick.lastPrice
         bar.high = tick.lastPrice
         bar.low = tick.lastPrice
@@ -99,11 +97,74 @@ class BarUtilsMixin(object):
 
     def new_bar_from_tick(self, tick, freq=None):
         bar = VtBarData()
+        bar.vtSymbol = tick.vtSymbol
+        bar.symbol = tick.symbol
+        bar.exchange = tick.exchange
         return self.override_bar_with_tick(bar, tick, freq=freq)
 
     def new_bar_from_bar(self, bar, freq=None):
         bar2 = VtBarData()
+        bar2.vtSymbol = bar.vtSymbol
+        bar2.symbol = bar.symbol
+        bar2.exchange = bar.exchange
         return self.override_bar_with_bar(bar2, bar, freq=freq)
+
+
+class BarTimer(Logger, BarUtilsMixin):
+    def __init__(self, parent, symbol, freq):
+        self._parent = proxy(parent)
+        self._symbol = symbol
+        self._freq = freq
+        self._freq_mul, self._freq_unit = split_freq(freq) # frequency unit and multiplier
+        self._freq_seconds = freq2seconds(freq)
+        self._is_backtesting = None
+        self._func_map = {
+            "s": self._is_new_bar_s,
+            "m": self._is_new_bar_m,
+            "h": self._is_new_bar_h,
+        }
+        self._func = self._func_map.get(self._freq_unit, None)
+        self.init()
+
+    def init(self):
+        self._ts_cursor = None
+
+    def is_backtesting(self):
+        if self._is_backtesing is None:
+            self._is_backtesting = self._parent.is_backtesting()
+        return self._is_backtesting
+
+    def get_current_dt(self, dt):
+        if self.is_backtesting() and self._freq_unit != "s": 
+            return dt.replace(second=0, microsecond=0)
+        else: # NOTE: update timestamp cursor according to timestamp
+            unit_s = self._freq_seconds
+            if self._ts_cursor is not None:
+                self._ts_cursor = dt2ts(self.align_datetime(dt, self._freq))
+            last_ts = self._ts_cursor
+            ts = dt2ts(dt)
+            dts = ts - last_ts
+            if dts >= unit_s:
+                self._ts_cursor = last_ts + dts // unit_s * unit_s
+            return ts2dt(self._ts_cursor)
+    
+    def _is_new_bar_s(self, bar, dt):
+        return dt != bar.datetime
+
+    def _is_new_bar_m(self, bar, dt):
+        return dt.minute % self._freq_mul == 0 and bar.datetime != dt
+
+    def _is_new_bar_h(self, bar, dt):
+        return dt.minute == 0 and dt.datetime.hour % self._freq_mul == 0
+
+    def is_new_bar(self, bar, dt):
+        if self._func:
+            return self._func(bar, dt)
+        else:   # more than a day
+            # FIXME: Weekends is not token into consideration
+            unit_d = self._freq_seconds // (24 * 60 * 60)
+            delta_d = (dt.date() - bar.datetime.date()).days
+            return delta_d and delta_d >= unit_d
 
 
 class SymbolBarManager(Logger, BarUtilsMixin):
@@ -113,12 +174,12 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         self._parent = proxy(parent)
         self._symbol = symbol
         self._callback = {}
-        self._high_freqs = set(["1m"]) # higher frequencys than 1min(contains 1min).
-        self._low_freqs = set(["1m"]) # lower frequencys than 1min(contains 1min).
+        self._high_freqs = set() # higher frequencys than 1min(contains 1min).
+        self._low_freqs = set() # lower frequencys than 1min(contains 1min).
         self._size = size or self.default_size
-        self._init()
+        self.init()
         
-    def _init(self):
+    def init(self):
         self._am = {} # array managers.
         self._current_bars = {} # current generating bars.
         self._finished_bars = {} # generated bars.
@@ -126,11 +187,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         self._hist_bars = {} # history bars of lower frequencys.
         self._push_bars = {} # cache bar to push.
         self._ready = set() # become true when hist_bars and gen_bars has been concatable.
-        
-    def log(self, msg, level=logging.INFO):
-        if self.is_backtesting() and level < logging.INFO:
-            return
-        super(SymbolBarManager, self).log(msg, level=level)
+        self._bar_timers = {} # record generator bar's timer.
             
     def set_size(self, size):
         # TODO: resize the queue.
@@ -141,29 +198,29 @@ class SymbolBarManager(Logger, BarUtilsMixin):
 
     def clear(self):
         """Clean up all bars info. Call it when neccesary such like tick subscription disconnected."""
-        self._init()
+        self.init()
 
     def register(self, freq, func):
         freq = standardize_freq(freq)
         if freq not in self._callback:
             self._callback[freq] = []
             if freq == "1m":
-                pass 
+                self._high_freqs.add(freq)
+                self._low_freqs.add(freq)
             elif self.is_high_freq(freq): # high freq
                 self._high_freqs.add(freq)
             else:
                 self._low_freqs.add(freq)
         self._callback[freq].append(func)
+        self._bar_timers[freq] = BarTimer(self, self._symbol, freq)
     
     def is_backtesting(self):
         return self._parent.is_backtesting()
-
+    
     def fetch_hist_bars(self, freq):
         # In backtesting, get hist bars only once.
-        if True: # FIXME: In am version, use hist bars to override generated bars will be a little bit complicated and unnecessary.
-        # if self.is_backtesting():
-            if freq in self._ready:
-                return
+        if self.is_ready(freq):
+            return
         # TODO: fetch bar according to current hist_bars.
         try:
             bars = self._parent.load_history_bar(self._symbol, freq, size=self._size+1)        
@@ -235,13 +292,13 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         else:
             if index is not None:
                 self._ready.add(freq)
-                self._am[freq] = ArrayManager(size=self._size)
+                am = self.get_array_manager(freq)
                 if hist_bars:
                     union_bars = hist_bars + gen_bars[index:]
                 else:
                     union_bars = gen_bars[index:]
                 for bar in union_bars:
-                    self._am[freq].updateBar(bar)
+                    am.updateBar(bar)
                 self._finished_bars[freq] = gen_bars[index:]
                 self.info("品种%s的%sK线准备就绪" % (self._symbol, freq))
         return self.is_ready(freq)
@@ -266,17 +323,19 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             return None
 
     def push_bar(self, freq, bar):
-        self.debug("推送品种%s的%sk线数据: %s" % (self._symbol, freq, bar.__dict__))
+        if not self.is_backtesting():
+            self.debug("推送品种%s的%sk线数据: %s" % (self._symbol, freq, bar.__dict__))
         funcs = self._callback.get(freq, [])
         for func in funcs:
             func(bar)
     
     def _update_with_tick(self, tick, freq):
         current_bar = self._current_bars.get(freq, None)
-        dt = self.align_datetime(tick.datetime, freq)
+        bt = self._bar_timers[freq]
+        dt = bt.get_current_dt(tick.datetime)
         finished_bar = None
         if current_bar:
-            if current_bar.datetime < dt: # FIXME: if some bar missing, there may be some error
+            if bt.is_new_bar(current_bar, dt):
                 if not self.is_ready(freq):  # stash finished bar
                     finished_bar = copy(current_bar)
                     bars = self._finished_bars.get(freq, [])
@@ -289,8 +348,9 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                         self.override_bar_with_bar(self._push_bars[freq], current_bar)
                     finished_bar = self._push_bars[freq]
                     self._am[freq].updateBar(finished_bar)
-                current_bar = self.override_bar_with_tick(current_bar, tick, freq)
-            elif current_bar.datetime == dt:
+                current_bar = self.override_bar_with_tick(current_bar, tick)
+                current_bar = self.override_bar_with_datetime(current_bar, dt)
+            elif current_bar.datetime <= dt:
                 current_bar = self.merge_bar_with_tick(current_bar, tick)
             else:
                 pass # ignored expired tick.
@@ -306,10 +366,11 @@ class SymbolBarManager(Logger, BarUtilsMixin):
 
     def _update_with_bar(self, bar, freq):
         current_bar = self._current_bars.get(freq, None)
-        dt = self.align_datetime(bar.datetime, freq)
+        dt = bar.datetime
+        bt = self._bar_timers[freq]
         finished_bar = None
         if current_bar:
-            if current_bar.datetime < dt: # FIXME: if some bar missing, there may be some error
+            if bt.is_new_bar(current_bar, dt):
                 if not self.is_ready(freq):
                     finished_bar = copy(current_bar)
                     bars = self._finished_bars.get(freq, [])
@@ -322,8 +383,8 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                         self.override_bar_with_bar(self._push_bars[freq], current_bar)
                     finished_bar = self._push_bars[freq]
                     self._am[freq].updateBar(finished_bar)
-                current_bar = self.override_bar_with_bar(current_bar, bar, freq)
-            elif current_bar.datetime == dt:
+                current_bar = self.override_bar_with_bar(current_bar, bar)
+            elif current_bar.datetime <= dt:
                 current_bar = self.merge_bar_with_bar(current_bar, bar)
             else:
                 pass # ignored expired tick.
@@ -389,7 +450,9 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             self.push_bar(freq, bars_to_push[freq])
 
     def get_array_manager(self, freq):
-        return self._am.get(freq, None)
+        if freq not in self._am:
+            self._am[freq] = ArrayManager(size=self._size)
+        return self._am[freq]
 
 class BarManager(object):
     class MODE(Enum):

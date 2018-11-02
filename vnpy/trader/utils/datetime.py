@@ -1,7 +1,8 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 
+_base_dt = datetime.utcfromtimestamp(0)
 _freq_re_str = "([1-9][0-9]*)(m|M|w|W||s|S|h|H|d|D|min|Min)?"
 _freq_re = re.compile("^%s$" % _freq_re_str)
 _base_freq_seconds =  {
@@ -12,7 +13,8 @@ _base_freq_seconds =  {
     "w": 7 * 24 * 60 * 60,
 }
 
-__all__ = [ "standardize_freq", "freq2seconds", "dt2ts", "ts2dt", "dt2str", "align_timestamp"]
+__all__ = [ "standardize_freq", "freq2seconds", "dt2ts", "ts2dt", "dt2str", "align_timestamp", "align_datetime",
+    "split_freq"]
 
 @lru_cache(None)
 def standardize_freq(freq):
@@ -23,12 +25,16 @@ def standardize_freq(freq):
         return m.group(1) + (m.group(2) or "m")[0].lower()
 
 @lru_cache(None)
+def split_freq(freq):
+    return int(freq[:-1]), freq[-1]
+
+@lru_cache(None)
 def freq2seconds(freq):
     num = int(freq[:-1])
     return num * _base_freq_seconds[freq[-1]]
 
 def dt2ts(dt):
-    return dt.replace(tzinfo=timezone.utc).timestamp()
+    return (dt - _base_dt).total_seconds()
 
 def ts2dt(ts):
     return datetime.utcfromtimestamp(ts)
@@ -38,4 +44,14 @@ def dt2str(dt):
 
 def align_timestamp(t, freq, offset=0):
     unit_s = freq2seconds(freq)
-    return (t - offset) // unit_s * unit_s + offset
+    return (int(t) - offset) // unit_s * unit_s + offset
+
+def align_datetime(dt, freq, offset=0):
+    # NOTE: according to test, this is more slower.
+    # unit_s = freq2seconds(freq)
+    # td = timedelta(seconds=unit_s)
+    # off_dt = timedelta(seconds=offset)
+    # return _base_dt + (dt - _base_dt - off_dt ) // td * td + off_dt
+    ts = dt2ts(dt)
+    align_ts = align_timestamp(dt2ts(dt), freq)
+    return ts2dt(align_ts)

@@ -21,7 +21,7 @@ from vnpy.api.bitmex import BitmexRestApi, BitmexWebsocketApiWithHeartbeat as Bi
 from vnpy.api.bitmex.utils import hmac_new
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-from vnpy.app.ctaStrategy import CtaTemplate
+from vnpy.trader.app.ctaStrategy import CtaTemplate
 
 # 委托状态类型映射
 statusMapReverse = {}
