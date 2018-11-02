@@ -435,7 +435,7 @@ class CtpMdApi(MdApi):
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
         tick.openInterest = data['OpenInterest']
-        tick.time = VN_SEPARATOR.join([data['UpdateTime'], str(data['UpdateMillisec'])])
+        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec'])])
         
         # 上期所和郑商所可以直接使用，大商所需要转换
         tick.date = data['ActionDay']
@@ -1508,7 +1508,7 @@ class CtpTdApi(TdApi):
         symbol = orderReq.symbol
         req = {}
         
-        req['InstrumentID'] = symbol[0]
+        req['InstrumentID'] = symbol
         req['LimitPrice'] = orderReq.price
         req['VolumeTotalOriginal'] = int(orderReq.volume)
         
