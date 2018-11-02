@@ -267,7 +267,8 @@ class CtpGateway(VtGateway):
         #     log.logContent = u'CTP没有该品种交易所信息'
         #     self.onLog(log)
         #     return
-        symbol = symbol[:-4]+ exchange
+        # symbol = symbol[:-4]+ exchange
+        symbol = "%s.%s" % (symbol, exchange)
         # result= []
         start_time = since
         end_time = datetime.now().strftime('%Y%m%d')
@@ -293,7 +294,8 @@ class CtpGateway(VtGateway):
                 else:
                     result= minute
                     i+=1
-            return result.to_dict(orient = 'list')
+            # return result.to_dict(orient = 'list')
+            return result
 
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
