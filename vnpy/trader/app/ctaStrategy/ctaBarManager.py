@@ -130,7 +130,7 @@ class BarTimer(Logger, BarUtilsMixin):
         self._ts_cursor = None
 
     def is_backtesting(self):
-        if self._is_backtesing is None:
+        if self._is_backtesting is None:
             self._is_backtesting = self._parent.is_backtesting()
         return self._is_backtesting
 
