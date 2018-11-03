@@ -237,6 +237,18 @@ class CtpGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
 
+    freq_map = {
+        "1min": "1M",
+        "5min": "5M",
+        "15min": "15M"
+    }
+
+    freq_delta = {
+        "1M": timedelta(minutes=1),
+        "5M": timedelta(minutes=5),
+        "15M": timedelta(minutes=15),
+    }
+
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         if size:
             log = VtLogData()
@@ -245,10 +257,13 @@ class CtpGateway(VtGateway):
             self.onLog(log)
             return
 
-        if type_ != '1min':
+        type_ = self.freq_map.get(type_, type_)
+        # if type_ != '1min':
+        if type_ not in self.freq_map.values():
             log = VtLogData()
             log.gatewayName = self.gatewayName
-            log.logContent = u'CTP初始化数据只接受1分钟bar'
+            # log.logContent = u'CTP初始化数据只接受1分钟bar'
+            log.logContent = u'CTP初始化数据不接受评率: %s' % type_
             self.onLog(log)
             return
 
@@ -277,7 +292,8 @@ class CtpGateway(VtGateway):
             i=0
 
             for trade_date in tradeDays:
-                minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
+                # minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
+                minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq=type_,fields="")
                 trade_datetime = []
                 for j in range(0,len(minutebar)):
                     date,time = minutebar['date'][j],minutebar['time'][j]        
@@ -295,6 +311,7 @@ class CtpGateway(VtGateway):
                     result= minute
                     i+=1
             # return result.to_dict(orient = 'list')
+            result["datetime"] = result["datetime"] - self.freq_delta[type_]
             return result
 
     def qryAllOrders(self, vtSymbol, order_id, status= None):
