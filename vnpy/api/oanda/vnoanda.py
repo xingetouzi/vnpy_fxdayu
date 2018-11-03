@@ -148,11 +148,7 @@ class OandaApi(Logger):
                 self._init_accounts([OandaAccountProperties.from_dict(account) for account in data["accounts"]])               
                 self._logged = True
                 return True
-            else:
-                r.raise_for_status()
-        except Exception as e:
             self.on_error(e)
-        return False
 
     def init(self):
         self._transactor_worker.start()

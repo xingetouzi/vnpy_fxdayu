@@ -55,7 +55,7 @@ class TransactionsStreamWorker(AsyncApiWorker):
             if trans.type == OandaTransactionType.HEARTBEAT.value:
                 self.on_transaction_heartbeat(trans, account_id)
             else:
-                self.api.push_transaction(trans, account_id)
+                self.on_transaction(trans, account_id)
 
     def on_transaction_heartbeat(self, trans, account_id):
         """Callback when there comes a heartbeat transaction"""

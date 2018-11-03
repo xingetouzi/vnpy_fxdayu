@@ -92,7 +92,7 @@ class OandaInstrument(OandaVnpyConvertableData):
         contract.gatewayName = gateway.gatewayName
         contract.symbol = self.name
         contract.exchange = EXCHANGE_OANDA
-        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
         contract.name = self.displayName
         contract.productClass = PRODUCT_FOREX
         contract.size = pow(10, self.tradeUnitsPrecision)
@@ -343,7 +343,7 @@ class OandaTick(OandaVnpyConvertableData):
         tick.symbol = self.instrument
         tick.exchange = EXCHANGE_OANDA
         tick.gatewayName = gateway.gatewayName
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
         tick.datetime = parse(self.time)
         tick.date, tick.time = self.time.split("T")
         tick.date = tick.date.replace("-", "")
