@@ -139,7 +139,7 @@ class BarTimer(Logger, BarUtilsMixin):
             return dt.replace(second=0, microsecond=0)
         else: # NOTE: update timestamp cursor according to timestamp
             unit_s = self._freq_seconds
-            if self._ts_cursor is not None:
+            if self._ts_cursor is None:
                 self._ts_cursor = dt2ts(self.align_datetime(dt, self._freq))
             last_ts = self._ts_cursor
             ts = dt2ts(dt)
