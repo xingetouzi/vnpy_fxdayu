@@ -290,7 +290,6 @@ class CtpGateway(VtGateway):
         if self.ds:
             tradeDays=self.ds.query_trade_dates(start_time,end_time)
             i=0
-
             for trade_date in tradeDays:
                 # minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq='1M',fields="")
                 minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq=type_,fields="")

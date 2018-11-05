@@ -55,7 +55,7 @@ def minute_grouper(dt, spliter):
 
 
 def hour_grouper(dt, spliter):
-    return dt - timedelta(hours=dt.hour%spliter)
+    return dt.replace(minute=0) - timedelta(hours=dt.hour%spliter)
 
 
 def daily_grouper(dt, spliter):
@@ -253,7 +253,7 @@ class BarReader(object):
             return
         if size:
             if len(bars) < size:
-               raise ValueError("length of bars=%s < size=%s" % (len(bars, size)))
+               raise ValueError("length of bars=%s < size=%s" % (len(bars), size))
 
     def history(self, symbol, freq, size=None, start=None, end=None, check_result=True):
         """
@@ -288,7 +288,7 @@ class BarReader(object):
         self.check_freq(freq)
         _spliter, _type = split_freq(freq)
         complete = self.read(symbol, _spliter, _type, size, start, end, False, check_result)
-        active = self.read(symbol, 1, "m", start=complete[-1].datetime, keep_active=True)
+        active = self.read(symbol, 1, "m", start=complete[-1].datetime, keep_active=True, check_result=False)
         grouper = groupers[_type]
         for bar in join_bar(active, grouper, _spliter):
             if bar.datetime > complete[-1].datetime:
@@ -375,6 +375,17 @@ class BarReader(object):
 
 class OKEXBarReader(BarReader):
 
+    FREQUENCIES = [
+        ("1min", 1),
+        ("5min", 5),
+        ("15min", 15),
+        ("30min", 30),
+        ("60min", 60),
+        ("4hour", 240),
+        ("1day", 60*24),
+        ("1week", 60*24*7)
+    ]
+
     def _read(self, symbol, _spliter, _type, size=None, since=None):
         if isinstance(since, datetime):
             now = datetime.now()
@@ -387,9 +398,12 @@ class OKEXBarReader(BarReader):
 
 class CtpBarReader(BarReader):
 
-    FREQUENCIES = [("1min", 1), ("5min", 5)]
+    FREQUENCIES = [("1min", 1), ("5min", 5), ("15min", 15)]
 
     def _read(self, symbol, _spliter, _type, size=None, since=None):
+        if size:
+            minutes = freq_minutes(_spliter, _type) * (size+1)
+            since = datetime.now() - timedelta(days=int(minutes/240))
         return super(CtpBarReader, self)._read(symbol, _spliter, _type, None, since)
 
 
@@ -402,18 +416,59 @@ def show_bars(bars):
 def test_ctp():
     gw = CtpGateway(EventEngine())
     gw.connect()
-    data, last = BarReader(gw).historyActive("rb1901:SHF", "5m", start=datetime(2018, 11, 2), check_result=False)
-    show_bars(data)
-    print(last)
+    reader = BarReader.auto(gw)
+    test(reader, "rb1901:SHF")
 
 
 def test_okex():
     gw = OkexGateway(EventEngine())
+    # gw.connect()
     reader = BarReader.auto(gw)
-    data, last = reader.historyActive("btc_usdt", "10m", size=200, check_result=True)
-    show_bars(data)
-    data = reader.history("btc_usdt", "10m", size=200, check_result=True)
-    show_bars(data)
+    test(reader, "btc_usdt")
+
+
+def test(reader, symbol):
+    import traceback
+    assert isinstance(reader, BarReader)
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
+    params_list = [
+        {"symbol": symbol, "freq": "1m", "size": 20},
+        {"symbol": symbol, "freq": "1m", "start": now.replace(hour=10)},
+        {"symbol": symbol, "freq": "1m", "start": now.replace(hour=10), "end": now.replace(hour=11)},
+        {"symbol": symbol, "freq": "10m", "size": 20},
+        {"symbol": symbol, "freq": "10m", "start": now.replace(hour=10)},
+        {"symbol": symbol, "freq": "10m", "start": now.replace(hour=10), "end": now.replace(hour=11)},
+        {"symbol": symbol, "freq": "1h", "size": 20},
+        {"symbol": symbol, "freq": "1h", "start": now.replace(hour=10)},
+        {"symbol": symbol, "freq": "4h", "size": 30},
+        {"symbol": symbol, "freq": "4h", "start": now.replace(hour=8)-timedelta(hours=72)},
+    ]
+
+    for params in params_list:
+        # 请求历史数据，返回barlist
+        try:
+            data = reader.history(**params)
+        except Exception as e:
+            traceback.print_exc()
+        else:
+        # 以DataFrame输出barlist
+            show_bars(data)
+        finally:
+            print("history", params)
+            print("-"*100)
+
+        # 请求历史数据, 保留未完成k线，返回barlist，最后一分钟k线的时间。
+        try:
+            data, last = reader.historyActive(**params)
+        except Exception as e:
+            traceback.print_exc()
+        else:
+            # 以DataFrame输出barlist
+            show_bars(data)
+            print("last time:", last)
+        finally:
+            print("historyActive", params)
+            print("-"*100)
 
 
 def main():
