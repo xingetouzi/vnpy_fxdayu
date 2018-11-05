@@ -152,6 +152,7 @@ class OandaApi(Logger):
                 r.raise_for_status()
         except Exception as e:
             self.on_error(e)
+            return False
         
     def init(self):
         self._transactor_worker.start()
