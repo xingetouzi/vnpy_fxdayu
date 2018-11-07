@@ -6,7 +6,7 @@ from vnpy.api.oanda.models.transaction import *
 __all__ = ["OandaOrderCreatedResponse", "OandaOrderRejectedResponse", "OandaOrderCancelledResponse",
      "OandaOrderCancelRejectedResponse", "OandaInstrumentsQueryResponse", "OandaAccountSummaryQueryResponse",
      "OandaOrderQueryResponse", "OandaPositionsQueryResponse", "OandaPositionQueryResponse",
-     "OandaTransactionsQueryResponse"]
+     "OandaTransactionsQueryResponse", "OandaCandlesQueryResponse"]
 
 def union_vnpy_data_dicts(dcts):
     keys = reduce(lambda x, y: x.union(set(y)), [dct.keys() for dct in dcts], set())
@@ -89,7 +89,7 @@ class OandaOrderCancelledResponse(OandaVnpyConvertableData):
 
     @classmethod
     def from_dict(cls, dct):
-        obj = super(OandaOrderRejectedResponse, cls).from_dict(dct)
+        obj = super(OandaOrderCancelledResponse, cls).from_dict(dct)
         factor = OandaTransactionFactory()
         obj.orderCancelTransaction = obj.orderCancelTransaction and factory.new(obj.orderCancelTransaction)
         return obj
@@ -216,7 +216,7 @@ class OandaPositionQueryResponse(OandaVnpyConvertableData):
     @classmethod
     def from_dict(cls, dct):
         obj = cls()
-        obj.__dict__ = super(OandaPositionQueryResponse, self).from_dict(dct).__dict__
+        obj.__dict__ = super(OandaPositionQueryResponse, cls).from_dict(dct).__dict__
         obj.position = obj.position and OandaPosition.from_dict(obj.position)
 
     def to_vnpy(self, gateway):
@@ -235,7 +235,7 @@ class OandaTransactionsQueryResponse(OandaVnpyConvertableData):
     @classmethod
     def from_dict(cls, dct):
         obj = cls()
-        obj.__dict__ = super(OandaTransactionsQueryResponse, self).from_dict(dct).__dict__
+        obj.__dict__ = super(OandaTransactionsQueryResponse, cls).from_dict(dct).__dict__
         obj.transactions = obj.transactions or []
         obj.transactions = [OandaTransactionFactory.new(trans) for trans in obj.transactions]
         return obj
@@ -244,3 +244,29 @@ class OandaTransactionsQueryResponse(OandaVnpyConvertableData):
         excludes = set()
         dcts = [trans.to_vnpy(gateway) for trans in self.transactions if trans.id not in excludes]
         return union_vnpy_data_dicts(dcts)
+
+
+class OandaCandlesQueryResponse(OandaData):
+    KEYS = ["instrument", "granularity", "candles"]
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls()
+        obj.__dict__ = super(OandaCandlesQueryResponse, cls).from_dict(dct).__dict__
+        obj.candles = obj.candles or []
+        obj.candles = [OandaCandlesTick.from_dict(d) for d in obj.candles]
+        return obj
+
+    def to_dataframe(self, drop_uncomplete=True):
+        import pandas as pd
+        bars = self.to_vnpy_bars(drop_uncomplete=drop_uncomplete)
+        fields = ["datetime", "date", "time", "open", "high", "low", "close", "volume"]
+        return pd.DataFrame([{k: bar.__dict__[k] for k in fields} for bar in bars])
+
+    def to_vnpy_bars(self, drop_uncomplete=True):
+        candles = self.candles
+        if (not candles[0].complete) and len(candles) > 1:
+            candles = candles[1:]            
+        if (not candles[-1].complete) and drop_uncomplete:
+            candles = candles[:-1]
+        return [candlestick.to_vnpy_bar() for candlestick in candles if candlestick.complete ]

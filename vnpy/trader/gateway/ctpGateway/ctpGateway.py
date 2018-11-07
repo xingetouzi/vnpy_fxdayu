@@ -94,12 +94,13 @@ class CtpGateway(VtGateway):
         
         self.mdApi = CtpMdApi(self)     # 行情API
         self.tdApi = CtpTdApi(self)     # 交易API
+        self.ds = None # jaqs数据源
         
         self.mdConnected = False        # 行情API连接状态，登录完成后为True
         self.tdConnected = False        # 交易API连接状态
         
         self.qryEnabled = False         # 循环查询
-        
+
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)        
         

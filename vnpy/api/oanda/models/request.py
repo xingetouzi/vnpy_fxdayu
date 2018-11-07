@@ -6,18 +6,23 @@ from vnpy.trader.vtConstant import *
 __all__ = [
     "OandaRequest", "OandaOrderRequest", "OandaOrderQueryRequest", "OandaOrderSpecifier",
     "OandaPositionQueryRequest", "OandaAccountQueryRequest", "OandaInstrumentsQueryRequest", 
+    "OandaCandlesQueryRequest",
 ]
 
 
 class OandaRequest(OandaData):
     KEYS = []
  
-    def to_url(self):
+    def to_url(self, exclude=None):
         params=[]
+        if isinstance(exclude, str):
+            exclude = exclude.split(",")
+        exclude = exclude or []
         for k in self.KEYS:
-            v = self.__dict__[k]
-            if v is not None:
-                params.append("%s=%s" % (k, v))
+            if k not in exclude:
+                v = self.__dict__[k]
+                if v is not None:
+                    params.append("%s=%s" % (k, v))
         if params:
             return "?" + "&".join(params)
         else:
@@ -135,6 +140,36 @@ class OandaPositionQueryRequest(OandaRequest):
 
 class OandaAccountQueryRequest(OandaRequest):
     pass
+
+class OandaCandlesQueryRequest(OandaRequest):
+    KEYS = ["instrument", "price", "granularity", "count", "since", "to", "smooth", 
+        "includeFirst", "dailyAlignment", "alignmentTimezone", "weeklyAlignment"]
+
+    def __init__(self):
+        self.instrument = None
+        self.price = None
+        self.granularity = None
+        self.count = None
+        self.since = None
+        self.to = None
+        self.smooth = None
+        self.includeFirst = None
+        self.dailyAlignment = None
+        self.alignmentTimezone = None
+        self.weeklyAlignment = None
+
+    def to_dict(self, drop_none=False):
+        dct = super(OandaCandlesQueryRequest, self).to_dict(drop_none=drop_none)
+        if "since" in dct:
+            dct["from"] = dct["since"]
+        return dct
+
+    def to_url(self):
+        url = super(OandaCandlesQueryRequest, self).to_url(exclude="instrument,since")
+        if self.since:
+            url = (url and (url + "&") or "?") + "from=%s" % self.since
+        return url
+
 
 class OandaInstrumentsQueryRequest(OandaRequest):
     KEYS = ["instruments"]

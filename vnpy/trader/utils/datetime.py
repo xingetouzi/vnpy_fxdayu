@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 
 _base_dt = datetime.utcfromtimestamp(0)
+_dt_format = "%Y%m%d%H%M%S"
 _freq_re_str = "([1-9][0-9]*)(m|M|w|W||s|S|h|H|d|D|min|Min)?"
 _freq_re = re.compile("^%s$" % _freq_re_str)
 _base_freq_seconds =  {
@@ -13,8 +14,8 @@ _base_freq_seconds =  {
     "w": 7 * 24 * 60 * 60,
 }
 
-__all__ = [ "standardize_freq", "freq2seconds", "dt2ts", "ts2dt", "dt2str", "align_timestamp", "align_datetime",
-    "split_freq"]
+__all__ = [ "standardize_freq", "freq2seconds", "dt2ts", "ts2dt", "dt2str", "dt2int", "str2dt", "align_timestamp", "align_datetime",
+    "split_freq", ]
 
 @lru_cache(None)
 def standardize_freq(freq):
@@ -40,7 +41,13 @@ def ts2dt(ts):
     return datetime.utcfromtimestamp(ts)
 
 def dt2str(dt):
-    return dt.strftime("%Y%m%d%H%M%S")
+    return dt.strftime(_dt_format)
+
+def dt2int(dt):
+    return int(dt2str(dt))
+
+def str2dt(s):
+    return datetime.strptime(s, _dt_format)
 
 def align_timestamp(t, freq, offset=0):
     unit_s = freq2seconds(freq)

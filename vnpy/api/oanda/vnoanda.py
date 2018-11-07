@@ -48,6 +48,7 @@ class OandaApi(Logger):
             return {
                 "Authorization": "Bearer %s" % self._token,
                 "Content-Type": "application/json",
+                "Accept-Datetime-Format": "RFC3339"
             }
         else:
             return {}
@@ -209,9 +210,9 @@ class OandaApi(Logger):
                 raise err
         except Exception as e:
             if push:
-                self.on_error(err)
+                self.on_error(e)
             self.log(traceback.format_exc(), level=logging.ERROR)
-            raise err
+            raise e
 
     def send_order(self, req, account_id=None):
         assert isinstance(req, OandaOrderRequest), "type '%s' is not valid oanda order request" % type(req)
@@ -236,10 +237,10 @@ class OandaApi(Logger):
         return self._request_and_handle(url, rep_map, method="PUT", block=False)
 
     def qry_instruments(self, instruments=None, account_id=None, block=True, push=None):
-        account_id = account_id or self.default_account_id
+        account = self.get_account(account_id)
         req = OandaInstrumentsQueryRequest()
         req.instruments = instruments
-        url = (self.get_rest_host() + INSTRUMENTS_ENDPOINT).format(accountID=account_id) + "/" + req.to_url()
+        url = (self.get_rest_host() + INSTRUMENTS_ENDPOINT).format(accountID=account.id) + "/" + req.to_url()
         rep_map = {
             200: OandaInstrumentsQueryResponse
         }
@@ -278,7 +279,7 @@ class OandaApi(Logger):
     def qry_transaction_sinceid(self, id=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
         id = str(id or self._account_trans_lastid)
-        url = (self.get_rest_host() + TRANSACTION_SINCEID_ENDPOINT).format(accountID=account_id) + "?id=%s" % id
+        url = (self.get_rest_host() + TRANSACTION_SINCEID_ENDPOINT).format(accountID=account.id) + "?id=%s" % id
         rep_map = {
             200: OandaTransactionsQueryResponse
         }
@@ -286,6 +287,18 @@ class OandaApi(Logger):
 
     def query_raw_url(self, url, rep_map=None, data=None, method="GET", block=True, push=None):
         return self._request_and_handle(url, rep_map, method=method, data=data, block=block, push=push)
+
+    def qry_candles(self, req=None, account_id=None, block=True, push=None):
+        account = self.get_account(account_id)
+        req = req or OandaCandlesQueryRequest()
+        if not req.instrument:
+            raise ValueError("Instrument must be infered when query candles.")
+        url = (self.get_rest_host() + INSTRUMENTS_CANDLES_ENDPOINT).format(accountID=account.id, instrument=req.instrument) + req.to_url()
+        rep_map = {
+            200: OandaCandlesQueryResponse
+        }
+        print(url)
+        return self._request_and_handle(url, rep_map, block=block, push=push)
 
     def on_transaction(self, trans):
         self.debug(trans)
@@ -319,15 +332,19 @@ if __name__ == "__main__":
     token = "1ca29eec3dae2def6144dff67573a5db-b15637209a1aa58f1db34aadf67c10b8"
     api = OandaPracticeApi()
     api.connect(token)
-    # api.send_order("EUR/USD", 100, 0.1, order_type="LIMIT")
-    api.subscribe()
+    # api.send_order("EUR_USD", 100, 0.1, order_type="LIMIT")
+    # api.subscribe()
     print(api.qry_orders())
     print(api.qry_positions())
-    print(api.qry_account())
-    print(api.qry_instruments())
+    # print(api.qry_account())
+    # print(api.qry_instruments())
+    req = OandaCandlesQueryRequest()
+    req.instrument = "EUR_USD"
+    print(api.qry_candles(req).to_dataframe())
     try:
         while True:
             api.join(1)
     except KeyboardInterrupt as e:
         api.close()
         api.join()
+    

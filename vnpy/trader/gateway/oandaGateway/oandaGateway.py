@@ -1,20 +1,41 @@
 import json
 import logging
 from datetime import datetime
+from functools import lru_cache
 
 from vnpy.trader.vtGateway import VtGateway, EVENT_TIMER
 from vnpy.trader.vtFunction import getJsonPath
-from vnpy.api.oanda.vnoanda import OandaApi, OandaPracticeApi
-from vnpy.api.oanda.interface import AbstractOandaGateway
-from vnpy.api.oanda.models.request import OandaMarketOrderRequest, OandaLimitOrderRequest, OandaOrderSpecifier
+from vnpy.trader.utils.datetime import split_freq, standardize_freq
 from vnpy.trader.vtObject import VtOrderData, VtPositionData, VtTradeData, \
     VtAccountData, VtContractData, VtLogData, VtTickData, VtErrorData
 from vnpy.trader.vtConstant import *
+from vnpy.api.oanda.vnoanda import OandaApi, OandaPracticeApi
+from vnpy.api.oanda.interface import AbstractOandaGateway
+from vnpy.api.oanda.const import OandaCandlesGranularity, OANDA_DATEFORMAT_RFC3339
+from vnpy.api.oanda.models.request import OandaMarketOrderRequest, OandaLimitOrderRequest, OandaOrderSpecifier, \
+    OandaCandlesQueryRequest
+
+
+
+@lru_cache(maxsize=1024)
+def map_frequency(freq):
+    freq = standardize_freq(freq)
+    mul, unit = split_freq(freq)
+    if freq == "1d":
+        s = "D"
+    elif freq == "1w":
+        s = "W"
+    s = unit.upper() + str(mul)
+    try:
+        return OandaCandlesGranularity(s).value
+    except:
+        raise ValueError("无法向Oanda获取%s频率的K线数据" % freq)
+
 
 class OandaGateway(VtGateway, AbstractOandaGateway):
     """Oanda接口"""
 
-    def __init__(self, eventEngine, gatewayName=""):
+    def __init__(self, eventEngine, gatewayName="OANDA"):
         """Constructor"""
         super(OandaGateway, self).__init__(eventEngine, gatewayName)
         self.fileName = self.gatewayName + '_connect.json'
@@ -147,6 +168,10 @@ class OandaGateway(VtGateway, AbstractOandaGateway):
         self._orders[order.orderID] = order
         super(OandaGateway, self).onOrder(order)
 
+    def loadHistoryBar(self, vtSymbol, freq, size=None, since=None, to=None):
+        return self.api.loadHistoryBar(vtSymbol, freq, size=size, since=since, to=to)
+
+
 class VnOandaApi(OandaApi):
     def __init__(self, gateway):
         super(VnOandaApi, self).__init__()
@@ -225,6 +250,24 @@ class VnOandaApi(OandaApi):
     def cancelOrder(self, cancelOrderReq):
         req = OandaOrderSpecifier.from_vnpy(cancelOrderReq)
         self.cancel_order(req)
+
+    def loadHistoryBar(self, vtSymbol, freq, size=None, since=None, to=None):
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
+        req = OandaCandlesQueryRequest()
+        req.instrument = symbol
+        req.granularity = map_frequency(freq)
+        req.count = size
+        if isinstance(since, (int, str)):
+            since = datetime.strptime(str(since), "%Y%m%d")
+        if isinstance(to, (int, str)):
+            to = datetime.strptime(str(to), "%Y%m%d")
+        req.since = since and since.strftime(OANDA_DATEFORMAT_RFC3339)
+        req.to = to and to.strftime(OANDA_DATEFORMAT_RFC3339)
+        if not (req.since and req.count) and not req.to:
+            req.to = datetime.utcnow().strftime(OANDA_DATEFORMAT_RFC3339)
+        df = self.qry_candles(req).to_dataframe()
+        return df
+
 
 class VnOandaPracticeApi(VnOandaApi):
     REST_HOST = OandaPracticeApi.REST_HOST

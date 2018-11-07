@@ -1,14 +1,16 @@
+from datetime import datetime, timedelta
+from functools import partial
+from importlib import import_module
+
+import pandas as pd
+import numpy as np
+
 from vnpy.trader.gateway.okexGateway import OkexGateway
 from vnpy.trader.gateway.ctpGateway import CtpGateway
 from vnpy.event import EventEngine
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import VN_SEPARATOR
-from vnpy.trader.utils.datetime import standardize_freq
-from datetime import datetime, timedelta
-from functools import partial
-import pandas as pd
-import numpy as np
-
+from vnpy.trader.utils.datetime import standardize_freq, split_freq
 
 DATEFORMAT = "%Y%m%d"
 TIMEFORMAT = "%H:%M:%S"
@@ -25,14 +27,8 @@ _base_freq_minutes = {
     "w": 60*24*7
 }
 
-
-def split_freq(freq):
-    return int(freq[:-1]), freq[-1]
-
-
 def freq_minutes(_spliter, _type):
     return _spliter*_base_freq_minutes[_type]
-
 
 def transfer_freq(_spliter, _type):
     minutes = freq_minutes(_spliter, _type)
@@ -53,18 +49,14 @@ def transfer_freq(_spliter, _type):
 def minute_grouper(dt, spliter):
     return dt - timedelta(minutes=dt.minute%spliter)
 
-
 def hour_grouper(dt, spliter):
     return dt.replace(minute=0) - timedelta(hours=dt.hour%spliter)
-
 
 def daily_grouper(dt, spliter):
     return datetime(dt.year, dt.month, dt.day)
 
-
 def weekly_grouper(dt, spliter):
     date = datetime(dt.year, dt.month, dt.day) - timedelta(days=dt.weekday())
-
 
 groupers = {
     "m": minute_grouper,
@@ -72,7 +64,6 @@ groupers = {
     "d": daily_grouper,
     "w": weekly_grouper
 }
-
 
 RSMETHODS = {
     "open": "first",
@@ -82,18 +73,15 @@ RSMETHODS = {
     "volume": "sum"
 }
 
-
 def check_bar(bars):
     assert isinstance(bars, pd.DataFrame), type(bars)
     assert len(bars), "bars length is 0."
     for name in BAR_COLUMN:
         assert name in bars.columns, "%s not in bar.columns" % name
         
-
 def resample(bars, grouper, spliter):
     assert isinstance(bars, pd.DataFrame)
     return bars.groupby(partial(grouper, spliter=spliter)).agg(RSMETHODS)
-
 
 def join_bar(bars, grouper, count):
     current = rebar(bars[0], grouper(bars[0].datetime, count))
@@ -106,7 +94,6 @@ def join_bar(bars, grouper, count):
             current = rebar(bar, grouped)
     yield current
         
-
 def rebar(bar, dt):
     result = VtBarData()
     result.__dict__.update(bar.__dict__)
@@ -114,7 +101,6 @@ def rebar(bar, dt):
     result.time = dt.strftime(TIMEFORMAT)
     result.date = dt.strftime(DATEFORMAT)
     return result
-
 
 def updbar(rootbar, newbar):
     rootbar.close = newbar.close
@@ -124,6 +110,26 @@ def updbar(rootbar, newbar):
         rootbar.low = newbar.low
     rootbar.volume += newbar.volume
 
+def select(bars, index, start=None, end=None, size=None):
+    if start:
+        start = np.searchsorted(index, start)
+        if end:
+            end = np.searchsorted(index, end, "right")
+            return bars[start:end]
+        elif size:
+            return bars[start:start+size]
+        else:
+            return bars[start:]
+    elif end:
+        end = np.searchsorted(index, end, "right")
+        if size:
+            return bars[end-size:end]
+        else:
+            return bars[:end]
+    elif size:
+        return bars[-size:]
+    else:
+        return list(bars)
 
 
 class BarCache(object):
@@ -196,29 +202,8 @@ class BarCache(object):
         return select(selr.bars, self.index, start, end, size)
 
 
-def select(bars, index, start=None, end=None, size=None):
-    if start:
-        start = np.searchsorted(index, start)
-        if end:
-            end = np.searchsorted(index, end, "right")
-            return bars[start:end]
-        elif size:
-            return bars[start:start+size]
-        else:
-            return bars[start:]
-    elif end:
-        end = np.searchsorted(index, end, "right")
-        if size:
-            return bars[end-size:end]
-        else:
-            return bars[:end]
-    elif size:
-        return bars[-size:]
-    else:
-        return list(bars)
-
-
 class BarReader(object):
+    FREQUENCIES = list(zip(FREQS, MINUTES))
 
     def __init__(self, gateway):
         self.gateway = gateway
@@ -226,14 +211,17 @@ class BarReader(object):
         self.cache = {}
     
     @classmethod
-    def auto(cls, gateway):
-        if isinstance(gateway, CtpGateway):
-            return CtpBarReader(gateway)
-        elif isinstance(gateway, OkexGateway):
-            return OKEXBarReader(gateway)
-        else:
+    def new(cls, gateway):
+        module_name = gateway.__class__.__name__.lower().replace("gateway", "")
+        cls_name = module_name[0].upper() + module_name[1:] + "BarReader"
+        package = ".".join(__name__.split(".")[:-1])
+        try:
+            module = import_module(".".join([package, module_name]))
+            cls_ = getattr(module, cls_name)
+            return cls_(gateway)
+        except (ImportError, AttributeError):
             raise TypeError("Not supported gateway: %s" % gateway.__class__.__name__)
-
+        
     def read_cache(self, symbol, freq, start, end, size):
         try:
             cache = self.cache[symbol][freq]
@@ -269,8 +257,8 @@ class BarReader(object):
         """
         freq = standardize_freq(freq)
         self.check_freq(freq)
-        _spliter, _type = split_freq(freq)
-        return self.read(symbol, _spliter, _type, size, start, end, False, check_result)
+        multipler, unit = split_freq(freq)
+        return self.read(symbol, multipler, unit, size, start, end, False, check_result)
     
     def historyActive(self, symbol, freq, size=None, start=None, end=None, check_result=True):
         """
@@ -286,24 +274,27 @@ class BarReader(object):
         """
         freq = standardize_freq(freq)
         self.check_freq(freq)
-        _spliter, _type = split_freq(freq)
-        complete = self.read(symbol, _spliter, _type, size, start, end, False, check_result)
+        multipler, unit = split_freq(freq)
+        complete = self.read(symbol, multipler, unit, size, start, end, False, check_result)
         active = self.read(symbol, 1, "m", start=complete[-1].datetime, keep_active=True, check_result=False)
-        grouper = groupers[_type]
-        for bar in join_bar(active, grouper, _spliter):
+        grouper = groupers[unit]
+        for bar in join_bar(active, grouper, multipler):
             if bar.datetime > complete[-1].datetime:
                 complete.append(bar)
         return complete, active[-1].datetime
 
-    def read(self, symbol, _spliter, _type, size=None, start=None, end=None, keep_active=False, check_result=True):
+    def transform_params(self, multipler, unit, size, start, end):
+        return size, start
+
+    def read(self, symbol, multipler, unit, size=None, start=None, end=None, keep_active=False, check_result=True):
         # TODO: Get cache and modify read params.
-        
-        bars = self._read(symbol, _spliter, _type, size, start)
+        size_, start_ = self.transform_params(multipler, unit, size, start, end)
+        bars = self._read(symbol, multipler, unit, size_, start_)
         
         # TODO: Merge cache and adjust bars.
         
         if not keep_active:
-            if (datetime.now() - bars[-1].datetime).seconds/60 < freq_minutes(_spliter, _type):
+            if (datetime.now() - bars[-1].datetime).seconds/60 < freq_minutes(multipler, unit):
                 bars = bars[:-1]
         if start or end:
             index = [bar.datetime for bar in bars]
@@ -315,23 +306,23 @@ class BarReader(object):
         return bars
     
     def check_freq(self, freq):
-        _spliter, _type = split_freq(freq)
-        if _type in {"d", "w"} and (_spliter > 1):
+        multipler, unit = split_freq(freq)
+        if unit in {"d", "w"} and (multipler > 1):
             raise ValueError("Frequency extension not supported: %s" % freq)
 
-    def _read(self, symbol, _spliter, _type, size=None, since=None):
-        f, multiplier = self.transfer_freq(_spliter, _type)
+    def _read(self, symbol, multipler, unit, size=None, since=None):
+        f, multiplier = self.transfer_freq(multipler, unit)
         if size:
             size = (size+1) * multiplier
         if isinstance(since, datetime):
             since = since.strftime(DATEFORMAT)
         data = self.gateway.loadHistoryBar(symbol, f, size, since)
         check_bar(data)
-        data = data.set_index("datetime").applymap(float)
+        data = data[["datetime", "open", "high", "low", "close", "volume"]].set_index("datetime").applymap(float)
         if multiplier > 1:
-            grouper = groupers.get(_type, None)
+            grouper = groupers.get(unit, None)
             if grouper:
-                data = resample(data, grouper, _spliter)
+                data = resample(data, grouper, multipler)
         data = data.reset_index().rename_axis({"index": "datetime"}, 1)
         return [self.make_bar(symbol, **bar) for bar in data.to_dict("record")]
 
@@ -355,10 +346,8 @@ class BarReader(object):
         for key in sorted(datetimes.keys()):
             yield self.make_bar(symbol, *[data[name][key] for name in BAR_COLUMN])
 
-    FREQUENCIES = list(zip(FREQS, MINUTES))
-
-    def transfer_freq(self, _spliter, _type):
-        minutes = freq_minutes(_spliter, _type)
+    def transfer_freq(self, multipler, unit):
+        minutes = freq_minutes(multipler, unit)
         left = len(self.FREQUENCIES)
         for i in range(len(self.FREQUENCIES)):
             if self.FREQUENCIES[i][1] > minutes:
@@ -371,108 +360,3 @@ class BarReader(object):
                 return f, int(minutes/m)
                 
         raise ValueError("%s cannot be replaced by listed freqs: %s" % (freq, FREQS))
-
-
-class OKEXBarReader(BarReader):
-
-    FREQUENCIES = [
-        ("1min", 1),
-        ("5min", 5),
-        ("15min", 15),
-        ("30min", 30),
-        ("60min", 60),
-        ("4hour", 240),
-        ("1day", 60*24),
-        ("1week", 60*24*7)
-    ]
-
-    def _read(self, symbol, _spliter, _type, size=None, since=None):
-        if isinstance(since, datetime):
-            now = datetime.now()
-            minutes = freq_minutes(_spliter, _type)
-            length = int((now-since).total_seconds()/60/minutes)+1
-            if size is None or length > size:
-                size = length
-        return super(OKEXBarReader, self)._read(symbol, _spliter, _type, size, None)
-
-
-class CtpBarReader(BarReader):
-
-    FREQUENCIES = [("1min", 1), ("5min", 5), ("15min", 15)]
-
-    def _read(self, symbol, _spliter, _type, size=None, since=None):
-        if size:
-            minutes = freq_minutes(_spliter, _type) * (size+1)
-            since = datetime.now() - timedelta(days=int(minutes/240))
-        return super(CtpBarReader, self)._read(symbol, _spliter, _type, None, since)
-
-
-def show_bars(bars):
-    import pandas as pd
-    frame = pd.DataFrame([bar.__dict__ for bar in bars])
-    print(frame.set_index("datetime")[["open", "high", "low", "close", "volume"]])
-
-
-def test_ctp():
-    gw = CtpGateway(EventEngine())
-    gw.connect()
-    reader = BarReader.auto(gw)
-    test(reader, "rb1901:SHF")
-
-
-def test_okex():
-    gw = OkexGateway(EventEngine())
-    # gw.connect()
-    reader = BarReader.auto(gw)
-    test(reader, "btc_usdt")
-
-
-def test(reader, symbol):
-    import traceback
-    assert isinstance(reader, BarReader)
-    now = datetime.now().replace(minute=0, second=0, microsecond=0)
-    params_list = [
-        {"symbol": symbol, "freq": "1m", "size": 20},
-        {"symbol": symbol, "freq": "1m", "start": now.replace(hour=10)},
-        {"symbol": symbol, "freq": "1m", "start": now.replace(hour=10), "end": now.replace(hour=11)},
-        {"symbol": symbol, "freq": "10m", "size": 20},
-        {"symbol": symbol, "freq": "10m", "start": now.replace(hour=10)},
-        {"symbol": symbol, "freq": "10m", "start": now.replace(hour=10), "end": now.replace(hour=11)},
-        {"symbol": symbol, "freq": "1h", "size": 20},
-        {"symbol": symbol, "freq": "1h", "start": now.replace(hour=10)},
-        {"symbol": symbol, "freq": "4h", "size": 30},
-        {"symbol": symbol, "freq": "4h", "start": now.replace(hour=8)-timedelta(hours=72)},
-    ]
-
-    for params in params_list:
-        # 请求历史数据，返回barlist
-        try:
-            data = reader.history(**params)
-        except Exception as e:
-            traceback.print_exc()
-        else:
-        # 以DataFrame输出barlist
-            show_bars(data)
-        finally:
-            print("history", params)
-            print("-"*100)
-
-        # 请求历史数据, 保留未完成k线，返回barlist，最后一分钟k线的时间。
-        try:
-            data, last = reader.historyActive(**params)
-        except Exception as e:
-            traceback.print_exc()
-        else:
-            # 以DataFrame输出barlist
-            show_bars(data)
-            print("last time:", last)
-        finally:
-            print("historyActive", params)
-            print("-"*100)
-
-
-def main():
-    test_okex()
-
-if __name__ == '__main__':
-    main()

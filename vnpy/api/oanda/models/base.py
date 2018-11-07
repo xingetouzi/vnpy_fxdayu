@@ -6,14 +6,14 @@ from dateutil.parser import parse
 
 from vnpy.api.oanda.const import OandaOrderState, OandaOrderType, OandaOrderPositionFill
 from vnpy.api.oanda.utils import str2num
-from vnpy.trader.vtObject import VtOrderData, VtPositionData, VtAccountData, VtContractData, VtTickData
+from vnpy.trader.vtObject import VtOrderData, VtPositionData, VtAccountData, VtContractData, VtTickData, VtBarData
 from vnpy.trader.vtConstant import *
 
 __all__ = [
     "OandaData", "OandaVnpyConvertableData", "OandaAccountProperties",
     "OandaAccountSummary",  "OandaOrder", "OandaMarketOrder", "OandaLimitOrder",
     "OandaPositionSide", "OandaPosition", "OandaClientExtensions", "OandaInstrument",
-    "OandaTick"
+    "OandaTick", "OandaCandlesTick",
 ]
 
 class OandaData(object):
@@ -316,6 +316,14 @@ class OandaPosition(OandaVnpyConvertableData):
             VtPositionData: [pos_long, pos_short],
         }
 
+
+def parse_datetime_str(ts):
+    datetime = parse(ts).replace(tzinfo=None)
+    date, time = ts.split("T")
+    date = date.replace("-", "")
+    time = time.strip("Z")
+    return datetime, date, time
+
 class OandaTick(OandaVnpyConvertableData):
     KEYS = ["type", "time", "bids", "asks", "closeoutBid", "closeoutAsk", "status",
          "tradeable", "instrument"]
@@ -344,10 +352,7 @@ class OandaTick(OandaVnpyConvertableData):
         tick.exchange = EXCHANGE_OANDA
         tick.gatewayName = gateway.gatewayName
         tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-        tick.datetime = parse(self.time)
-        tick.date, tick.time = self.time.split("T")
-        tick.date = tick.date.replace("-", "")
-        tick.time = tick.time.strip("Z")
+        tick.datetime, tick.date, tick.time = parse_datetime_str(self.time)
         ibids = list(range(len(self.bids)))
         iasks = list(range(len(self.asks)))
         bids = {"bidPrice%s" % (i + 1): float(v["price"]) for i, v in zip(ibids, self.bids)}
@@ -362,3 +367,47 @@ class OandaTick(OandaVnpyConvertableData):
         return {
             VtTickData: [tick],
         }
+
+
+class OandaCandlesTickData(OandaData):
+    KEYS = ["o", "h", "l", "c"]
+
+    def __init__(self):
+        self.o = None
+        self.h = None
+        self.l = None
+        self.c = None
+
+
+class OandaCandlesTick(OandaData):
+    KEYS = ["time", "bid", "ask", "mid", "volume", "complete"]
+
+    def __init__(self):
+        self.time = None
+        self.bid = None
+        self.ask = None
+        self.mid = None
+        self.volume = None
+        self.complete = None
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls()
+        obj.__dict__ = super(OandaCandlesTick, cls).from_dict(dct).__dict__
+        obj.bid = obj.bid and OandaCandlesTickData.from_dict(obj.bid)
+        obj.ask = obj.ask and OandaCandlesTickData.from_dict(obj.ask)
+        obj.mid = obj.mid and OandaCandlesTickData.from_dict(obj.mid)
+        return obj
+
+    @property
+    def data(self):
+        return self.mid or self.bid or self.ask
+
+    def to_vnpy_bar(self):
+        bar = VtBarData()
+        bar.datetime, bar.date, bar.time = parse_datetime_str(self.time)
+        bar.open = self.data.o
+        bar.close = self.data.c
+        bar.high = self.data.h
+        bar.low = self.data.l
+        return bar
