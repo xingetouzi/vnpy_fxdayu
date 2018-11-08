@@ -226,7 +226,7 @@ class OkexGateway(VtGateway):
     #------------------------------------------------
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         symbol = vtSymbol[:3]+"_usd"
-        contract_type = vtSymbol.split(':')[0]
+        contract_type = vtSymbol.split(VN_SEPARATOR)[0]
         contractType = contract_type[4:]
         if 'quarter' in contractType or 'week' in contractType:
             data = self.futuresApi.rest_qry_order(symbol,contractType,order_id,status)
@@ -240,7 +240,7 @@ class OkexGateway(VtGateway):
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         """策略初始化时下载历史数据"""
         type_ = KlinePeriodMap[type_]
-        symbol= vtSymbol.split(':')[0]
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
         contractType = symbol[4:]
 
         if 'quarter' in contractType or 'week' in contractType:
@@ -254,7 +254,7 @@ class OkexGateway(VtGateway):
     #------------------------------------------------
     def initPosition(self,vtSymbol):
         """策略初始化时查询策略的持仓"""
-        symbol= vtSymbol.split(':')[0]
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
         contractType = symbol[4:]
         if 'quarter' in contractType or 'week' in contractType:
             symbol = vtSymbol[:3]
@@ -389,7 +389,7 @@ class SpotApi(OkexSpotApi):
             contract.gatewayName = self.gatewayName
             contract.symbol = symbol
             contract.exchange = EXCHANGE_OKEX
-            contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             contract.name = symbol
             
             contract.size = 0.00001
@@ -441,8 +441,7 @@ class SpotApi(OkexSpotApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
-            
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             
             self.tickDict[symbol] = tick
         else:
@@ -471,8 +470,7 @@ class SpotApi(OkexSpotApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
-            
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
         else:
@@ -566,9 +564,8 @@ class SpotApi(OkexSpotApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             
-
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
@@ -623,7 +620,7 @@ class SpotApi(OkexSpotApi):
                 account.gatewayName = self.gatewayName
                 
                 account.accountID = symbol
-                account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
+                account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
                 account.balance = frozen + available
                 account.available = available
                 
@@ -657,10 +654,10 @@ class SpotApi(OkexSpotApi):
                 
                 order.symbol = d['symbol']
                 order.exchange = EXCHANGE_OKEX
-                order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
     
                 order.orderID = localNo
-                order.vtOrderID = ':'.join([self.gatewayName, order.orderID])
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 
                 order.price = d['price']
                 order.totalVolume = d['amount']
@@ -703,9 +700,9 @@ class SpotApi(OkexSpotApi):
             order.gatewayName = self.gatewayName
             order.symbol = rawData['symbol']
             order.exchange = EXCHANGE_OKEX
-            order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
             order.orderID = localNo
-            order.vtOrderID = ':'.join([self.gatewayName, localNo])
+            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, localNo])
             order.direction, priceType = priceTypeMap[rawData['tradeType']]
             order.price = float(rawData['tradeUnitPrice'])
             order.totalVolume = float(rawData['tradeAmount'])
@@ -728,7 +725,7 @@ class SpotApi(OkexSpotApi):
             
             self.tradeID += 1
             trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+            trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
             
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
@@ -758,7 +755,7 @@ class SpotApi(OkexSpotApi):
             account.gatewayName = self.gatewayName
             
             account.accountID = symbol
-            account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
+            account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
             account.available = float(free[symbol])
             account.balance = account.available + float(freezed[symbol])
             
@@ -788,7 +785,7 @@ class SpotApi(OkexSpotApi):
         self.localNo += 1
         self.localid = '_spot_' +str(self.localNo)
         self.localNoQueue.put(str(self.localid))
-        vtOrderID = ':'.join([self.gatewayName, str(self.localid)])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(self.localid)])
         # 缓存委托信息
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -948,7 +945,7 @@ class FuturesApi(OkexFuturesApi):
 
             contract.symbol = symbol
             contract.exchange = EXCHANGE_OKEX
-            contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             contract.name = symbol
             contract.size = 0.00001
             contract.priceTick = 0.00001
@@ -1027,7 +1024,7 @@ class FuturesApi(OkexFuturesApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             
             self.tickDict[symbol] = tick
         else:
@@ -1069,7 +1066,7 @@ class FuturesApi(OkexFuturesApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
         else:
@@ -1168,7 +1165,7 @@ class FuturesApi(OkexFuturesApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
         else:
@@ -1298,7 +1295,7 @@ class FuturesApi(OkexFuturesApi):
         order = VtOrderData()
         order.symbol = symbol
         order.gatewayName = self.gatewayName
-        order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.exchange = EXCHANGE_OKEX
         order.price = rawData['price']
         order.price_avg = rawData['price_avg']
@@ -1401,7 +1398,7 @@ class FuturesApi(OkexFuturesApi):
         pos = VtPositionData()
         pos.gatewayName = self.gatewayName
         pos.symbol = symbol
-        pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
+        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
         pos.exchange = EXCHANGE_OKEX
         
         # 多头仓位
@@ -1412,7 +1409,7 @@ class FuturesApi(OkexFuturesApi):
         longPos.frozen = longPos.position - position[0]['eveningup']
         profit = position[0]['realized']
         longPos.positionProfit = '%10.8f' % profit
-        longPos.vtPositionName = ':'.join([pos.vtSymbol, longPos.direction])
+        longPos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, longPos.direction])
 
         # 空头仓位    
         shortPos = copy(pos)
@@ -1422,7 +1419,7 @@ class FuturesApi(OkexFuturesApi):
         shortPos.frozen = shortPos.position - position[1]['eveningup']
         profit = position[1]['realized']
         shortPos.positionProfit = '%10.8f' % profit
-        shortPos.vtPositionName = ':'.join([pos.vtSymbol, shortPos.direction])            
+        shortPos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, shortPos.direction])            
             
         self.gateway.onPosition(longPos)
         self.gateway.onPosition(shortPos)
@@ -1445,7 +1442,7 @@ class FuturesApi(OkexFuturesApi):
         # 缓存委托信息
         # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
         self.localNo += 1
-        vtOrderID = ':'.join([self.gatewayName, str(self.localNo)])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(self.localNo)])
         # self.localNoQueue.put(str(self.localNo))
 
         type_ = futureOrderTypeMapReverse[(req.direction, req.offset)]
@@ -1553,7 +1550,7 @@ class FuturesApi(OkexFuturesApi):
         order.exchangeOrderID = order_id
         order.symbol = req.symbol
         order.exchange = EXCHANGE_OKEX
-        order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.orderID= str(self.localNo)
         order.vtOrderID = vtOrderID
         order.direction = req.direction
@@ -1638,7 +1635,7 @@ class FuturesApi(OkexFuturesApi):
                     
                     self.tradeID += 1
                     trade.tradeID = str(self.tradeID)
-                    trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                    trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
                     trade.orderID = order.orderID
                     trade.vtOrderID = order.vtOrderID
                     trade.exchangeOrderID = str(order.exchangeOrderID)
@@ -1788,12 +1785,12 @@ class FuturesApi(OkexFuturesApi):
             symbol = position['symbol'][:3]
             contract_type = position['contract_type']
             pos.symbol = symbol + '_' + contract_type
-            pos.vtSymbol = ':'.join([pos.symbol, pos.gatewayName])
+            pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
             self.contractidDict[str(position['contract_id'])] =pos.symbol
 
             pos1 = copy(pos)
             pos1.direction = DIRECTION_LONG
-            pos1.vtPositionName = ':'.join([pos1.vtSymbol, pos1.direction])
+            pos1.vtPositionName = VN_SEPARATOR.join([pos1.vtSymbol, pos1.direction])
             
             # 汇总总仓
             pos1.position = position['buy_amount']
@@ -1805,7 +1802,7 @@ class FuturesApi(OkexFuturesApi):
 
             pos2 = copy(pos)
             pos2.direction = DIRECTION_SHORT
-            pos2.vtPositionName = ':'.join([pos2.vtSymbol, pos2.direction])
+            pos2.vtPositionName = VN_SEPARATOR.join([pos2.vtSymbol, pos2.direction])
 
             # 汇总总仓
             pos2.position = position['sell_amount']
@@ -1879,9 +1876,9 @@ class FuturesApi(OkexFuturesApi):
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
+                        # self.sendOrderDict[order_id] = order  
+                        # self.wsOrderDict[order_id] = order
+                        # self.orderDict[vtOrderID] = order   #更新order信息
 
                         self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
@@ -1891,7 +1888,7 @@ class FuturesApi(OkexFuturesApi):
                         order = VtOrderData()
                         order.symbol = symbol[:3] + contractType
                         order.gatewayName = self.gatewayName
-                        order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+                        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
                         order.exchange = EXCHANGE_OKEX
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
@@ -2010,9 +2007,9 @@ class FuturesApi(OkexFuturesApi):
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
+                        # self.sendOrderDict[order_id] = order  
+                        # self.wsOrderDict[order_id] = order
+                        # self.orderDict[vtOrderID] = order   #更新order信息
 
                         self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))

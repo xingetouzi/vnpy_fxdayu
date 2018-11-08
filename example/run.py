@@ -29,7 +29,7 @@ from vnpy.trader.gateway import (huobiGateway, okexGateway,binanceGateway)
 from vnpy.trader.app import (algoTrading,ctaStrategy)
 
 # 当前目录组件
-from uiCryptoWindow import MainWindow
+from vnpy.trader.uiCryptoWindow import MainWindow
 
 #----------------------------------------------------------------------
 def main():

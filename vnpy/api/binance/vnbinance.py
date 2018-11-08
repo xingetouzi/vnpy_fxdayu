@@ -263,7 +263,7 @@ class BinanceApi(object):
             lambda x: float(x))
         df["volume"] = df["volume"].map(
             lambda x: float(x))
-        return self.addReq('GET', path, params, self.onQueryKlines),df.to_dict()
+        return self.addReq('GET', path, params, self.onQueryKlines),df#.to_dict()
 
         # ----------------------------------------------------------------------
 

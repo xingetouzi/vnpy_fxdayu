@@ -220,8 +220,178 @@ class BacktestingEngine(object):
     #-------------------------------------------------
     def setCachePath(self, path):
         self.cachePath = path
-
+    # def load1Day_MinData(self,symbolList,Date):
+    #     dataClass = VtBarData
+    #     # Date=Date.strftime("%Y%m%d %H:%M")
+    #     Year_now=str(Date.year)[2:]
+    #     Year_next=str(Date.year+1)[2:]
+    #     Mon=Date.month
+    #     Yesterday=Date-timedelta(1)
+    #     start = datetime(Yesterday.year, Yesterday.month, Yesterday.day, 21, 1, 0)
+    #     end = datetime(Date.year, Date.month, Date.day, 15, 0, 0)
+    #     Date=str(Date.year*10000+Date.month*100+Date.day)
+    #     Yesterday=str(Yesterday.year*10000+Yesterday.month*100+Yesterday.day)
+    #     dataList = []
+    #
+    #     for sym in symbolList:
+    #         col=[]
+    #         if not self.dbClient[self.dbName].collection_names():
+    #             continue
+    #         else:
+    #             for cn in self.dbClient[self.dbName].collection_names():
+    #                 if cn[:-4] == sym:
+    #                     if cn[-4:-2] == Year_now:
+    #                         if int(cn[-2:]) >= Mon:
+    #                             col.append(cn)
+    #                     elif cn[-4:-2] == Year_next:
+    #                         if int(cn[-2:]) <= Mon:
+    #                             col.append(cn)
+    #         if self.strategy.mainContract[sym]==None:
+    #             l=[]
+    #             for i in col:
+    #                 if list(self.dbClient[self.dbName][i].find({"date":{"$eq":Date},"time":{"$eq":'15:00:00'}})):
+    #                     l.append(list(self.dbClient[self.dbName][i].find({"date":{"$eq":Date},"time":{"$eq":'15:00:00'}}))[-1])
+    #             if l:
+    #                 self.strategy.mainContract[sym]=sorted(l,key=lambda item : item['open_interest'])[-1]['symbol']
+    #                 self.strategy.mainContract_change[sym]=False
+    #                 self.output(u'判断主力合约')
+    #                 return 'init'
+    #             else:
+    #                 continue
+    #         else:
+    #             collection = self.dbClient[self.dbName][self.strategy.mainContract[sym]]
+    #             Cursor = collection.find({"datetime": {"$lt": end},"datetime":{ "$gt": start}})  # 按日回测检索
+    #             # print(Date,Yesterday,self.strategy.mainContract[sym])
+    #             data_df = pd.DataFrame(list(Cursor))
+    #             if data_df.size > 0:
+    #                 del data_df["_id"]
+    #
+    #                 dataList += [self.parseData(dataClass, item.to_dict()) for _, item in
+    #                          data_df[(data_df.datetime >= start) & (data_df.datetime < end)].iterrows()]
+    #
+    #             l = []
+    #             for i in col:
+    #                 if list(self.dbClient[self.dbName][i].find({"date": {"$eq": Date}, "time": {"$eq": '15:00:00'}})):
+    #                     l.append(list(self.dbClient[self.dbName][i].find({"date": {"$eq": Date}, "time": {"$eq": '15:00:00'}}))[-1])
+    #                     if i ==self.strategy.mainContract[sym]:
+    #                         main_oi=list(self.dbClient[self.dbName][i].find({"date": {"$eq": Date}, "time": {"$eq": '15:00:00'}}))[-1]['open_interest']
+    #             if l:
+    #                 if self.strategy.mainContract[sym]!=sorted(l,key=lambda item : item['open_interest'])[-1]['symbol']:
+    #                     if sorted(l,key=lambda item : item['open_interest'])[-1]['open_interest']>=1.2*main_oi:
+    #                         self.strategy.exmainContract[sym]=self.strategy.mainContract[sym]
+    #                         self.strategy.mainContract[sym] = sorted(l, key=lambda item: item['open_interest'])[-1]['symbol']
+    #                         self.strategy.mainContract_change[sym]=True
+    #     if len(dataList) > 0:
+    #         dataList.sort(key=lambda x: (x.datetime))
+    #         return dataList
+    #     else:
+    #         return []
+    #
+    # def loadHistoryData(self, maincontractsymbol, endDate, startDate=None):
+    #     collection = self.dbClient[self.dbName][maincontractsymbol]
+    #     if startDate:
+    #         Cursor = collection.find({"datetime":{"$lt":datetime(endDate.year,endDate.month,endDate.day,9,0),"$gt":datetime(int(startDate[:4]),int(startDate[4:6]),int(startDate[6:8]),9,0)}})
+    #     else:
+    #         Cursor = collection.find({"datetime": {"$lt": datetime(endDate.year, endDate.month, endDate.day, 9, 0)}})
+    #     data_df = pd.DataFrame(list(Cursor))
+    #     if data_df.size > 0:
+    #         del data_df["_id"]
+    #     dataList=[]
+    #     dataList += [self.parseData(VtBarData, item.to_dict()) for _, item in
+    #                  data_df.iterrows()]
+    #     if len(dataList) > 0:
+    #         dataList.sort(key=lambda x: (x.datetime))
+    #         self.output(u'载入完成，数据量：%s' % (len(dataList)))
+    #         return dataList
+    #     else:
+    #         self.output(u'！！ 数据量为 0 ！！')
+    #         return []
     #----------------------------------------------------------------------
+    # def loadHistoryData(self, symbolList, startDate, endDate=None):
+    #     """载入历史数据:数据范围[start:end)"""
+    #     # 首先根据回测模式，确认要使用的数据类
+    #     if self.mode == self.BAR_MODE:
+    #         dataClass = VtBarData
+    #     else:
+    #         dataClass = VtTickData
+    #
+    #     if not endDate:
+    #         endDate = datetime.strptime(self.END_OF_THE_WORLD, '%Y%m%d %H:%M')
+    #
+    #     start = startDate.strftime("%Y%m%d %H:%M")
+    #     end = endDate.strftime("%Y%m%d %H:%M")
+    #
+        # date_list = get_date_list(start=startDate, end=endDate)    # 原版的按日回测
+    #     datetime_list = get_time_list(start=startDate, end=endDate)
+    #     datetime_list = [d.strftime("%Y%m%d %H:%M") for d in datetime_list]
+    #
+    #     date_list = [d[:8] for d in datetime_list]
+    #     date_list = list(set(date_list))
+    #     need_files = [d+".h5" for d in date_list]
+    #
+    #     self.output(u'载入历史数据。数据范围:[%s,%s)'%(start,end))
+    #     # 下载数据
+    #     dataList = []
+    #     # 优先从本地文件缓存读取数据
+    #     symbols_no_data = dict() #本地缓存没有的数据
+    #     for symbol in symbolList:
+    #         symbols_no_data[symbol] = date_list.copy()
+    #         save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
+    #         if os.path.isdir(save_path):
+    #             files = list(set(os.listdir(save_path)) & set(need_files)) # 加载本地文件当中有的且在下载日期范围内的数据
+    #             for file in files:
+    #                 try:
+    #                     file_path = os.path.join(save_path, file)
+    #                     data_df = pd.read_hdf(file_path,"d")
+    #                 except:
+    #                     continue
+    #
+    #                 dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]
+    #                 symbols_no_data[symbol].remove(file.replace(".h5",""))
+    #
+    #     # 从mongodb下载数据，并缓存到本地
+    #
+    #     try:
+    #         for symbol in symbolList:
+    #             if symbol in self.dbClient[self.dbName].collection_names():
+    #
+    #                 if len(symbols_no_data[symbol])>0:
+    #
+    #                     collection = self.dbClient[self.dbName][symbol]
+    #                     Cursor = collection.find({"date": {"$in":symbols_no_data[symbol]}})   # 按日回测检索
+    #                     data_df = pd.DataFrame(list(Cursor))
+    #                     if data_df.size > 0:
+    #                         del data_df["_id"]
+    #
+    #                     # 筛选出需要的时间段
+    #                     dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]
+    #
+    #                     # 缓存到本地文件
+    #                     if data_df.size>0:
+    #                         save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
+    #                         if not os.path.isdir(save_path):
+    #                             os.makedirs(save_path)
+    #                         for date in symbols_no_data[symbol]:
+    #                             file_data = data_df[data_df["date"]==date]
+    #                             if file_data.size>0:
+    #                                 file_path = os.path.join(save_path, "%s.h5" % (date,))
+    #                                 file_data.to_hdf(file_path, key="d")
+    #                 else:
+    #                     self.output(" 当前品种 %s 的数据，全部来自于本地缓存"%symbol)
+    #
+    #             else:
+    #                 self.output("我们的数据库没有 %s 这个品种"%symbol)
+    #                 self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
+    #     except:
+    #         self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
+    #
+    #     if len(dataList) > 0:
+    #         dataList.sort(key=lambda x: (x.datetime))
+    #         self.output(u'载入完成，数据量：%s' %(len(dataList)))
+    #         return dataList
+    #     else:
+    #         self.output(u'！！ 数据量为 0 ！！')
+    #         return []
     def loadHistoryData(self, symbolList, startDate, endDate=None):
         """载入历史数据:数据范围[start:end)"""
         # 首先根据回测模式，确认要使用的数据类
@@ -235,100 +405,108 @@ class BacktestingEngine(object):
 
         start = startDate.strftime("%Y%m%d %H:%M")
         end = endDate.strftime("%Y%m%d %H:%M")
+        start_year = start[2:4]
+        start_mon = start[4:6]
+        end_year = end[2:4]
+        end_mon = end[4:6]
+        dataList=[]
 
-        # date_list = get_date_list(start=startDate, end=endDate)    # 原版的按日回测
-        datetime_list = get_time_list(start=startDate, end=endDate)
-        datetime_list = [d.strftime("%Y%m%d %H:%M") for d in datetime_list]
+        for sym in symbolList:
+            col = []
+            for cn in self.db.collection_names():
+                if cn[:-4] == sym:
+                    if cn[-4:-2] == start_year:
+                        if cn[-2:] >= start_mon:
+                            col.append(cn)
+                    elif end_year >= cn[-4:-2] > start_year:
+                        col.append(cn)
+                    elif cn[-4:-2] == str(int(end_year) + 1):
+                        if cn[-2:] < end_mon:
+                            col.append(cn)
+            df = {}
+            for c in col:
+                collection = self.db[c]
+                Cursor = collection.find({"datetime": {"$lte": endDate},
+                                          "datetime": {"$gte": startDate}})
+                df[c] = pd.DataFrame(list(Cursor))
 
-        date_list = [d[:8] for d in datetime_list]
-        date_list = list(set(date_list))
-        need_files = [d+".h5" for d in date_list]
+            data = pd.DataFrame()
+            self.strategy.mainContract_changeDate[sym] = []
+            i = startDate
+            maincontract = None
+            for d in range((endDate - startDate).days + 1):
+                day = startDate + timedelta(days=d) - timedelta(hours=6)
+                if maincontract:
 
-        self.output(u'载入历史数据。数据范围:[%s,%s)'%(start,end))
-        # 下载数据
-        dataList = []
-        # 优先从本地文件缓存读取数据
-        symbols_no_data = dict() #本地缓存没有的数据
-        for symbol in symbolList:
-            symbols_no_data[symbol] = date_list.copy()
-            save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
-            if os.path.isdir(save_path):
-                files = list(set(os.listdir(save_path)) & set(need_files)) # 加载本地文件当中有的且在下载日期范围内的数据
-                for file in files:
-                    try:
-                        file_path = os.path.join(save_path, file)
-                        data_df = pd.read_hdf(file_path,"d")
-                    except:
-                        continue
-                    
-                    dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]                    
-                    symbols_no_data[symbol].remove(file.replace(".h5",""))
+                    temp = {k: v[v.datetime == i]['open_interest'].values[0] for k, v in df.items() if
+                            not v[v.datetime == i].empty}
+                    if temp:
+                        if max(temp, key=temp.get) != maincontract:
+                            if maincontract in temp.keys():
+                                if temp[max(temp, key=temp.get)] > 1.2 * temp[maincontract]:
+                                    maincontract = max(temp, key=temp.get)
+                                    self.strategy.mainContract_changeDate[sym].append(i)
 
-        # 从mongodb下载数据，并缓存到本地
-        self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
-        try:            
-            for symbol in symbolList:
-                if symbol in self.dbClient[self.dbName].collection_names():
+                            else:
+                                maincontract = max(temp, key=temp.get)
+                                self.strategy.mainContract_changeDate[sym].append(i)
 
-                    if len(symbols_no_data[symbol])>0:
-                        
-                        collection = self.dbClient[self.dbName][symbol]
-                        Cursor = collection.find({"date": {"$in":symbols_no_data[symbol]}})   # 按日回测检索
-                        data_df = pd.DataFrame(list(Cursor))
-                        if data_df.size > 0:
-                            del data_df["_id"]
+                        for k in list(df.keys()):
+                            if k[-4:-2] < maincontract[-4:-2]:
+                                del df[k]
+                            elif k[-4:-2] == maincontract[-4:-2]:
+                                if k[-2:] < maincontract[-2:]:
+                                    del df[k]
 
-                        # 筛选出需要的时间段
-                        dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]
-
-                        # 缓存到本地文件
-                        if data_df.size>0:
-                            save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":","_"))
-                            if not os.path.isdir(save_path):
-                                os.makedirs(save_path)
-                            for date in symbols_no_data[symbol]:
-                                file_data = data_df[data_df["date"]==date]
-                                if file_data.size>0:
-                                    file_path = os.path.join(save_path, "%s.h5" % (date,))
-                                    file_data.to_hdf(file_path, key="d")
-                    else:
-                        self.output(" 当前品种 %s 的数据，全部来自于本地缓存"%symbol)
+                    data = pd.concat(
+                        [data, df[maincontract][(df[maincontract].datetime > i) & (df[maincontract].datetime <= day)]])
 
                 else:
-                    self.output("我们的数据库没有 %s 这个品种"%symbol)
-                    self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
-        except:
-            self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
+                    temp = {k: v[v.datetime == day]['open_interest'].values[0] for k, v in df.items() if
+                            not v[v.datetime == day].empty}
+                    if temp:
+                        maincontract = max(temp, key=temp.get)
+                        for k in list(df.keys()):
+                            if k[-4:-2] < maincontract[-4:-2]:
+                                del df[k]
+                            elif k[-4:-2] == maincontract[-4:-2]:
+                                if k[-2:] < maincontract[-2:]:
+                                    del df[k]
+
+                        data = pd.concat(
+                            [data, df[maincontract][(df[maincontract].datetime > i) & (df[maincontract].datetime <= day)]])
+
+                i = day
+            dataList += [self.parseData(dataClass, item.to_dict()) for _, item in
+                         data.iterrows()]
+
 
         if len(dataList) > 0:
+
             dataList.sort(key=lambda x: (x.datetime))
             self.output(u'载入完成，数据量：%s' %(len(dataList)))
             return dataList
         else:
             self.output(u'！！ 数据量为 0 ！！')
             return []
-        
-    #----------------------------------------------------------------------
+
+    def load_1data(self,Symbol, Datetime):
+        col=self.db[Symbol]
+        cursor = col.find({"datetime": {"$gt": Datetime}})
+        data=list(cursor)[0]
+        return self.parseData(VtBarData, data)
     def runBacktesting(self):
-        """运行回测"""
-
-        dataLimit = 1000000
-        self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
-        # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
-        if self.mode == self.BAR_MODE:
-            func = self.newBar
-            dataDays = max(dataLimit//(len(self.strategy.symbolList) * 24 * 60),1)
-        else:
-            func = self.newTick
-            dataDays = max(dataLimit//(len(self.strategy.symbolList) * 24 * 60 * 60 * 5),1)
-
+        self.clearBacktestingResult()
+        self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
+        self.db=self.dbClient[self.dbName]
+        func = self.newBar
         self.output(u'开始回测')
-
-        self.initData = [] # 清空内存里的数据
-        self.backtestData = [] # 清空内存里的数据
+        self.initData = []  # 清空内存里的数据
+        self.backtestData =[] # 清空内存里的数据
         # 策略初始化
         self.output(u'策略初始化')
-        # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
+        # for sym in self.strategy.symbolList:
+        #     self.strategy.mainContract[sym]=None
         if self.strategyStartDate == self.dataStartDate:
             self.output(u'策略无请求历史数据初始化')
         else:
@@ -340,52 +518,142 @@ class BacktestingEngine(object):
         self.strategy.trading = True
         self.strategy.onStart()
         self.output(u'策略启动完成')
+        start = self.dataStartDate
 
-        # 分批加载回测数据.数据范围:[self.dataStartDate,self.dataEndDate+1)
-        begin = start = self.dataStartDate
-        stop = self.dataEndDate
-        # stop = self.dataEndDate+timedelta(1)
-        self.output(u'开始回放回测数据,回测范围:[%s,%s)'%(begin.strftime("%Y%m%d %H:%M"),stop.strftime("%Y%m%d %H:%M")))
-        while start<stop:
-            end = min(start + timedelta(dataDays), stop)
-            self.backtestData = self.loadHistoryData(self.strategy.symbolList,start,end)
-            if len(self.backtestData)==0:
-                break
-            else:
-                self.output(u'当前回放数据:[%s,%s)'%(start.strftime("%Y%m%d %H:%M"),end.strftime("%Y%m%d %H:%M")))
-                oneP = int(len(self.backtestData) / 100)
+        end = self.dataEndDate
+        self.output(u'开始回放回测数据,回测范围:[%s,%s)' % (start.strftime("%Y%m%d %H:%M"), end.strftime("%Y%m%d %H:%M")))
+        self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end)
+        for idx, data in enumerate(self.backtestData):
+            func(data)
+            for sym in self.strategy.symbolList:
+                if self.strategy.mainContract_changeDate[sym]:
+                    if data.datetime==self.strategy.mainContract_changeDate[sym][0]:
+                        temp = self.load_1data(data.vtSymbol, data.datetime)
+                        self.strategy.temp[sym]=temp
+                        self.strategy.mainContract_change[sym]=True
+                        if self.strategy.posDict[sym + '_LONG'] != 0:
 
-                for idx, data in enumerate(self.backtestData):
-                    if idx % oneP == 0:
-                        self.output('Progress: %s%%' % str(int(idx / oneP)), True)
-                    func(data)
-                start = end
+                            self.sendOrder(sym, CTAORDER_SELL, temp.close, self.strategy.posDict[sym+'_LONG'],
+                                           priceType=PRICETYPE_MARKETPRICE, levelRate=0)
+                            self.crossLimitOrder(temp)  # 先撮合限价单
 
-        self.output(u'数据回放结束')
+                            self.strategy.change_Long[sym]=True
+                        elif self.strategy.posDict[sym+'_SHORT']!=0:
 
-        # 日志输出模块
-        if self.logActive:
-            dataframe = pd.DataFrame(self.logList)
-
-            if self.logPath:
-                save_path = os.path.join(self.logPath, self.logFolderName)
-            else:
-                save_path = os.path.join(os.getcwd(), self.logFolderName)
-
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path)
-            filename = os.path.join(save_path, u"日志.csv" )
-            dataframe.to_csv(filename,index=False,sep=',')  
-            self.output(u'策略日志已生成') 
+                            self.sendOrder(sym, CTAORDER_COVER, temp.close, self.strategy.posDict[sym + '_SHORT'],
+                                            priceType=PRICETYPE_MARKETPRICE, levelRate=0)
+                            self.crossLimitOrder(temp)  # 先撮合
+                            self.strategy.change_Short[sym] = True
+                        del self.strategy.mainContract_changeDate[sym][0]
+                        self.output(u'策略更换合约,当前主力合约%s' % data.vtSymbol)
+        # for d in range((end - start).days + 1):
+        #     day = start + timedelta(days=d)
+        #     self.backtestData = self.load1Day_MinData(self.strategy.symbolList,day)
+        #     if self.backtestData=='init':
+        #         self.strategy.inited = True
+        #         self.strategy.onInit()
+        #         self.output(u'策略初始化完成')
+        #     elif self.backtestData==[]:
+        #         continue
+        #     else:
+        #         for idx, data in enumerate(self.backtestData):
+        #             func(data)
+        #         for sym in self.strategy.symbolList:
+        #             if self.strategy.mainContract_change[sym]==True:
+        #                 if self.strategy.posDict[sym+'_LONG']!=0:
+        #                     self.sendOrder(sym, CTAORDER_SELL, data.close, self.strategy.posDict[sym+'_LONG'],
+        #                                    priceType=PRICETYPE_MARKETPRICE, levelRate=0)
+        #                     self.crossLimitOrder(data)  # 先撮合限价单
+        #                     self.crossStopOrder(data)
+        #                     self.change_long_position=True
+        #                 elif self.strategy.posDict[sym+'_SHORT']!=0:
+        #                     self.sendOrder(sym, CTAORDER_COVER, data.close, self.strategy.posDict[sym + '_SHORT'],
+        #                                     priceType=PRICETYPE_MARKETPRICE, levelRate=0)
+        #                     self.crossLimitOrder(data)  # 先撮合限价单
+        #                     self.crossStopOrder(data)
+        #                     self.change_short_position = True
+        #                 self.strategy.change_contract(self.strategy.mainContract[sym],day)
+        #                 self.strategy.mainContract_change[sym]=False
+        #                 self.output(u'策略更换合约,当前主力合约%s'%self.strategy.mainContract)
+#----------------------------------------------------------------------
+    # def runBacktesting(self):
+    #     """运行回测"""
+    #
+    #     dataLimit = 1000000
+    #     self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
+    #     # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
+    #     if self.mode == self.BAR_MODE:
+    #         func = self.newBar
+    #         dataDays = max(dataLimit//(len(self.strategy.symbolList) * 24 * 60),1)
+    #     else:
+    #         func = self.newTick
+    #         dataDays = max(dataLimit//(len(self.strategy.symbolList) * 24 * 60 * 60 * 5),1)
+    #
+    #     self.output(u'开始回测')
+    #
+    #     self.initData = [] # 清空内存里的数据
+    #     self.backtestData = [] # 清空内存里的数据
+    #     # 策略初始化
+    #     self.output(u'策略初始化')
+    #     # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
+    #     if self.strategyStartDate == self.dataStartDate:
+    #         self.output(u'策略无请求历史数据初始化')
+    #     else:
+    #         self.initData = self.loadHistoryData(self.strategy.symbolList,self.strategyStartDate,self.dataStartDate)
+    #     self.strategy.inited = True
+    #     self.strategy.onInit()
+    #     self.output(u'策略初始化完成')
+    #
+    #     self.strategy.trading = True
+    #     self.strategy.onStart()
+    #     self.output(u'策略启动完成')
+    #
+    #     # 分批加载回测数据.数据范围:[self.dataStartDate,self.dataEndDate+1)
+    #     begin = start = self.dataStartDate
+    #     stop = self.dataEndDate
+    #     # stop = self.dataEndDate+timedelta(1)
+    #     self.output(u'开始回放回测数据,回测范围:[%s,%s)'%(begin.strftime("%Y%m%d %H:%M"),stop.strftime("%Y%m%d %H:%M")))
+    #     while start<stop:
+    #         end = min(start + timedelta(dataDays), stop)
+    #         self.backtestData = self.loadHistoryData(self.strategy.symbolList,start,end)
+    #         if len(self.backtestData)==0:
+    #             break
+    #         else:
+    #             self.output(u'当前回放数据:[%s,%s)'%(start.strftime("%Y%m%d %H:%M"),end.strftime("%Y%m%d %H:%M")))
+    #             oneP = int(len(self.backtestData) / 100)
+    #
+    #             for idx, data in enumerate(self.backtestData):
+    #                 if idx % oneP == 0:
+    #                     self.output('Progress: %s%%' % str(int(idx / oneP)), True)
+    #                 func(data)
+    #             start = end
+    #
+    #     self.output(u'数据回放结束')
+    #
+    #     # 日志输出模块
+    #     if self.logActive:
+    #         dataframe = pd.DataFrame(self.logList)
+    #
+    #         if self.logPath:
+    #             save_path = os.path.join(self.logPath, self.logFolderName)
+    #         else:
+    #             save_path = os.path.join(os.getcwd(), self.logFolderName)
+    #
+    #         if not os.path.isdir(save_path):
+    #             os.makedirs(save_path)
+    #         filename = os.path.join(save_path, u"日志.csv" )
+    #         dataframe.to_csv(filename,index=False,sep=',')
+    #         self.output(u'策略日志已生成')
         
     #----------------------------------------------------------------------
+
     def newBar(self, bar):
         """新的K线"""
-        self.barDict[bar.vtSymbol] = bar
+        self.barDict[bar.vtSymbol[:-4]] = bar
         self.dt = bar.datetime        
 
         self.crossLimitOrder(bar)      # 先撮合限价单
-        self.crossStopOrder(bar)       # 再撮合停止单
+        # self.crossStopOrder(bar)       # 再撮合停止单
         self.strategy.onBar(bar)       # 推送K线到策略中
         
         self.updateDailyClose(bar.vtSymbol, bar.datetime, bar.close)
@@ -408,6 +676,8 @@ class BacktestingEngine(object):
         setting是策略的参数设置，如果使用类中写好的默认设置则可以不传该参数
         """
         self.strategy = strategyClass(self, setting)
+        self.strategy.mainContract={}
+        self.strategy.mainContract={}
         self.strategy.name = self.strategy.className
         self.strategy.symbolList = setting['symbolList']
         self.strategy.posDict = {}
@@ -426,7 +696,7 @@ class BacktestingEngine(object):
             sellCrossPrice = data.high      # 若卖出方向限价单价格低于该价格，则会成交
             buyBestCrossPrice = data.open   # 在当前时间点前发出的买入委托可能的最优成交价
             sellBestCrossPrice = data.open  # 在当前时间点前发出的卖出委托可能的最优成交价
-            symbol = data.vtSymbol
+            symbol = data.vtSymbol[:-4]
         else:
             buyCrossPrice = data.askPrice1
             sellCrossPrice = data.bidPrice1
@@ -512,110 +782,108 @@ class BacktestingEngine(object):
                         del self.workingLimitOrderDict[orderID]
                 
     #----------------------------------------------------------------------
-    def crossStopOrder(self, data):
-        """基于最新数据撮合停止单"""
-        # 先确定会撮合成交的价格，这里和限价单规则相反
-        if self.mode == self.BAR_MODE:
-            buyCrossPrice = data.high    # 若买入方向停止单价格低于该价格，则会成交
-            sellCrossPrice = data.low    # 若卖出方向限价单价格高于该价格，则会成交
-            bestCrossPrice = data.open   # 最优成交价，买入停止单不能低于，卖出停止单不能高于
-            symbol = data.vtSymbol
-        else:
-            buyCrossPrice = data.lastPrice
-            sellCrossPrice = data.lastPrice
-            bestCrossPrice = data.lastPrice
-            symbol = data.vtSymbol
-
-        # 遍历停止单字典中的所有停止单
-
-        for stopOrderID in list(self.workingStopOrderDict):
-            so = self.workingStopOrderDict[stopOrderID]
-            if so.vtSymbol == symbol:
-                # 判断是否会成交
-                buyCross = so.direction==DIRECTION_LONG and so.price<=buyCrossPrice
-                sellCross = so.direction==DIRECTION_SHORT and so.price>=sellCrossPrice
-                
-                # 如果发生了成交
-                if buyCross or sellCross:
-                    # 更新停止单状态，并从字典中删除该停止单
-                    so.status = STOPORDER_TRIGGERED
-                    if stopOrderID in self.workingStopOrderDict:
-                        del self.workingStopOrderDict[stopOrderID]                        
-
-                    # 推送成交数据
-                    self.tradeCount += 1            # 成交编号自增1
-                    tradeID = str(self.tradeCount)
-                    trade = VtTradeData()
-                    trade.vtSymbol = so.vtSymbol
-                    trade.tradeID = tradeID
-                    trade.vtTradeID = tradeID
-                    # trade.levelRate = levelRate
-
-                    if buyCross and so.offset == OFFSET_OPEN: # 买开
-                        self.strategy.posDict[symbol+"_LONG"] += so.volume
-                        trade.price = max(bestCrossPrice, so.price)
-                    elif buyCross and so.offset == OFFSET_CLOSE: # 买平
-                        self.strategy.posDict[symbol+"_SHORT"] -= so.volume
-                        trade.price = max(bestCrossPrice, so.price)
-                    elif sellCross and so.offset == OFFSET_OPEN: # 卖开
-                        self.strategy.posDict[symbol+"_SHORT"] += so.volume
-                        trade.price = min(bestCrossPrice, so.price)
-                    elif sellCross and so.offset == OFFSET_CLOSE: # 卖平
-                        self.strategy.posDict[symbol+"_LONG"] -= so.volume
-                        trade.price = min(bestCrossPrice, so.price)
-
-                    elif buyCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[symbol] += so.volume
-                        trade.price = max(bestCrossPrice, so.price)
-                    elif sellCross and so.offset == OFFSET_NONE: 
-                        self.strategy.posDict[symbol] -= so.volume
-                        trade.price = min(bestCrossPrice, so.price)
-
-                    trade.price_avg = trade.price
-                    
-                    self.limitOrderCount += 1
-                    orderID = str(self.limitOrderCount)
-                    trade.orderID = orderID
-                    trade.vtOrderID = orderID
-                    trade.direction = so.direction
-                    trade.offset = so.offset
-                    trade.volume = so.volume
-                    trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
-                    trade.dt = self.dt
-                    
-                    self.tradeDict[tradeID] = trade
-                    
-                    # 推送委托数据
-                    order = VtOrderData()
-                    order.vtSymbol = so.vtSymbol
-                    order.symbol = so.vtSymbol
-                    order.orderID = orderID
-                    order.vtOrderID = orderID
-                    order.direction = so.direction
-                    order.offset = so.offset
-                    order.price = so.price
-                    order.totalVolume = so.volume
-                    order.tradedVolume = so.volume
-                    order.status = STATUS_ALLTRADED
-                    order.orderTime = trade.tradeTime
-                    
-                    self.limitOrderDict[orderID] = order
-                    
-                    # 按照顺序推送数据
-                    self.strategy.onStopOrder(so)
-                    self.strategy.onOrder(order)
-                    self.strategy.onTrade(trade)
+    # def crossStopOrder(self, data):
+    #     """基于最新数据撮合停止单"""
+    #     # 先确定会撮合成交的价格，这里和限价单规则相反
+    #     if self.mode == self.BAR_MODE:
+    #         buyCrossPrice = data.high    # 若买入方向停止单价格低于该价格，则会成交
+    #         sellCrossPrice = data.low    # 若卖出方向限价单价格高于该价格，则会成交
+    #         bestCrossPrice = data.open   # 最优成交价，买入停止单不能低于，卖出停止单不能高于
+    #         symbol = data.vtSymbol
+    #     else:
+    #         buyCrossPrice = data.lastPrice
+    #         sellCrossPrice = data.lastPrice
+    #         bestCrossPrice = data.lastPrice
+    #         symbol = data.vtSymbol
+    #
+    #     # 遍历停止单字典中的所有停止单
+    #
+    #     for stopOrderID in list(self.workingStopOrderDict):
+    #         so = self.workingStopOrderDict[stopOrderID]
+    #         if so.vtSymbol == symbol:
+    #             # 判断是否会成交
+    #             buyCross = so.direction==DIRECTION_LONG and so.price<=buyCrossPrice
+    #             sellCross = so.direction==DIRECTION_SHORT and so.price>=sellCrossPrice
+    #
+    #             # 如果发生了成交
+    #             if buyCross or sellCross:
+    #                 # 更新停止单状态，并从字典中删除该停止单
+    #                 so.status = STOPORDER_TRIGGERED
+    #                 if stopOrderID in self.workingStopOrderDict:
+    #                     del self.workingStopOrderDict[stopOrderID]
+    #
+    #                 # 推送成交数据
+    #                 self.tradeCount += 1            # 成交编号自增1
+    #                 tradeID = str(self.tradeCount)
+    #                 trade = VtTradeData()
+    #                 trade.vtSymbol = so.vtSymbol
+    #                 trade.tradeID = tradeID
+    #                 trade.vtTradeID = tradeID
+    #                 # trade.levelRate = levelRate
+    #
+    #                 if buyCross and so.offset == OFFSET_OPEN: # 买开
+    #                     self.strategy.posDict[symbol+"_LONG"] += so.volume
+    #                     trade.price = max(bestCrossPrice, so.price)
+    #                 elif buyCross and so.offset == OFFSET_CLOSE: # 买平
+    #                     self.strategy.posDict[symbol+"_SHORT"] -= so.volume
+    #                     trade.price = max(bestCrossPrice, so.price)
+    #                 elif sellCross and so.offset == OFFSET_OPEN: # 卖开
+    #                     self.strategy.posDict[symbol+"_SHORT"] += so.volume
+    #                     trade.price = min(bestCrossPrice, so.price)
+    #                 elif sellCross and so.offset == OFFSET_CLOSE: # 卖平
+    #                     self.strategy.posDict[symbol+"_LONG"] -= so.volume
+    #                     trade.price = min(bestCrossPrice, so.price)
+    #
+    #                 elif buyCross and so.offset == OFFSET_NONE:
+    #                     self.strategy.posDict[symbol] += so.volume
+    #                     trade.price = max(bestCrossPrice, so.price)
+    #                 elif sellCross and so.offset == OFFSET_NONE:
+    #                     self.strategy.posDict[symbol] -= so.volume
+    #                     trade.price = min(bestCrossPrice, so.price)
+    #
+    #                 self.limitOrderCount += 1
+    #                 orderID = str(self.limitOrderCount)
+    #                 trade.orderID = orderID
+    #                 trade.vtOrderID = orderID
+    #                 trade.direction = so.direction
+    #                 trade.offset = so.offset
+    #                 trade.volume = so.volume
+    #                 trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
+    #                 trade.dt = self.dt
+    #
+    #                 self.tradeDict[tradeID] = trade
+    #
+    #                 # 推送委托数据
+    #                 order = VtOrderData()
+    #                 order.vtSymbol = so.vtSymbol
+    #                 order.symbol = so.vtSymbol
+    #                 order.orderID = orderID
+    #                 order.vtOrderID = orderID
+    #                 order.direction = so.direction
+    #                 order.offset = so.offset
+    #                 order.price = so.price
+    #                 order.totalVolume = so.volume
+    #                 order.tradedVolume = so.volume
+    #                 order.status = STATUS_ALLTRADED
+    #                 order.orderTime = trade.tradeTime
+    #
+    #                 self.limitOrderDict[orderID] = order
+    #
+    #                 # 按照顺序推送数据
+    #                 self.strategy.onStopOrder(so)
+    #                 self.strategy.onOrder(order)
+    #                 self.strategy.onTrade(trade)
 
     #------------------------------------------------
     # 策略接口相关
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate):
         """发单"""
         self.limitOrderCount += 1
         self.levelRate = levelRate
         orderID = str(self.limitOrderCount)
         order = VtOrderData()
-        order.vtSymbol = vtSymbol
+        order.vtSymbol = vtSymbol#[:-4]
         order.totalVolume = volume
         order.orderID = orderID
         order.vtOrderID = orderID
@@ -637,7 +905,7 @@ class BacktestingEngine(object):
             order.offset = OFFSET_OPEN
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
-            order.offset = OFFSET_CLOSE  
+            order.offset = OFFSET_CLOSE
             if order.totalVolume > self.strategy.posDict[order.vtSymbol+'_SHORT']:
                 raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
 
@@ -666,7 +934,7 @@ class BacktestingEngine(object):
         self.workingLimitOrderDict[orderID] = order
         self.limitOrderDict[orderID] = order
         
-        return [orderID]
+        return orderID
     
     #----------------------------------------------------------------------
     def cancelOrder(self, vtOrderID):
@@ -719,14 +987,14 @@ class BacktestingEngine(object):
         return [stopOrderID]
     
     #----------------------------------------------------------------------
-    def cancelStopOrder(self, stopOrderID):
-        """撤销停止单"""
-        # 检查停止单是否存在
-        if stopOrderID in self.workingStopOrderDict:
-            so = self.workingStopOrderDict[stopOrderID]
-            so.status = STOPORDER_CANCELLED
-            del self.workingStopOrderDict[stopOrderID]
-            self.strategy.onStopOrder(so)
+    # def cancelStopOrder(self, stopOrderID):
+    #     """撤销停止单"""
+    #     # 检查停止单是否存在
+    #     if stopOrderID in self.workingStopOrderDict:
+    #         so = self.workingStopOrderDict[stopOrderID]
+    #         so.status = STOPORDER_CANCELLED
+    #         del self.workingStopOrderDict[stopOrderID]
+    #         self.strategy.onStopOrder(so)
     
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
@@ -737,11 +1005,18 @@ class BacktestingEngine(object):
     def insertData(self, dbName, collectionName, data):
         """考虑到回测中不允许向数据库插入数据，防止实盘交易中的一些代码出错"""
         pass
-    
-    #----------------------------------------------------------------------
-    def loadBar(self, dbName, collectionName, startDate):
-        """直接返回初始化数据列表中的Bar"""
+
+    def loadinitBar(self):
         return self.initData
+    #----------------------------------------------------------------------
+    def loadBar(self, symbol,Datetime,barnum):
+        """直接返回初始化数据列表中的Bar"""
+        col = self.db[symbol]
+        cursor = col.find({"datetime": {"$lt": Datetime}})
+        data = pd.DataFrame(list(cursor)[-barnum:])
+
+        return [self.parseData(VtBarData, item.to_dict()) for _, item in
+                         data.iterrows()]
     
     #----------------------------------------------------------------------
     def loadTick(self, dbName, collectionName, startDate):
@@ -761,10 +1036,10 @@ class BacktestingEngine(object):
         for orderID in list(self.workingLimitOrderDict.keys()):
             self.cancelOrder(orderID)
 
-    def cancelAllStopOrder(self,name):
-        # 撤销停止单
-        for stopOrderID in list(self.workingStopOrderDict.keys()):
-            self.cancelStopOrder(stopOrderID)
+    # def cancelAllStopOrder(self,name):
+    #     # 撤销停止单
+    #     for stopOrderID in list(self.workingStopOrderDict.keys()):
+    #         self.cancelStopOrder(stopOrderID)
 
     def batchCancelOrder(self, vtOrderList):
         # 为了和实盘一致撤销限价单
@@ -991,6 +1266,10 @@ class BacktestingEngine(object):
         losingResult = 0        # 亏损次数		
         totalWinning = 0        # 总盈利金额		
         totalLosing = 0         # 总亏损金额        
+
+        longPnlList = []
+        
+        shortPnlList = []
         
         for result in resultList:
             capital += result.pnl
@@ -1013,6 +1292,11 @@ class BacktestingEngine(object):
             else:
                 losingResult += 1
                 totalLosing += result.pnl
+
+            if result.volume > 0:
+                longPnlList.append(result.pnl)
+            if result.volume < 0 :
+                shortPnlList.append(result.pnl)
         # 计算盈亏相关数据
         winningRate = winningResult/totalResult*100         # 胜率
         
@@ -1038,6 +1322,8 @@ class BacktestingEngine(object):
         d['totalSlippage'] = totalSlippage
         d['timeList'] = timeList
         d['pnlList'] = pnlList
+        d['longPnl'] = longPnlList
+        d['shortPnl'] = shortPnlList
         d['capitalList'] = capitalList
         d['drawdownList'] = drawdownList
         d['winningRate'] = winningRate
@@ -1074,23 +1360,76 @@ class BacktestingEngine(object):
         self.output(u'盈利交易平均值\t%s' %formatNumber(d['averageWinning']))
         self.output(u'亏损交易平均值\t%s' %formatNumber(d['averageLosing']))
         self.output(u'盈亏比：\t%s' %formatNumber(d['profitLossRatio']))
-    
+
+        self.output(u'多仓盈亏：\t%s' %formatNumber(sum(d['longPnl'])))
+        self.output(u'空仓盈亏：\t%s' %formatNumber(sum(d['shortPnl'])))
+
+
+
         # 绘图
         fig = plt.figure(figsize=(10, 16))
         
-        pCapital = plt.subplot(4, 1, 1)
+        pCapital = plt.subplot(3, 1, 1)
         pCapital.set_ylabel("capital")
         pCapital.plot(d['capitalList'], color='r', lw=0.8)
+
+        plong = plt.subplot(3, 1, 2)
+        plong.set_ylabel("LONG_pnl")
+        plong.plot(d['longPnl'])
+
+        pshort = plt.subplot(3, 1, 3)
+        pshort.set_ylabel("SHORT_pnl")
+        pshort.plot(d['shortPnl'])
         
-        pDD = plt.subplot(4, 1, 2)
+
+        # 输出回测结果
+        if self.logActive:
+            dd={'First Trade':d['timeList'][0],'Last Trade':d['timeList'][-1],'Total Trade':formatNumber(d['totalResult']),'Pnl':formatNumber(d['capital']),
+            'Max DrawDown':formatNumber(min(d['drawdownList'])),'Profit per Trade':formatNumber(d['capital']/d['totalResult']),'Slippage per Trade':formatNumber(d['totalSlippage']/d['totalResult']),
+            'Commission per Trade':formatNumber(d['totalCommission']/d['totalResult']),'Winning Rate':formatNumber(d['winningRate']),'Profit per Trade':formatNumber(d['averageWinning']),
+            'Loss per Trade':formatNumber(d['averageLosing']),'PNL Ratio':formatNumber(d['profitLossRatio']),'Longpos PNL':formatNumber(sum(d['longPnl'])),'Shortpos PNL':formatNumber(sum(d['shortPnl']))}
+            ddresult = pd.DataFrame(dd,index=[0]).T
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"BacktestingResult.csv" )
+            ddresult.to_csv(filename)
+            self.output(u'BacktestingResult已保存') 
+        
+        # 输出回测统计图
+        if self.logActive:
+            # dataframe = pd.DataFrame(self.logList)
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"回测统计图.png" )
+            plt.savefig(filename)
+            self.output(u'策略回测统计图已保存') 
+            
+        plt.show()
+
+        # 绘图
+        fig = plt.figure(figsize=(10, 16))
+
+        pPnl = plt.subplot(3, 1, 1)
+        pPnl.set_ylabel("pnl")
+        pPnl.hist(d['pnlList'], color='c')
+
+        pDD = plt.subplot(3, 1, 2)
         pDD.set_ylabel("DD")
         pDD.bar(range(len(d['drawdownList'])), d['drawdownList'], color='g')
-        
-        pPnl = plt.subplot(4, 1, 3)
-        pPnl.set_ylabel("pnl")
-        pPnl.hist(d['pnlList'], bins=50, color='c')
 
-        pPos = plt.subplot(4, 1, 4)
+        pPos = plt.subplot(3, 1, 3)
         pPos.set_ylabel("Position")
         if d['posList'][-1] == 0:
             del d['posList'][-1]
@@ -1109,9 +1448,9 @@ class BacktestingEngine(object):
             self.output("交易记录没有达到10笔！")
             return
         
-        # 输出回测统计图
+        # 输出回测统计图-2
         if self.logActive:
-            dataframe = pd.DataFrame(self.logList)
+            # dataframe = pd.DataFrame(self.logList)
 
             if self.logPath:
                 save_path = os.path.join(self.logPath, self.logFolderName)
@@ -1120,9 +1459,9 @@ class BacktestingEngine(object):
 
             if not os.path.isdir(save_path):
                 os.makedirs(save_path)
-            filename = os.path.join(save_path, u"回测统计图.png" )
+            filename = os.path.join(save_path, u"回测统计图-2.png" )
             plt.savefig(filename)
-            self.output(u'策略回测统计图已保存') 
+            self.output(u'策略回测统计图-2已保存') 
         plt.show()
     
     #----------------------------------------------------------------------
@@ -1223,6 +1562,7 @@ class BacktestingEngine(object):
     def updateDailyClose(self, symbol, dt, price):
         """更新每日收盘价"""
         date = dt.date()
+        symbol=symbol[:-4]
         resultDict = self.dailyResultDict[symbol]
         if date not in resultDict:
             resultDict[date] = DailyResult(symbol, date, price)
@@ -1240,7 +1580,6 @@ class BacktestingEngine(object):
             return {}
 
         dailyResultDict = copy.deepcopy(self.dailyResultDict)
-        
         # 将成交添加到每日交易结果中
         for trade in self.tradeDict.values():
             date = trade.dt.date()
@@ -1352,7 +1691,20 @@ class BacktestingEngine(object):
             'returnStd': returnStd,
             'sharpeRatio': sharpeRatio
         }
-        
+        # 输出回测结果
+        if self.logActive:
+            ddresult = pd.DataFrame(result,index=[0]).T
+
+            if self.logPath:
+                save_path = os.path.join(self.logPath, self.logFolderName)
+            else:
+                save_path = os.path.join(os.getcwd(), self.logFolderName)
+
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            filename = os.path.join(save_path, u"BacktestingResult-2.csv" )
+            ddresult.to_csv(filename)
+            self.output(u'BacktestingResult-2已保存') 
         return df, result
     
     #----------------------------------------------------------------------
@@ -1420,7 +1772,7 @@ class BacktestingEngine(object):
         
         # 输出回测绩效图
         if self.logActive:
-            dataframe = pd.DataFrame(self.logList)
+            #dataframe = pd.DataFrame(self.logList)
 
             if self.logPath:
                 save_path = os.path.join(self.logPath, self.logFolderName)

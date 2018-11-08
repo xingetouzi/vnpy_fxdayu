@@ -54,8 +54,7 @@ class CtaTemplate(object):
 
     # 同步列表，保存了需要保存到数据库的变量名称
     syncList = ['posDict',
-                'eveningDict',
-                'bondDict']
+                'eveningDict']
 
     # ----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
@@ -169,24 +168,24 @@ class CtaTemplate(object):
             return
         self.ctaEngine.batchCancelOrder(vtOrderIDList)
     # ----------------------------------------------------------------------
-    def insertTick(self, tick):
-        """向数据库中插入tick数据"""
-        self.ctaEngine.insertData(self.tickDbName, self.vtSymbol, tick)
+    # def insertTick(self, tick):
+    #     """向数据库中插入tick数据"""
+    #     self.ctaEngine.insertData(self.tickDbName, self.vtSymbol, tick)
 
-        # ----------------------------------------------------------------------
-    def insertBar(self, bar):
-        """向数据库中插入bar数据"""
-        self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
+    #     # ----------------------------------------------------------------------
+    # def insertBar(self, bar):
+    #     """向数据库中插入bar数据"""
+    #     self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
 
-    # ----------------------------------------------------------------------
-    def loadTick(self, hours=1):
-        """读取tick数据"""
-        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
+    # # ----------------------------------------------------------------------
+    # def loadTick(self, hours=1):
+    #     """读取tick数据"""
+    #     return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
 
-        # ----------------------------------------------------------------------
-    def loadBar(self, hours=1):
-        """读取bar数据"""
-        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
+    #     # ----------------------------------------------------------------------
+    # def loadBar(self, hours=1):
+    #     """读取bar数据"""
+    #     return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
 
     # ----------------------------------------------------------------------
     def writeCtaLog(self, content):
@@ -205,15 +204,15 @@ class CtaTemplate(object):
         return self.ctaEngine.engineType
 
     #----------------------------------------------------------------------
-    def saveSyncData(self):
-        """保存同步数据到数据库"""
-        if self.trading:
-            self.ctaEngine.saveSyncData(self)
+    # def saveSyncData(self):
+    #     """保存同步数据到数据库"""
+    #     if self.trading:
+    #         self.ctaEngine.saveSyncData(self)
 
-        #--------------------------------------------------    
-    def loadSyncData(self):
-        """从数据库读取同步数据"""
-        self.ctaEngine.loadSyncData(self)
+    #     #--------------------------------------------------    
+    # def loadSyncData(self):
+    #     """从数据库读取同步数据"""
+    #     self.ctaEngine.loadSyncData(self)
 
     #----------------------------------------------------------------------
     def getPriceTick(self):
@@ -225,6 +224,14 @@ class CtaTemplate(object):
 
         if type_ in ["1min","5min","15min","30min","60min","120min","240min","360min","480min","1day","1week","1month"]:
             data = self.ctaEngine.loadHistoryBar(vtSymbol,type_,size,since)
+            lastbar = data[-1]
+            if 'min' in type_:
+                minute = int(type_[:-3])
+
+            if datetime.datetime.now() < (lastbar.datetime + datetime.timedelta(seconds = 60*minute)):
+                self.writeCtaLog(u'加载历史数据抛弃最后一个非完整K线，频率%s，时间%s'%(type_, lastbar.datetime))
+                data = data[:-1]
+                
             return data
             
         else:
@@ -235,30 +242,37 @@ class CtaTemplate(object):
     def qryOrder(self, vtSymbol, status= None):
         """查询特定的订单"""
         return self.ctaEngine.qryOrder(vtSymbol,self.name,status)
+
+    def onRestore(self):
+        """恢复策略（必须由用户继承实现）"""
+        raise NotImplementedError
         
     def mail(self,my_context):
         """邮件发送模块"""
         self.ctaEngine.mail(my_context,self)
 
     def initBacktesingData(self):
-        if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
-            if self.ctaEngine.mode == 'bar':
-                initdata = self.loadBar()
-                for bar in initdata:
-                    self.onBar(bar)  # 将历史数据直接推送到onBar
+        pass
+        # if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+        #     if self.ctaEngine.mode == 'bar':
+        #         initdata = self.loadBar()
+        #         for bar in initdata:
+        #             self.onBar(bar)  # 将历史数据直接推送到onBar
 
-            elif self.ctaEngine.mode =='tick':
-                initdata = self.loadTick()
-                for tick in initdata:
-                    self.onTick(tick)  # 将历史数据直接推送到onTick  
+        #     elif self.ctaEngine.mode =='tick':
+        #         initdata = self.loadTick()
+        #         for tick in initdata:
+        #             self.onTick(tick)  # 将历史数据直接推送到onTick  
     
     def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
         if xmin: 
             variable = "bg%sDict"%xmin
             variable2 = "am%sDict"%xmin
+            variable3 = "mdf%sDict"%xmin
         else:
             variable = "bgDict"
             variable2 = "amDict"
+            variable3 = "mdfDict"
 
         bgDict= {
             sym: BarGenerator(onBar,xmin,onXminBar)
@@ -268,8 +282,14 @@ class CtaTemplate(object):
             sym: ArrayManager(size)
             for sym in self.symbolList }
 
+        mdfDict = {
+            sym: MatrixDF(size)
+            for sym in self.symbolList }
+        
+
         setattr(self, variable, bgDict)
         setattr(self, variable2, amDict)
+        setattr(self, variable3, mdfDict)
 
     def generateHFBar(self,xSecond):
         self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond = xSecond)
@@ -453,13 +473,12 @@ class BarGenerator(object):
 
         # 新的一分钟
         elif self.bar.datetime.minute != tick.datetime.minute:
-            if tick.datetime.second < 50:
-                # 推送已经结束的上一分钟K线
-                self.onBar(self.bar)
+            # 推送已经结束的上一分钟K线
+            self.onBar(self.bar)
 
-                # 创建新的K线对象
-                self.bar = VtBarData()
-                newMinute = True
+            # 创建新的K线对象
+            self.bar = VtBarData()
+            newMinute = True
 
         # 初始化新一分钟的K线数据
         if newMinute:
@@ -470,6 +489,7 @@ class BarGenerator(object):
             self.bar.open = tick.lastPrice
             self.bar.high = tick.lastPrice
             self.bar.low = tick.lastPrice
+            self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
         # 累加更新老一分钟的K线数据
         else:
             self.bar.high = max(self.bar.high, tick.lastPrice)
@@ -477,16 +497,16 @@ class BarGenerator(object):
 
         # 通用更新部分
         self.bar.close = tick.lastPrice
-        self.bar.datetime = tick.datetime
         self.bar.openInterest = tick.openInterest
 
-        # if self.lastTick:
-            # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
-        if tick.volumeChange:
-            self.bar.volume += tick.lastVolume
-
-        # 缓存Tick
-        # self.lastTick = tick
+        if tick.exchange in ['OKEX']:
+            if tick.volumeChange:
+                self.bar.volume += tick.lastVolume
+        else:
+            if self.lastTick:
+                self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
+            # 缓存Tick
+            self.lastTick = tick
         
         # 高频交易的bar
         if self.xSecond:
@@ -518,6 +538,8 @@ class BarGenerator(object):
                 self.hfBar.open = tick.lastPrice
                 self.hfBar.high = tick.lastPrice
                 self.hfBar.low = tick.lastPrice
+                self.hfBar.datetime = tick.datetime.replace(microsecond=0)  # 将微秒设为0
+
             # 累加更新老一分钟的K线数据
             else:
                 self.hfBar.high = max(self.hfBar.high, tick.lastPrice)
@@ -525,13 +547,16 @@ class BarGenerator(object):
 
             # 通用更新部分
             self.hfBar.close = tick.lastPrice
-            self.hfBar.datetime = tick.datetime
             self.hfBar.openInterest = tick.openInterest
 
-            # if self.lastTick:
-                # self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
-            if tick.volumeChange:
-                self.hfBar.volume += tick.lastVolume
+            if tick.exchange in ['OKEX']:
+                if tick.volumeChange:
+                    self.bar.volume += tick.lastVolume
+            else:
+                if self.lastTick:
+                    self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
+                # 缓存Tick
+                self.lastTick = tick
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
         """1分钟K线更新"""
@@ -580,6 +605,11 @@ class BarGenerator(object):
         """手动强制立即完成K线合成"""
         self.onBar(self.bar)
         self.bar = None
+
+    def updateHalfBar(self,Bar):
+        """非完整Bar的合并"""
+        pass
+
 #
 # ########################################################################
 class ArrayManager(object):
@@ -652,94 +682,94 @@ class ArrayManager(object):
         """获取成交量序列"""
         return self.volumeArray
 
-    # ----------------------------------------------------------------------
-    def sma(self, n, array=False):
-        """简单均线"""
-        result = talib.SMA(self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def sma(self, n, array=False):
+    #     """简单均线"""
+    #     result = talib.SMA(self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def std(self, n, array=False):
-        """标准差"""
-        result = talib.STDDEV(self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def std(self, n, array=False):
+    #     """标准差"""
+    #     result = talib.STDDEV(self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def cci(self, n, array=False):
-        """CCI指标"""
-        result = talib.CCI(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def cci(self, n, array=False):
+    #     """CCI指标"""
+    #     result = talib.CCI(self.high, self.low, self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def atr(self, n, array=False):
-        """ATR指标"""
-        result = talib.ATR(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def atr(self, n, array=False):
+    #     """ATR指标"""
+    #     result = talib.ATR(self.high, self.low, self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def rsi(self, n, array=False):
-        """RSI指标"""
-        result = talib.RSI(self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def rsi(self, n, array=False):
+    #     """RSI指标"""
+    #     result = talib.RSI(self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def macd(self, fastPeriod, slowPeriod, signalPeriod, array=False):
-        """MACD指标"""
-        macd, signal, hist = talib.MACD(self.close, fastPeriod,
-                                        slowPeriod, signalPeriod)
-        if array:
-            return macd, signal, hist
-        return macd[-1], signal[-1], hist[-1]
+    # # ----------------------------------------------------------------------
+    # def macd(self, fastPeriod, slowPeriod, signalPeriod, array=False):
+    #     """MACD指标"""
+    #     macd, signal, hist = talib.MACD(self.close, fastPeriod,
+    #                                     slowPeriod, signalPeriod)
+    #     if array:
+    #         return macd, signal, hist
+    #     return macd[-1], signal[-1], hist[-1]
 
-    # ----------------------------------------------------------------------
-    def adx(self, n, array=False):
-        """ADX指标"""
-        result = talib.ADX(self.high, self.low, self.close, n)
-        if array:
-            return result
-        return result[-1]
+    # # ----------------------------------------------------------------------
+    # def adx(self, n, array=False):
+    #     """ADX指标"""
+    #     result = talib.ADX(self.high, self.low, self.close, n)
+    #     if array:
+    #         return result
+    #     return result[-1]
 
-    # ----------------------------------------------------------------------
-    def boll(self, n, dev, array=False):
-        """布林通道"""
-        mid = self.sma(n, array)
-        std = self.std(n, array)
+    # # ----------------------------------------------------------------------
+    # def boll(self, n, dev, array=False):
+    #     """布林通道"""
+    #     mid = self.sma(n, array)
+    #     std = self.std(n, array)
 
-        up = mid + std * dev
-        down = mid - std * dev
+    #     up = mid + std * dev
+    #     down = mid - std * dev
 
-        return up, down
+    #     return up, down
 
-    # ----------------------------------------------------------------------
-    def keltner(self, n, dev, array=False):
-        """肯特纳通道"""
-        mid = self.sma(n, array)
-        atr = self.atr(n, array)
+    # # ----------------------------------------------------------------------
+    # def keltner(self, n, dev, array=False):
+    #     """肯特纳通道"""
+    #     mid = self.sma(n, array)
+    #     atr = self.atr(n, array)
 
-        up = mid + atr * dev
-        down = mid - atr * dev
+    #     up = mid + atr * dev
+    #     down = mid - atr * dev
 
-        return up, down
+    #     return up, down
 
-    # ----------------------------------------------------------------------
-    def donchian(self, n, array=False):
-        """唐奇安通道"""
-        up = talib.MAX(self.high, n)
-        down = talib.MIN(self.low, n)
+    # # ----------------------------------------------------------------------
+    # def donchian(self, n, array=False):
+    #     """唐奇安通道"""
+    #     up = talib.MAX(self.high, n)
+    #     down = talib.MIN(self.low, n)
 
-        if array:
-            return up, down
-        return up[-1], down[-1]
+    #     if array:
+    #         return up, down
+    #     return up[-1], down[-1]
 
 ########################################################################
 class CtaSignal(object):
@@ -771,3 +801,49 @@ class CtaSignal(object):
     def getSignalPos(self):
         """获取信号仓位"""
         return self.signalPos
+
+class MatrixDF(object):
+
+    # ----------------------------------------------------------------------
+    def __init__(self, size=100):
+        """Constructor"""
+        self.count = 0  # 缓存计数
+        self.size = size  # 缓存大小
+        self.inited = False  # True if count>=size
+
+        self.openList = [0] * size  # OHLC
+        self.highList = [0] * size
+        self.lowList = [0] * size
+        self.closeList = [0] * size
+        self.volumeList = [0] * size
+        self.timeList = [0] * size
+        self.df = None
+        # self.df = pd.DataFrame(columns=['datetime','open','high','low','close','volume'])
+
+    # ----------------------------------------------------------------------
+    def updateBar(self, bar):
+        """更新K线"""
+        if bar:  # 如果是实盘K线
+            self.count += 1
+            if not self.inited and self.count >= self.size:
+                self.inited = True
+
+            self.openList[0:self.size - 1] = self.openList[1:self.size]
+            self.highList[0:self.size - 1] = self.highList[1:self.size]
+            self.lowList[0:self.size - 1] = self.lowList[1:self.size]
+            self.closeList[0:self.size - 1] = self.closeList[1:self.size]
+            self.volumeList[0:self.size - 1] = self.volumeList[1:self.size]
+            self.timeList[0:self.size - 1] = self.timeList[1:self.size]
+
+            self.openList[-1] = bar.open
+            self.highList[-1] = bar.high
+            self.lowList[-1] = bar.low
+            self.closeList[-1] = bar.close
+            self.volumeList[-1] = bar.volume
+            self.timeList[-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
+
+            temp = {'datetime':self.timeList,'open':self.openList,'high':self.highList,'low':self.lowList,'close':self.closeList,'volume':self.volumeList}
+            self.df = pd.DataFrame(temp)
+            # temp = {'datetime':bar.datetime.strftime('%Y%m%d %H:%M:%S'),'open':bar.open,'high':bar.high,'low':bar.low,'close':bar.close,'volume':bar.volume}
+            # self.df = self.df.append(temp,ignore_index=True)
+            # self.df = self.df[-self.size:]

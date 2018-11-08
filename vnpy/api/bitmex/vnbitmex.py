@@ -179,9 +179,9 @@ class BitmexRestApi(object):
             lambda x: float(x))
         df.sort_values(by = ['datetime'], ascending=True, inplace=True)
         
-        print(df['datetime'],df['open'])
-        print(df.to_dict())
-        return df.to_dict()
+        # print(df['datetime'],df['open'])
+        # print(df.to_dict())
+        return df#.to_dict()
 
 
 ########################################################################

@@ -507,7 +507,7 @@ class TradeApi(object):
                 lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S"))
             # delta = datetime.timedelta(hours=8)
             # df.rename(lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
-            return df.to_dict()
+            return df#.to_dict()
         except KeyError:
             return 'error:'+text['err-msg']
  

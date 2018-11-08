@@ -521,7 +521,6 @@ class TradeMonitor(BasicMonitor):
         d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
         d['price_avg'] = {'chinese':vtText.PRICE_AVG, 'cellType':NumCell}
         d['volume'] = {'chinese':vtText.VOLUME, 'cellType':NumCell}
-        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
         d['tradeTime'] = {'chinese':vtText.TRADE_TIME, 'cellType':BasicCell}
         self.setHeaderDict(d)
         
@@ -558,6 +557,7 @@ class OrderMonitor(BasicMonitor):
         d['orderTime'] = {'chinese':vtText.ORDER_TIME, 'cellType':BasicCell}
         d['status'] = {'chinese':vtText.ORDER_STATUS, 'cellType':BasicCell}        
         d['rejectedInfo'] = {'chinese':vtText.ORDER_REJECTED_INFO, 'cellType':BasicCell}
+        d['fee'] = {'chinese':vtText.ORDER_FEE, 'cellType':NumCell}
         d['deliverTime'] = {'chinese':vtText.DELIVER_TIME, 'cellType':BasicCell}
         d['byStrategy'] = {'chinese':vtText.ORDER_STRATEGY, 'cellType':BasicCell}
         self.setHeaderDict(d)

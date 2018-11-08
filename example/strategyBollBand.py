@@ -47,7 +47,7 @@ class BollBandsStrategy(CtaTemplate):
                'maTrend']
 
     # 同步列表，保存了需要保存到数据库的变量名称
-    syncList = ['posDict', 'eveningDict', 'bondDict']
+    syncList = ['posDict', 'eveningDict']
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):

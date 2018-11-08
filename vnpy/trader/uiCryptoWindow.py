@@ -6,7 +6,7 @@ import traceback
 from vnpy.trader.vtFunction import loadIconPath
 from vnpy.trader.vtGlobal import globalSetting
 
-from uiCryptoWidget import *
+from vnpy.trader.uiCryptoWidget import *
 
 
 ########################################################################
@@ -97,8 +97,8 @@ class MainWindow(QtWidgets.QMainWindow):
             if d['gatewayType'] == GATEWAYTYPE_DATA:
                 self.addConnectAction(sysMenu, d['gatewayName'], d['gatewayDisplayName'])
         
-        sysMenu.addSeparator()
-        sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, self.mainEngine.dbConnect, loadIconPath('database.ico')))
+        # sysMenu.addSeparator()
+        # sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, self.mainEngine.dbConnect, loadIconPath('database.ico')))
         sysMenu.addSeparator()
         sysMenu.addAction(self.createAction(vtText.EXIT, self.close, loadIconPath('exit.ico')))
         
