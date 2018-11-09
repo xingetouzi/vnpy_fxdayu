@@ -106,6 +106,7 @@ class BarUtilsMixin(object):
         bar.vtSymbol = tick.vtSymbol
         bar.symbol = tick.symbol
         bar.exchange = tick.exchange
+        bar.gatewayName = tick.gatewayName
         return self.override_bar_with_tick(bar, tick, freq=freq)
 
     def new_bar_from_bar(self, bar, freq=None):
@@ -113,6 +114,7 @@ class BarUtilsMixin(object):
         bar2.vtSymbol = bar.vtSymbol
         bar2.symbol = bar.symbol
         bar2.exchange = bar.exchange
+        bar2.gatewayName = bar.gatewayName
         return self.override_bar_with_bar(bar2, bar, freq=freq)
 
 
@@ -230,7 +232,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             return
         # TODO: fetch bar according to current hist_bars.
         try:
-            bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=self._size+1)        
+            bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=self._size+1)
         except Exception as e:
             if self.is_backtesting():
                 raise e
@@ -570,7 +572,7 @@ class BarManager(object):
             symbol_, gateway_name = symbol.split(VN_SEPARATOR)
             bar_reader = self._engine.getBarReader(gateway_name)
             if freq != "1m":
-                bars, end_dt = bar_reader.historyActive(symbol, freq, size=size) 
+                bars, end_dt = bar_reader.historyActive(symbol_, freq, size=size) 
                 return bars, end_dt + timedelta(minutes=1)
             bars = bar_reader.history(symbol_, freq, size=size)
             unit_s = freq2seconds(freq)

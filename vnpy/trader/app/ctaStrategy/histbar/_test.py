@@ -5,7 +5,7 @@ from ._base import BarReader
 def show_bars(bars):
     import pandas as pd
     frame = pd.DataFrame([bar.__dict__ for bar in bars])
-    print(frame.set_index("datetime")[["open", "high", "low", "close", "volume"]])
+    print(frame.set_index("datetime")[["open", "high", "low", "close", "volume", "vtSymbol"]])
 
 def test(reader, symbol):
     import traceback
