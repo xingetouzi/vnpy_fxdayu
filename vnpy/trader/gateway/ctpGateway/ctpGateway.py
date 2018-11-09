@@ -1613,6 +1613,11 @@ class CtpTdApi(TdApi):
         """
         {'InstrumentID': 'IF1811', 'LimitPrice': 3157.8, 'VolumeTotalOriginal': 1, 'OrderPriceType': '2', 'Direction': '0', 'CombOffsetFlag': '0', 'OrderRef': '1', 'InvestorID': '119247', 'UserID': '119247', 
         'BrokerID': '9999', 'CombHedgeFlag': '1', 'ContingentCondition': '1', 'ForceCloseReason': '0', 'IsAutoSuspend': 0, 'TimeCondition': '3', 'VolumeCondition': '1', 'MinVolume': 1}
+        策略Demo: 发送限价委托CTP:4, 交易：rb1901:SHFE，买平，数量：10 @ 3988.0
+{'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 'CombOffsetFlag': '1', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'rb1901', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 'LimitPrice': 3988.0, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 10, 'ExchangeID': 'SHFE', 'OrderRef': '4', 'Direction': '0'} {'ErrorID': 51, 'ErrorMsg': 'CTP:平昨仓位不足'}
+错误代码：51，错误信息：CTP:平昨仓位不足
+错误代码：51，错误信息：CTP:平昨仓位不足
+        
         """
         self.reqID += 1
         self.orderRef += 1

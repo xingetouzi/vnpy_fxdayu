@@ -862,7 +862,7 @@ class CtaEngine(object):
             'tradedVolume':order.tradedVolume,
             'totalVolume':order.totalVolume,
             'status':order.status,
-            'orderTime':order.orderTime,
+            'deliverTime':order.deliverTime.strftime('%Y%m%d %X'),
             'orderby':order.byStrategy
             }
 

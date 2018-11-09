@@ -153,7 +153,7 @@ class BitmexRestApi(object):
         print(data, reqid)
 
     def restKline(self,symbol, type_, size, since = None):
-        params = {"symbol":symbol,"binSize":type_,"count":size,"reverse":True}
+        params = {"symbol":symbol,"binSize":type_,"count":size}
         url = REST_HOST + "/" + "trade/bucketed"
         data = requests.get(url, headers=self.header, params = params,timeout=10)
         # print(data.json())
@@ -177,7 +177,7 @@ class BitmexRestApi(object):
             lambda x: float(x))
         df["volume"] = df["volume"].map(
             lambda x: float(x))
-        df.sort_values(by = ['datetime'], ascending=True, inplace=True)
+        # df.sort_values(by = ['datetime'], ascending=True, inplace=True)
         
         # print(df['datetime'],df['open'])
         # print(df.to_dict())

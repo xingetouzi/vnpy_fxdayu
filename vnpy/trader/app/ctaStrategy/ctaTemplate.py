@@ -513,14 +513,14 @@ class BarGenerator(object):
             if not self.hfBar:
                 self.hfBar = VtBarData()
                 # 生成上一分钟K线的时间戳
-                self.hfBar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+                self.hfBar.datetime = tick.datetime.replace(microsecond=0)  # 将秒和微秒设为0
                 self.hfBar.date = self.bar.datetime.strftime('%Y%m%d')
                 self.hfBar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
                 newHfBar = True
 
             # 新的一分钟
             elif not (self.hfBar.datetime.second) % self.xSecond:
-                if (self.hfBar.datetime.second != self.lastSecond) and tick.datetime.second > 10:
+                if (self.hfBar.datetime.second != self.lastSecond):
                     # 推送已经结束的上一分钟K线
                     self.onHFBar(self.hfBar)
                     self.lastSecond = self.hfBar.datetime.second
