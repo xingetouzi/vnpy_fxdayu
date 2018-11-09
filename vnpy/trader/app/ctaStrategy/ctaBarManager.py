@@ -244,17 +244,6 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             # FIXME: load_history_bar should clearify wheather uncompleted bar included.
             if len(bars) > 1:
                 self.update_hist_bars(freq, bars, end_dt)
-            if self.is_backtesting():
-                if not self.is_ready(freq):
-                    am = self.get_array_manager(freq)
-                    raise RuntimeError("品种%s的%sK线数据缺失,Hist Bars:[%s, %s], Generated Bars: [%s, %s]" % (
-                        self._symbol,
-                        freq,
-                        dt2str(am[am.head].datetime),
-                        dt2str(am[-1].datetime),
-                        dt2str(self._gen_bars[freq][0].datetime),
-                        dt2str(self._gen_bars[freq][-1].datetime),
-                    ))
 
     def is_ready(self, freq):
         return freq in self._ready
@@ -266,28 +255,30 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         self.info("品种%s的无可用历史%sK线,更新关闭" % (self._symbol, freq))
 
     def update_hist_bars(self, freq, bars, end_dt):
-        print("-" * 100)
-        print("last %s bar: %s" % (freq, bars[-1].__dict__))
-        print("end_dt: %s" % dt2str(end_dt))
+        # self.debug("-" * 100)
+        # self.debug("last %s bar: %s" % (freq, bars[-1].__dict__))
+        # self.debug("end_dt: %s" % dt2str(end_dt))
         am = self.get_array_manager(freq)
         unit_s = freq2seconds(freq)
-        if (end_dt - bars[-1].datetime).total_seconds() == unit_s:
+        if int((end_dt - bars[-1].datetime).total_seconds()) == unit_s:
             new_bars = bars
+            self._push_bars[freq] = bars[-1]
         else:
             merged_bar = self._merge_unfinished_bar(bars[-1], end_dt, freq)
             new_bars = (bars[:-1] + [merged_bar]) if merged_bar else bars[:-1]
             if merged_bar:
-                self._push_bars[freq] = new_bar
-                print("merged bar %s" % merged_bar.__dict__)
-        current_dt = am.datetime[-1]
-        # TODO: check whether concatable
-        # if new_bars[0].datetime - current_dt >= timedelta(seconds=unit_s):
-        #     self.warning("品种%s的历史%sk线更新失败") 
-        #     return
-        new_dts = [dt2int(bar.datetime) for bar in new_bars]
-        index = bisect.bisect_right(new_dts, current_dt)
-        new_bars = new_bars[index:]
-        print("-" * 100)
+                self._push_bars[freq] = merged_bar
+                self.debug("merged bar %s" % merged_bar.__dict__)
+        if am.count:
+            current_dt = am.datetime[-1]
+            # TODO: check whether concatable
+            # if new_bars[0].datetime - current_dt >= timedelta(seconds=unit_s):
+            #     self.warning("品种%s的历史%sk线更新失败") 
+            #     return
+            new_dts = [dt2int(bar.datetime) for bar in new_bars]
+            index = bisect.bisect_right(new_dts, current_dt)
+            new_bars = new_bars[index:]
+        # self.debug("-" * 100)
         if not new_bars:
             return
         for bar in new_bars:
@@ -334,7 +325,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         if am.count == 0:
             return False
         end_dt = am.datetime[-1]
-        if end_dt < dt2int(self._gen_since[freq]):
+        if end_dt < dt2int(self.align_datetime(self._gen_since[freq], freq)):
             return False
         gen_bars = self._gen_bars[freq]
         dts = [dt2int(bar.datetime) for bar in gen_bars]
@@ -439,6 +430,14 @@ class SymbolBarManager(Logger, BarUtilsMixin):
     def _update_current_bar(self, freq, bar):            
         self._current_bars[freq] = bar
 
+    def push_bars_dct(self, bars_dct):
+        # wait all local bar data has been update.
+        freq_unit_s = [(freq2seconds(freq), freq) for freq in bars_dct.keys()]
+        freq_unit_s = sorted(freq_unit_s, key=lambda x: x[0], reverse=True)
+        # freq_unit_s
+        for _, freq in freq_unit_s:
+            self.push_bar(freq, bars_dct[freq])
+
     def on_tick(self, tick):
         bars_to_push = {}
         bar_1min_finished = None
@@ -461,28 +460,21 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                         bars_to_push[freq] = self._push_bars[freq] #NOTE: push merged bar.
             if bar_finished and self.is_ready(freq):
                 bars_to_push[freq] = bar_finished
-        # wait all local bar data has been update.
-        freq_unit_s = [(freq2seconds(freq), freq) for freq in bars_to_push.keys()]
-        freq_unit_s = sorted(freq_unit_s, key=lambda x: x[0], reverse=True)
-        # freq_unit_s
-        for _, freq in freq_unit_s:
-            self.push_bar(freq, bars_to_push[freq])
+        self.push_bars_dct(bars_to_push)
 
     def on_bar(self, bar):
         """on_bar can only process 1min bar"""
         bars_to_push = {}
         for freq in self._low_freqs:
             bar_finished = self._update_with_bar(bar, freq)
-            if bar_finished:
-                self.fetch_hist_bars(freq)
-                if self.is_ready(freq):
-                    bars_to_push[freq] = bar_finished
-        # wait all local bar data has been update.
-        freq_unit_s = [(freq2seconds(freq), freq) for freq in bars_to_push.keys()]
-        freq_unit_s = sorted(freq_unit_s, key=lambda x: x[0], reverse=True)
-        # freq_unit_s
-        for _, freq in freq_unit_s:
-            self.push_bar(freq, bars_to_push[freq])
+            if freq == "1m" or self.is_ready("1m"):
+                if not self.is_ready(freq):
+                    self.fetch_hist_bars(freq)
+                    if self.is_ready(freq) and freq in self._push_bars:
+                        bars_to_push[freq] = self._push_bars[freq] #NOTE: push merged bar.
+            if bar_finished and self.is_ready(freq):
+                bars_to_push[freq] = bar_finished
+        self.push_bars_dct(bars_to_push)
 
     def get_array_manager(self, freq):
         if freq not in self._am:
@@ -525,35 +517,30 @@ class BarManager(object):
     def is_backtesting(self):
         return self._engine.engineType == ENGINETYPE_BACKTESTING
 
-    def load_history_bar(self, symbol, freq, size):
-        def trunc_bars(bars, end, size):
-            while bars and bars[-1].datetime > end:
-                bars.pop()
-            assert len(bars) >= size, "%s历史%sK线数据长度不足，%s不足所需要的%s条" % (symbol, freq, len(bars), size)
-            return bars[-size:]
-
-        # FIXME: unify the frequancy representation.
-        # FIXME: unify interface in backtesting and realtrading.
-        if self.is_backtesting():
-            if self._engine.mode == self._engine.TICK_MODE:
-                return None
-            manager = self._managers.get(symbol, None)
-            if manager is None:
-                return None
-            dtstart = parse(self._engine.startDate)
-            unit_s = freq2seconds(freq)
-            # NOTE: consider most contract is traded in business day, get #1 multiper: 7/5 ~= 1.4,
-            # and some contract only be traded 4 hours in a day, get #2 multiper: 24 / 4 = 6,
-            # then get #1 * #2 ~= 9
-            if unit_s >= 24 * 60 * 60:
-                delta = int(unit_s * size * 1.5)
-            else:
-                delta = unit_s * size * 9
-            start = dtstart - timedelta(seconds=delta)
-            end = dtstart + timedelta(days=2, seconds=unit_s) # fetch one unit time more forward, plus two day to skip weekends.
-            bars_1min = self._engine.loadHistoryData([symbol], start, end)
-            if freq == "1m":
-                return trunc_bars(bars_1min, dtstart, size)
+    @lru_cache(None)
+    def _load_history_bar_backtesting(self, symbol, freq, size):
+        manager = self._managers.get(symbol, None)
+        if manager is None:
+            return None
+        dtstart = parse(self._engine.startDate)
+        unit_s = freq2seconds(freq)
+        # NOTE: consider most contract is traded in business day, get #1 multiper: 7/5 ~= 1.4,
+        # and some contract only be traded 4 hours in a day, get #2 multiper: 24 / 4 = 6,
+        # then get #1 * #2 ~= 9
+        if unit_s >= 24 * 60 * 60:
+            delta = int(unit_s * size * 1.5)
+        else:
+            delta = unit_s * size * 9
+        start = dtstart - timedelta(seconds=delta)
+        end = dtstart + timedelta(days=2, seconds=unit_s) # fetch one unit time more forward, plus two day to skip weekends.
+        bars_1min = self._engine.loadHistoryData([symbol], start, end)
+        dts_min = [bar.datetime for bar in bars_1min]
+        index = bisect.bisect_left(dts_min, dtstart)
+        bars_1min = bars_1min[:index+1]
+        end_dt = bars_1min[-1].datetime + timedelta(minutes=1)
+        if freq == "1m":
+            bars = bars_1min
+        else:
             since = manager.new_bar_from_bar(bars_1min[0], freq).datetime
             bar_current = None
             bars = []
@@ -568,10 +555,17 @@ class BarManager(object):
                             bar_current = bar
                         else:
                             bar_current = manager.merge_bar_with_bar(bar_current, bar)
-            last_bar_dt = manager.align_datetime(bars_1min[-1].datetime + timedelta(minutes=1), freq)
-            if last_bar_dt > bar_current.datetime:
-                bars.append(bar_current)
-            bars = trunc_bars(bars, dtstart, size)
+            bars.append(bar_current)
+        assert len(bars) >= size, "%s历史%sK线数据长度不足，%s不足所需要的%s条" % (symbol, freq, len(bars), size)
+        return bars, end_dt
+
+    def load_history_bar(self, symbol, freq, size):
+        # FIXME: unify the frequancy representation.
+        # FIXME: unify interface in backtesting and realtrading.
+        if self.is_backtesting():
+            if self._engine.mode == self._engine.TICK_MODE:
+                return None, None
+            return self._load_history_bar_backtesting(symbol, freq, size)
         else:
             symbol_, gateway_name = symbol.split(VN_SEPARATOR)
             bar_reader = self._engine.getBarReader(gateway_name)
@@ -580,10 +574,10 @@ class BarManager(object):
                 return bars, end_dt + timedelta(minutes=1)
             bars = bar_reader.history(symbol_, freq, size=size)
             unit_s = freq2seconds(freq)
-        if not bars:
-            return bars, None
-        end_dt = bars[-1].datetime + timedelta(seconds=unit_s)
-        return bars, end_dt
+            if not bars:
+                return bars, None
+            end_dt = bars[-1].datetime + timedelta(seconds=unit_s)
+            return bars, end_dt
 
     def get_array_manager(self, symbol, freq="1m"):
         manager = self._managers[symbol]

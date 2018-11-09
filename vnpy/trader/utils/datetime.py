@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timezone, timedelta
+from dateutil.parser import parse
 from functools import lru_cache
 
 _base_dt = datetime.utcfromtimestamp(0)
@@ -15,7 +16,7 @@ _base_freq_seconds =  {
 }
 
 __all__ = [ "standardize_freq", "freq2seconds", "dt2ts", "ts2dt", "dt2str", "dt2int", "str2dt", "align_timestamp", "align_datetime",
-    "split_freq", ]
+    "split_freq", "unified_parse_datetime", ]
 
 @lru_cache(None)
 def standardize_freq(freq):
@@ -54,7 +55,7 @@ def align_timestamp(t, freq, offset=0):
     return (int(t) - offset) // unit_s * unit_s + offset
 
 def align_datetime(dt, freq, offset=0):
-    # NOTE: according to test, this is more slower.
+    # NOTE: according to test, this is much more slower.
     # unit_s = freq2seconds(freq)
     # td = timedelta(seconds=unit_s)
     # off_dt = timedelta(seconds=offset)
@@ -62,3 +63,26 @@ def align_datetime(dt, freq, offset=0):
     ts = dt2ts(dt)
     align_ts = align_timestamp(dt2ts(dt), freq)
     return ts2dt(align_ts)
+
+# FIXME: 未统一的接口设计导致了需要这么一个蛇皮函数。
+def unified_parse_datetime(obj):
+    if obj is None:
+        return None
+    if isinstance(obj, datetime):
+        return obj
+    elif isinstance(obj, float): # timestamp
+        return datetime.utcfromtimestamp(obj)
+    elif isinstance(obj, (str, int)):
+        s = str(obj)
+        if len(s) == 10: # timestamp 还能再战一两百年
+            return datetime.utcfromtimestamp(obj)
+        elif len(s) == 14: # YYYYmmddHHMMSS
+            return datetime.strptime("%Y%m%d%H%M%S")
+        elif len(s) == 8: # YYYYmmdd
+            return datetime.strptime("%Y%m%d")
+        else:
+            try:
+                return parse(s)
+            except:
+                pass
+    raise ValueError("Can not convert %s: %s into datetime.datetime." % (type(obj), obj))

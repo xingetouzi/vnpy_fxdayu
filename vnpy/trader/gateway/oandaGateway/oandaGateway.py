@@ -5,7 +5,7 @@ from functools import lru_cache
 
 from vnpy.trader.vtGateway import VtGateway, EVENT_TIMER
 from vnpy.trader.vtFunction import getJsonPath
-from vnpy.trader.utils.datetime import split_freq, standardize_freq
+from vnpy.trader.utils.datetime import split_freq, standardize_freq, unified_parse_datetime
 from vnpy.trader.vtObject import VtOrderData, VtPositionData, VtTradeData, \
     VtAccountData, VtContractData, VtLogData, VtTickData, VtErrorData
 from vnpy.trader.vtConstant import *
@@ -257,10 +257,8 @@ class VnOandaApi(OandaApi):
         req.instrument = symbol
         req.granularity = map_frequency(freq)
         req.count = size
-        if isinstance(since, (int, str)):
-            since = datetime.strptime(str(since), "%Y%m%d")
-        if isinstance(to, (int, str)):
-            to = datetime.strptime(str(to), "%Y%m%d")
+        since = unified_parse_datetime(since)
+        to = unified_parse_datetime(to)
         req.since = since and since.strftime(OANDA_DATEFORMAT_RFC3339)
         req.to = to and to.strftime(OANDA_DATEFORMAT_RFC3339)
         if not (req.since and req.count) and not req.to:
