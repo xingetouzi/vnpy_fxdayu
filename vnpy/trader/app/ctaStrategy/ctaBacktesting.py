@@ -200,7 +200,7 @@ class BacktestingEngine(object):
     #------------------------------------------------
     def parseData(self, dataClass, dataDict):
         data = dataClass()
-        data.__dict__ = dataDict
+        data.__dict__.update(dataDict)
         return data
         """
         "data.__dict__"  sample:
