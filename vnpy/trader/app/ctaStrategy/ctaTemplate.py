@@ -291,9 +291,10 @@ class CtaTemplate(object):
         setattr(self, variable2, amDict)
         setattr(self, variable3, mdfDict)
 
-    def generateHFBar(self,xSecond):
+    def generateHFBar(self,xSecond,size = 60):
         self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond = xSecond)
                         for sym in self.symbolList}
+        self.amhfDict = {sym: ArrayManager(size) for sym in self.symbolList}
             
 ########################################################################
 class TargetPosTemplate(CtaTemplate):
@@ -460,7 +461,6 @@ class BarGenerator(object):
     def updateTick(self, tick):
         """TICK更新"""
         newMinute = False  # 默认不是新的一分钟
-        newHfBar = False  # 默认不是新的hf
 
         # 尚未创建对象
         if not self.bar:
@@ -508,6 +508,8 @@ class BarGenerator(object):
                 self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
             # 缓存Tick
             self.lastTick = tick
+
+    #--------------------------------------------        
     def updateHFBar(self,tick):
         # 高频交易的bar
         if self.xSecond:
@@ -623,6 +625,7 @@ class ArrayManager(object):
         self.lowArray = np.zeros(size)
         self.closeArray = np.zeros(size)
         self.volumeArray = np.zeros(size)
+        self.datetimeArray = np.zeros(size)
 
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
@@ -637,12 +640,14 @@ class ArrayManager(object):
             self.lowArray[0:self.size - 1] = self.lowArray[1:self.size]
             self.closeArray[0:self.size - 1] = self.closeArray[1:self.size]
             self.volumeArray[0:self.size - 1] = self.volumeArray[1:self.size]
+            self.datetimeArray[0:self.size - 1] = self.datetimeArray[1:self.size]
 
             self.openArray[-1] = bar.open
             self.highArray[-1] = bar.high
             self.lowArray[-1] = bar.low
             self.closeArray[-1] = bar.close
             self.volumeArray[-1] = bar.volume
+            self.datetimeArray[-1] = bar.datetime.timestamp()
 
     # ----------------------------------------------------------------------
     @property
@@ -673,6 +678,11 @@ class ArrayManager(object):
     def volume(self):
         """获取成交量序列"""
         return self.volumeArray
+
+    @property
+    def datetime(self):
+        """获取时间戳序列"""
+        return self.datetimeArray
 
     # # ----------------------------------------------------------------------
     # def sma(self, n, array=False):

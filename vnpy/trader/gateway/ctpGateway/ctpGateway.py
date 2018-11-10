@@ -101,7 +101,6 @@ class CtpGateway(VtGateway):
 
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
-        self.posExchangeTemp = {}
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -269,8 +268,7 @@ class CtpGateway(VtGateway):
         }
 
         symbol = vtSymbol.split(':')[0]
-        exchange = vtSymbol.split(':')[1]
-        self.posExchangeTemp[symbol] = exchange
+        exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
 
         if exchangeMap[EXCHANGE_SHFE] in exchange:
             exchange = 'SHF'
@@ -285,6 +283,7 @@ class CtpGateway(VtGateway):
         #     self.onLog(log)
         #     return
         symbol = symbol + '.' + exchange
+
         result= pd.DataFrame(columns=['datetime','open','close','high','low','volume'])
         start_time = since#.strftime('%Y%m%d')
         end_time = datetime.now().strftime('%Y%m%d')
@@ -439,7 +438,7 @@ class CtpMdApi(MdApi):
 
         tick.symbol = data['InstrumentID']
         tick.exchange = symbolExchangeDict.get(tick.symbol, EXCHANGE_UNKNOWN)
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
 
         tick.lastPrice = data['LastPrice']
         tick.volume = data['Volume']
@@ -699,7 +698,7 @@ class CtpTdApi(TdApi):
         order.gatewayName = self.gatewayName
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, self.gatewayName])
         order.orderID = data['OrderRef']
         order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
@@ -838,12 +837,7 @@ class CtpTdApi(TdApi):
 
             pos.gatewayName = self.gatewayName
             pos.symbol = data['InstrumentID']
-
-            if pos.symbol in self.gateway.posExchangeTemp.keys():
-                pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, self.gateway.posExchangeTemp[pos.symbol]])
-            else:
-                pos.vtSymbol = pos.symbol
-
+            pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
             pos.direction = posiDirectionMapReverse.get(data['PosiDirection'], '')
             pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
 
@@ -960,7 +954,7 @@ class CtpTdApi(TdApi):
 
         contract.symbol = data['InstrumentID']
         contract.exchange = exchangeMapReverse[data['ExchangeID']]
-        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+        contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
         contract.name = data['InstrumentName']
         #contract.name = data['InstrumentName'].decode('GBK')
 
@@ -1204,7 +1198,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
         order.orderID = data['OrderRef']
         # CTP的报单号一致性维护需要基于frontID, sessionID, orderID三个字段
@@ -1244,7 +1238,7 @@ class CtpTdApi(TdApi):
         # 保存代码和报单号
         trade.symbol = data['InstrumentID']
         trade.exchange = exchangeMapReverse[data['ExchangeID']]
-        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.exchange])
+        trade.vtSymbol = VN_SEPARATOR.join([trade.symbol, trade.gatewayName])
 
         trade.tradeID = data['TradeID']
         trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
@@ -1277,7 +1271,7 @@ class CtpTdApi(TdApi):
         order.gatewayName = self.gatewayName
         order.symbol = data['InstrumentID']
         order.exchange = exchangeMapReverse[data['ExchangeID']]
-        order.vtSymbol = order.symbol
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol,order.gatewayName])
         order.orderID = data['OrderRef']
         order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
         order.direction = directionMapReverse.get(data['Direction'], DIRECTION_UNKNOWN)
