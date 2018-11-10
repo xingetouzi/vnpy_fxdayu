@@ -1,8 +1,6 @@
 from __future__ import division
 from vnpy.trader.vtConstant import *
-from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
-                                                     BarGenerator,
-                                                     ArrayManager)
+from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate)
 import talib as ta
 
 ########################################################################
@@ -140,12 +138,13 @@ class BollBandsStrategy(CtaTemplate):
         # 在每个Tick推送过来的时候,进行updateTick,生成分钟线后推送到onBar. 
         # 需要注意的是，如果没有updateTick，实盘将不会推送1分钟K线
         self.bgDict[tick.vtSymbol].updateTick(tick)
-        self.hfDict[tick.vtSymbol].updateTick(tick)   # 如果需要使用高频k线，需要在这里用tick更新hfDict
+        self.hfDict[tick.vtSymbol].updateHFBar(tick)   # 如果需要使用高频k线，需要在这里用tick更新hfDict
 
     # ---------------------------------------------------------------------
     def onHFBar(self,bar):
         """收到高频bar推送（需要在onInit定义频率，否则默认不推送）"""
         self.writeCtaLog('stg_onHFbar_check_%s_%s_%s'%(bar.vtSymbol,bar.datetime,bar.close))
+        self.amhfDict[bar.vtSymbol].updateBar(bar)  # 高频K的矩阵缓存器
 
     #----------------------------------------------------------------------
     def onBar(self, bar):
@@ -233,24 +232,24 @@ class BollBandsStrategy(CtaTemplate):
                 self.buy(symbol,             # 下单交易品种
                         bar.close*1.01,      # 下单的价格
                         1,                   # 交易数量
-                        priceType = PRICETYPE_LIMITPRICE,   # 价格类型：[PRICETYPE_LIMITPRICE,PRICETYPE_MARKETPRICE,PRICETYPE_FAK,PRICETYPE_FOK]
-                        levelRate = 10)      # 保证金交易可填杠杆参数，默认levelRate = 0
+                        priceType = PRICETYPE_LIMITPRICE   # 价格类型：[PRICETYPE_LIMITPRICE,PRICETYPE_MARKETPRICE,PRICETYPE_FAK,PRICETYPE_FOK]
+                        )      
 
         if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1]< MA[-3]): # parameter6
             if self.posDict[symbol+"_LONG"] > 0:
                 self.cancelAll()
-                self.sell(symbol, bar.close*0.99, self.posDict[symbol+"_LONG"],levelRate = 10)
+                self.sell(symbol, bar.close*0.99, self.posDict[symbol+"_LONG"])
 
         if  (self.maTrend==-1) and (MA[-1] < MA[-3]) and (sigmaKdjMa[-1]<self.lowVolRate):
             if self.stopLossControl==1:
                 self.stopLossControl=0
             if self.posDict[symbol+"_SHORT"]==0 and self.stopLossControl == 0:
-                self.short(symbol,bar.close*0.99, 1,levelRate = 10)
+                self.short(symbol,bar.close*0.99, 1)
 
         if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1] > MA[-3]):
             if self.posDict[symbol+"_SHORT"] > 0:
                 self.cancelAll()
-                self.cover(symbol, bar.close*1.01, self.posDict[symbol+"_SHORT"],levelRate = 10)
+                self.cover(symbol, bar.close*1.01, self.posDict[symbol+"_SHORT"])
 
     #----------------------------------------------------------------------
     def onOrder(self, order):
