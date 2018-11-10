@@ -36,6 +36,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from decimal import *
+import winsound
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -99,7 +100,9 @@ class CtaEngine(object):
         self.path = os.path.join(os.getcwd(), u"reports" )
         if not os.path.isdir(self.path):
             os.makedirs(self.path)
-
+        
+        # 上期所昨持仓缓存
+        self.ydPositionDict = {}  
     #----------------------------------------------------------------------
     def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
         """发单"""
@@ -130,19 +133,51 @@ class CtaEngine(object):
             
         elif orderType == CTAORDER_SELL:
             req.direction = DIRECTION_SHORT
-            req.offset = OFFSET_CLOSE
-                
+            # 只有上期所才要考虑平今平昨
+            if contract.exchange != EXCHANGE_SHFE:
+                req.offset = OFFSET_CLOSE
+            else:
+                # 获取持仓缓存数据
+                posBuffer = self.ydPositionDict.get(vtSymbol+'_LONG', None)
+                # 如果获取持仓缓存失败，则默认平昨
+                if not posBuffer:
+                    self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
+                    req.offset = OFFSET_CLOSETODAY
+
+                # modified by IncenseLee 2016/11/08，改为优先平昨仓
+                elif posBuffer:
+                    self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
+                    req.offset = OFFSET_CLOSE
+                    if (posBuffer - volume)>0:
+                       self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
+
+
         elif orderType == CTAORDER_SHORT:
             req.direction = DIRECTION_SHORT
             req.offset = OFFSET_OPEN
             
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
-            req.offset = OFFSET_CLOSE
+            # 只有上期所才要考虑平今平昨
+            if contract.exchange != EXCHANGE_SHFE:
+                req.offset = OFFSET_CLOSE
+            else:
+                # 获取持仓缓存数据
+                posBuffer = self.ydPositionDict.get(vtSymbol+'_SHORT', None)
+                # 如果获取持仓缓存失败，则默认平昨
+                if not posBuffer:
+                    self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
+                    req.offset = OFFSET_CLOSETODAY
+
+                # modified by IncenseLee 2016/11/08，改为优先平昨仓
+                elif posBuffer:
+                    self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
+                    req.offset = OFFSET_CLOSE
+                    if (posBuffer - volume)>0:
+                       self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
 
         # 委托转换
         # reqList = self.mainEngine.convertOrderReq(req) # 不转了
-
 
         reqList = [req]
         vtOrderIDList = []
@@ -155,6 +190,7 @@ class CtaEngine(object):
             vtOrderIDList.append(vtOrderID)
         self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
                          %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
+        winsound.PlaySound('warn.wav', winsound.SND_ASYNC)
 
         return vtOrderIDList
 
@@ -184,8 +220,6 @@ class CtaEngine(object):
 
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
-
-
 
     def batchCancelOrder(self,vtOrderIDList):
         """批量撤单"""
@@ -427,6 +461,8 @@ class CtaEngine(object):
                     posName = pos.vtSymbol + "_LONG"
                     if 'posDict' in strategy.syncList:
                         strategy.posDict[str(posName)] = pos.position
+                        if 'SHFE' in posName:
+                            self.ydPositionDict[str(posName)] = pos.ydPosition
                     if 'eveningDict' in strategy.syncList:
                         strategy.eveningDict[str(posName)] = pos.position - pos.frozen
 
@@ -434,6 +470,8 @@ class CtaEngine(object):
                     posName2 = pos.vtSymbol + "_SHORT"
                     if 'posDict' in strategy.syncList:
                         strategy.posDict[str(posName2)] = pos.position
+                        if 'SHFE' in posName2:
+                            self.ydPositionDict[str(posName2)] = pos.ydPosition
                     if 'eveningDict' in strategy.syncList:
                         strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
 
@@ -862,7 +900,7 @@ class CtaEngine(object):
             'tradedVolume':order.tradedVolume,
             'totalVolume':order.totalVolume,
             'status':order.status,
-            'deliverTime':order.deliverTime.strftime('%Y%m%d %X'),
+            'orderTime':order.deliverTime.strftime('%Y%m%d %X'),
             'orderby':order.byStrategy
             }
 

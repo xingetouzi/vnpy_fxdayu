@@ -440,7 +440,7 @@ class BarGenerator(object):
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0):
+    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0,onHFBar =None):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -466,9 +466,8 @@ class BarGenerator(object):
         if not self.bar:
             self.bar = VtBarData()
             # 生成上一分钟K线的时间戳
-            self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.bar.date = self.bar.datetime.strftime('%Y%m%d')
-            self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
+            #self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            
             newMinute = True
 
         # 新的一分钟
@@ -490,6 +489,8 @@ class BarGenerator(object):
             self.bar.high = tick.lastPrice
             self.bar.low = tick.lastPrice
             self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+            self.bar.date = self.bar.datetime.strftime('%Y%m%d')
+            self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
         # 累加更新老一分钟的K线数据
         else:
             self.bar.high = max(self.bar.high, tick.lastPrice)
@@ -507,30 +508,12 @@ class BarGenerator(object):
                 self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
             # 缓存Tick
             self.lastTick = tick
-        
+    def updateHFBar(self,tick):
         # 高频交易的bar
         if self.xSecond:
             if not self.hfBar:
                 self.hfBar = VtBarData()
-                # 生成上一分钟K线的时间戳
-                self.hfBar.datetime = tick.datetime.replace(microsecond=0)  # 将秒和微秒设为0
-                self.hfBar.date = self.bar.datetime.strftime('%Y%m%d')
-                self.hfBar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
-                newHfBar = True
-
-            # 新的一分钟
-            elif not (self.hfBar.datetime.second) % self.xSecond:
-                if (self.hfBar.datetime.second != self.lastSecond):
-                    # 推送已经结束的上一分钟K线
-                    self.onHFBar(self.hfBar)
-                    self.lastSecond = self.hfBar.datetime.second
-
-                    # 创建新的K线对象
-                    self.hfBar = VtBarData()
-                    newHfBar = True
-                
-                # 初始化新一分钟的K线数据
-            if newHfBar:
+                # 生成上一K线的时间戳
                 self.hfBar.vtSymbol = tick.vtSymbol
                 self.hfBar.symbol = tick.symbol
                 self.hfBar.exchange = tick.exchange
@@ -538,25 +521,34 @@ class BarGenerator(object):
                 self.hfBar.open = tick.lastPrice
                 self.hfBar.high = tick.lastPrice
                 self.hfBar.low = tick.lastPrice
-                self.hfBar.datetime = tick.datetime.replace(microsecond=0)  # 将微秒设为0
-
-            # 累加更新老一分钟的K线数据
-            else:
-                self.hfBar.high = max(self.hfBar.high, tick.lastPrice)
-                self.hfBar.low = min(self.hfBar.low, tick.lastPrice)
-
+                                
+            # 累加更新老K线数据
+            self.hfBar.high = max(self.hfBar.high, tick.lastPrice)
+            self.hfBar.low = min(self.hfBar.low, tick.lastPrice)
+            
+            self.hfBar.datetime = tick.datetime.replace(microsecond=0)  # 将微秒设为0
+            self.hfBar.date = self.hfBar.datetime.strftime('%Y%m%d')
+            self.hfBar.time = self.hfBar.datetime.strftime('%H:%M:%S.%f')
+            
             # 通用更新部分
             self.hfBar.close = tick.lastPrice
             self.hfBar.openInterest = tick.openInterest
-
             if tick.exchange in ['OKEX']:
                 if tick.volumeChange:
-                    self.bar.volume += tick.lastVolume
+                    self.hfBar.volume += tick.lastVolume
             else:
                 if self.lastTick:
-                    self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
+                    self.hfBar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
                 # 缓存Tick
                 self.lastTick = tick
+            
+            # 新的一K
+            if not (tick.datetime.second) % self.xSecond:
+                if self.lastSecond != tick.datetime.second:
+                    # 推送已经结束的上一K线
+                    self.onHFBar(self.hfBar)
+                    self.lastSecond = tick.datetime.second
+                    self.hfBar = None
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
         """1分钟K线更新"""
