@@ -178,6 +178,7 @@ class VnOandaApi(OandaApi):
         self.client_dt = datetime.now().strftime('%y%m%d%H%M%S')
         self.orderID = 0
         self.gateway = gateway
+        self.current_datetime = datetime.utcnow()
         self.event_keys = [
             VtOrderData, VtTradeData, VtPositionData, VtAccountData, VtContractData,
             VtTickData, VtErrorData,
@@ -188,7 +189,7 @@ class VnOandaApi(OandaApi):
             VtPositionData: self.gateway.onPosition,
             VtContractData: self.gateway.onContract,
             VtAccountData: self.gateway.onAccount,
-            VtTickData: self.gateway.onTick,
+            VtTickData: self.onTick,
             VtErrorData: self.gateway.onError,
         }
 
@@ -201,6 +202,10 @@ class VnOandaApi(OandaApi):
                 #     print(type(event))
                 #     print(event.__dict__)
                 func(event)
+
+    def onTick(self, tick):
+        self.current_datetime = tick.datetime
+        self.gateway.onTick(tick)
 
     def on_tick(self, tick):
         data = tick.to_vnpy(self.gateway)
@@ -261,8 +266,8 @@ class VnOandaApi(OandaApi):
         to = unified_parse_datetime(to)
         req.since = since and since.strftime(OANDA_DATEFORMAT_RFC3339)
         req.to = to and to.strftime(OANDA_DATEFORMAT_RFC3339)
-        if not (req.since and req.count) and not req.to:
-            req.to = datetime.utcnow().strftime(OANDA_DATEFORMAT_RFC3339)
+        if not (req.since and req.count) and not req.to and self.current_datetime:
+            req.to = self.current_datetime.strftime(OANDA_DATEFORMAT_RFC3339)
         df = self.qry_candles(req).to_dataframe()
         return df
 
