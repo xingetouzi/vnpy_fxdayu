@@ -19,6 +19,8 @@ class BollBandsStrategy(CtaTemplate):
     lowVolRate = 15
     highVolRate = 65
     trailingPercent = 2
+    orderList =[]
+    transactionPrice = {}
 
     # 策略变量
     maTrend = 0             # 均线趋势，多头1，空头-1
@@ -42,10 +44,11 @@ class BollBandsStrategy(CtaTemplate):
                'trading',
                'posDict',
                'stopLossControl',
-               'maTrend']
+               'maTrend',
+               'transactionPrice']
 
     # 同步列表，保存了需要保存到数据库的变量名称
-    syncList = ['posDict', 'eveningDict']
+    syncList = ['posDict', 'eveningDict','transactionPrice']
 
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
@@ -160,7 +163,8 @@ class BollBandsStrategy(CtaTemplate):
             self.longStop = self.intraTradeHighDict[symbol]*(1-self.trailingPercent/100)
             if bar.close<=self.longStop:
                 self.cancelAll()
-                self.sell(symbol, bar.close*0.985, self.posDict[symbol+"_LONG"])
+                l = self.sell(symbol, bar.close*0.985, self.posDict[symbol+"_LONG"])
+                self.orderList.extend(l)
                 self.stopLossControl = 1
 
         # 持有空头仓位
@@ -170,7 +174,8 @@ class BollBandsStrategy(CtaTemplate):
             self.shortStop = self.intraTradeLowDict[symbol]*(1+self.trailingPercent/100)
             if bar.close>=self.shortStop:
                 self.cancelAll()
-                self.cover(symbol, bar.close*1.015, self.posDict[symbol+"_SHORT"])
+                l = self.cover(symbol, bar.close*1.015, self.posDict[symbol+"_SHORT"])
+                self.orderList.extend(l)
                 self.stopLossControl = -1
 
         self.writeCtaLog('%son1minBar%s' %(symbol, self.stopLossControl))
@@ -184,19 +189,17 @@ class BollBandsStrategy(CtaTemplate):
         self.am60Dict[symbol].updateBar(bar) # 需要将 60MinBar 数据同时推给 60MinBar 的array字典去保存，用于talib计算
         
         am60 = self.am60Dict[symbol]
-        if not am60.inited:
-            return
+        if am60.inited:
+            fastTrend = ta.MA(am60.close, self.fastWindow)
+            slowTrend = ta.MA(am60.close, self.slowWindow)
 
-        fastTrend = ta.MA(am60.close, self.fastWindow)
-        slowTrend = ta.MA(am60.close, self.slowWindow)
+            # Status
+            if fastTrend[-1]>slowTrend[-1]:
+                self.maTrend = 1
+            else:
+                self.maTrend = -1
 
-        # Status
-        if fastTrend[-1]>slowTrend[-1]:
-            self.maTrend = 1
-        else:
-            self.maTrend = -1
-
-        self.writeCtaLog('on60minBar, self.maTrend%s' % self.maTrend)  # 记录实盘运行信号
+            self.writeCtaLog('on60minBar, self.maTrend%s' % self.maTrend)  # 记录实盘运行信号
     #----------------------------------------------------------------------
     def on15MinBar(self, bar):
         """收到Bar推送（必须由用户继承实现）"""
@@ -204,59 +207,63 @@ class BollBandsStrategy(CtaTemplate):
         self.am15Dict[symbol].updateBar(bar) # 需要将 15MinBar 数据同时推给 15MinBar 的array字典去保存，用于talib计算
         am15 = self.am15Dict[symbol]
        
-        if not am15.inited:
-            return
+        if am15.inited:
+            # Indicator
+            up, mid, low = ta.BBANDS(am15.close, self.bBandPeriod, matype=0)  # parameter1
+            sigma = (up-mid)/(2*mid)
+            kHigh = ta.MAX(sigma, self.minMaxPeriod)  # parameter2
+            kLow = ta.MIN(sigma, self.minMaxPeriod)
+            sigmaKdjMa = ta.MA(ta.STOCH(kHigh, kLow, sigma)[0], self.kdjMaPeriod) # parameter3
+            MA = ta.MA(am15.close, self.signalMaPeriod, matype=0) # parameter4
 
-        # Indicator
-        up, mid, low = ta.BBANDS(am15.close, self.bBandPeriod, matype=0)  # parameter1
-        sigma = (up-mid)/(2*mid)
-        kHigh = ta.MAX(sigma, self.minMaxPeriod)  # parameter2
-        kLow = ta.MIN(sigma, self.minMaxPeriod)
-        sigmaKdjMa = ta.MA(ta.STOCH(kHigh, kLow, sigma)[0], self.kdjMaPeriod) # parameter3
-        MA = ta.MA(am15.close, self.signalMaPeriod, matype=0) # parameter4
+            self.writeCtaLog('%son15minBar, sigmaKdjMa%s, MA[-1]%s, MA[-3]%s' % (symbol,sigmaKdjMa[-1], MA[-1], MA[-3]))
+            
+            # signal
+            if  (self.maTrend==1) and (MA[-1]> MA[-3]) and (sigmaKdjMa[-1]<self.lowVolRate): # parameter5
 
-        self.writeCtaLog('%son15minBar, sigmaKdjMa%s, MA[-1]%s, MA[-3]%s' % (symbol,sigmaKdjMa[-1], MA[-1], MA[-3]))
-        
-        # signal
-        if  (self.maTrend==1) and (MA[-1]> MA[-3]) and (sigmaKdjMa[-1]<self.lowVolRate): # parameter5
-            if self.stopLossControl==-1:
-                self.stopLossControl=0
-            if self.posDict[symbol+"_LONG"]==0 and self.stopLossControl == 0:
-                self.buy(symbol,             # 下单交易品种
-                        bar.close*1.01,      # 下单的价格
-                        1,                   # 交易数量
-                        priceType = PRICETYPE_LIMITPRICE   # 价格类型：[PRICETYPE_LIMITPRICE,PRICETYPE_MARKETPRICE,PRICETYPE_FAK,PRICETYPE_FOK]
-                        )      
+                if self.stopLossControl==-1:
+                    self.stopLossControl=0
+                if self.posDict[symbol+"_LONG"]==0 and self.stopLossControl == 0:
+                    if self.orderList:
+                        return self.writeCtaLog('没有持仓，但有挂单未成交')
+                    l = self.buy(symbol,             # 下单交易品种
+                            bar.close*1.01,      # 下单的价格
+                            1,                   # 交易数量
+                            priceType = PRICETYPE_LIMITPRICE   # 价格类型：[PRICETYPE_LIMITPRICE,PRICETYPE_MARKETPRICE,PRICETYPE_FAK,PRICETYPE_FOK]
+                            )     
+                    self.orderList.extend(l) 
 
-        if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1]< MA[-3]): # parameter6
-            if self.posDict[symbol+"_LONG"] > 0:
-                self.cancelAll()
-                self.sell(symbol, bar.close*0.99, self.posDict[symbol+"_LONG"])
+            if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1]< MA[-3]): # parameter6
+                if self.posDict[symbol+"_LONG"] > 0:
+                    self.cancelAll()
+                    l = self.sell(symbol, bar.close*0.99, self.posDict[symbol+"_LONG"])
+                    self.orderList.extend(l)
 
-        if  (self.maTrend==-1) and (MA[-1] < MA[-3]) and (sigmaKdjMa[-1]<self.lowVolRate):
-            if self.stopLossControl==1:
-                self.stopLossControl=0
-            if self.posDict[symbol+"_SHORT"]==0 and self.stopLossControl == 0:
-                self.short(symbol,bar.close*0.99, 1)
+            if  (self.maTrend==-1) and (MA[-1] < MA[-3]) and (sigmaKdjMa[-1]<self.lowVolRate):
+                if self.stopLossControl==1:
+                    self.stopLossControl=0
+                if self.posDict[symbol+"_SHORT"]==0 and self.stopLossControl == 0:
+                    if self.orderList:
+                        return self.writeCtaLog('没有持仓，但有挂单未成交')
+                    l = self.short(symbol,bar.close*0.99, 1)
+                    self.orderList.extend(l)
 
-        if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1] > MA[-3]):
-            if self.posDict[symbol+"_SHORT"] > 0:
-                self.cancelAll()
-                self.cover(symbol, bar.close*1.01, self.posDict[symbol+"_SHORT"])
+            if  (sigmaKdjMa[-1]>self.highVolRate) and (MA[-1] > MA[-3]):
+                if self.posDict[symbol+"_SHORT"] > 0:
+                    self.cancelAll()
+                    l = self.cover(symbol, bar.close*1.01, self.posDict[symbol+"_SHORT"])
+                    self.orderList.extend(l)
 
     #----------------------------------------------------------------------
     def onOrder(self, order):
         """收到委托变化推送（必须由用户继承实现）"""
         # 对于无需做细粒度委托控制的策略，可以忽略onOrder
-        if order.status == STATUS_UNKNOWN:
-            self.mail(u'出现未知订单，需要策略师外部干预,ID:%s, symbol:%s,direction:%s,offset:%s'
-                 %(order.vtOrderID, order.vtSymbol, order.direction, order.offset))     # 在交易通讯异常时，系统返回未知状态的order对象给策略，需要额外措施处理
-        if order.tradedVolume != 0 :
-            # tradedVolume 不等于 0 表示有订单成交
-            content = u'成交信息播报,ID:%s, symbol:%s, directionL%s, offset:%s, price:%s'\
-                      %(order.vtOrderID, order.vtSymbol, order.direction, order.offset, order.price)
-            self.mail(content)
-
+        if order.status == STATUS_ALLTRADED and order.offset == OFFSET_OPEN:
+            self.transactionPrice[order.vtSymbol] = order.price
+            self.writeCtaLog('Onorder transactionPrice: %s'%(self.transactionPrice[order.vtSymbol]))
+        if order.status in STATUS_FINISHED:
+            if order.vtOrderID in self.orderList:
+                self.orderList.remove(order.vtOrderID)
     #----------------------------------------------------------------------
     def onTrade(self, trade):
         """收到成交推送（必须由用户继承实现）"""

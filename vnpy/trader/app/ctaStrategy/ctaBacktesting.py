@@ -412,7 +412,6 @@ class BacktestingEngine(object):
         self.strategy.symbolList = setting['symbolList']
         self.strategy.posDict = {}
         self.strategy.eveningDict = {}
-        self.strategy.bondDict ={}
         self.strategy.accountDict = {}
         self.strategy.frozenDict = {}
         self.initPosition(self.strategy)
@@ -465,7 +464,6 @@ class BacktestingEngine(object):
                     trade.vtOrderID = order.orderID
                     trade.direction = order.direction
                     trade.offset = order.offset
-                    # trade.levelRate = order.levelRate
 
                     # 以买入为例：
                     # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
@@ -549,7 +547,6 @@ class BacktestingEngine(object):
                     trade.vtSymbol = so.vtSymbol
                     trade.tradeID = tradeID
                     trade.vtTradeID = tradeID
-                    # trade.levelRate = levelRate
 
                     if buyCross and so.offset == OFFSET_OPEN: # 买开
                         self.strategy.posDict[symbol+"_LONG"] += so.volume
@@ -609,10 +606,9 @@ class BacktestingEngine(object):
     #------------------------------------------------
     # 策略接口相关
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发单"""
         self.limitOrderCount += 1
-        self.levelRate = levelRate
         orderID = str(self.limitOrderCount)
         order = VtOrderData()
         order.vtSymbol = vtSymbol
@@ -621,7 +617,6 @@ class BacktestingEngine(object):
         order.vtOrderID = orderID
         order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
         order.priceType = priceType
-        # order.levelRate = levelRate
         
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -790,9 +785,6 @@ class BacktestingEngine(object):
             if 'eveningDict' in strategy.syncList:
                 strategy.eveningDict[symbol+"_LONG"] = 0
                 strategy.eveningDict[symbol+"_SHORT"] = 0
-            if 'bondDict' in strategy.syncList:
-                strategy.bondDict[symbol+"_LONG"] = 0
-                strategy.bondDict[symbol+"_SHORT"] = 0
             
             symbolPair = symbol.split('_')
             if 'accountDict' in strategy.syncList:
@@ -851,7 +843,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
-                                               -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
+                                               -closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
                         
@@ -896,7 +888,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.dt, 
                                                exitTrade.price, exitTrade.dt,
-                                               closedVolume, self.rate, self.slippage, self.size,self.levelRate)
+                                               closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
                         
@@ -935,7 +927,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
-                                       trade.volume, self.rate, self.slippage, self.size,self.levelRate)
+                                       trade.volume, self.rate, self.slippage, self.size)
 
                 resultList.append(result)
                 deliverSheet.append(result.__dict__)
@@ -949,7 +941,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
-                                       -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
+                                       -trade.volume, self.rate, self.slippage, self.size)
                 resultList.append(result)
                 deliverSheet.append(result.__dict__)
 
@@ -1258,7 +1250,7 @@ class BacktestingEngine(object):
                 dailyResult.previousClose = previousClose
                 previousClose = dailyResult.closePrice
 
-                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage, self.levelRate )
+                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage)
                 openPosition = dailyResult.closePosition
 
             # 生成DataFrame
@@ -1442,7 +1434,7 @@ class TradingResult(object):
 
     #----------------------------------------------------------------------
     def __init__(self, entryPrice, entryDt, exitPrice, 
-                 exitDt, volume, rate, slippage, size, levelRate = 0):
+                 exitDt, volume, rate, slippage, size):
         """Constructor"""
         self.entryPrice = entryPrice    # 开仓价格
         self.exitPrice = exitPrice      # 平仓价格
@@ -1452,22 +1444,14 @@ class TradingResult(object):
         
         self.volume = volume            # 交易数量（+/-代表方向）
 
-        if levelRate:
-            self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
-        else:
-            self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
+        self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
 
 
         self.commission = self.turnover*rate                                # 手续费成本   
         self.slippage = slippage*2*size*abs(volume)                       # 滑点成本
 
 
-        if levelRate:
-            self.pnl = ((self.exitPrice - self.entryPrice) / self.entryPrice * volume * size
-                    - self.commission - self.slippage)
-            
-        else:
-            self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
+        self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
         
 
@@ -1504,7 +1488,7 @@ class DailyResult(object):
         self.tradeList.append(trade)
 
     #----------------------------------------------------------------------
-    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0, levelRate = 0):
+    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0):
         """
         计算盈亏
         size: 合约乘数
@@ -1513,9 +1497,6 @@ class DailyResult(object):
         """
         # 持仓部分
         self.openPosition = openPosition
-        # if self.levelRate:
-        #     self.positionPnl = self.openPosition * ((self.closePrice - self.previousClose)/self.previousClose) * size
-        # else:
         self.positionPnl = self.openPosition * (self.closePrice - self.previousClose) * size
         self.closePosition = self.openPosition
         
@@ -1528,10 +1509,6 @@ class DailyResult(object):
             else:
                 posChange = -trade.volume
             
-            # if self.levelRate:
-            #     self.tradingPnl += posChange * ((self.closePrice - trade.price)/trade.price) * size
-            #     self.turnover += trade.volume * size / self.levelRate
-            # else: 
             self.tradingPnl += posChange * (self.closePrice - trade.price) * size
             self.turnover += trade.price * trade.volume * size
             self.closePosition += posChange
