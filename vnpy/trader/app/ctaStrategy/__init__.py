@@ -1,6 +1,6 @@
 # encoding: UTF-8
 
-from .ctaBarManager import CtaEngine
+from .ctaPush import CtaEngine
 from .ctaBarManager import CtaTemplate
 from .ctaBarManager import BacktestingEngine
 from .uiCtaWidget import CtaEngineManager

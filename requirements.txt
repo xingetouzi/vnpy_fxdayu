@@ -6,4 +6,5 @@ python-snappy
 flask-restful
 flask-socketio
 aiohttp
+requests
 jaqs
