@@ -19,7 +19,7 @@ def test_ctp():
     gw = CtpGateway(EventEngine())
     gw.connect()
     reader = BarReader.new(gw)
-    test(reader, "rb1901:SHF")
+    test(reader, "rb1901")
 
 if __name__ == "__main__":
     test_ctp()
