@@ -101,6 +101,7 @@ class CtpGateway(VtGateway):
 
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
+        self.trade_days = None
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -154,6 +155,7 @@ class CtpGateway(VtGateway):
                         }
             self.ds = RemoteDataService()
             self.ds.init_from_config(data_config)
+            self.trade_days = self.ds.query_trade_dates(19910101, 20291231)
         # log.logContent = u'jaqs连接成功'
         # self.onLog(log)
 
@@ -235,9 +237,94 @@ class CtpGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
 
+    def _select_trade_days(self, start, end):
+        s = self.trade_days.searchsorted(start) if start else 0
+        e = self.trade_days.searchsorted(end, "right")
+        return self.trade_days[s:e]
+
+    def make_dt(self, date, time):
+        day, month, year = list(self.split_time(date))
+        second, minute, hour = list(self.split_time(time))
+        return datetime(year, month, day, hour, minute, second)
+    
+    @staticmethod
+    def split_time(time):
+        for i in range(2):
+            yield time % 100
+            time = int(time/100)
+        yield time
+    
+    BARCOLUMN = ["datetime", "open", "high", "low", "close", "volume"]
 
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
+        if type_ not in ['1min','5min','15min']:
+            log = VtLogData()
+            log.gatewayName = self.gatewayName
+            log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
+            self.onLog(log)
+            return
+        typeMap = {}
+        typeMap['1min'] = '1M'
+        typeMap['5min'] = '5M'
+        typeMap['15min'] = '15M'
+        freq_map = {
+            "1min": "1M",
+            "5min": "5M",
+            "15min": "15M"
+        }
+
+        freq_delta = {
+            "1M": timedelta(minutes=1),
+            "5M": timedelta(minutes=5),
+            "15M": timedelta(minutes=15),
+        }
+
+        symbol = vtSymbol.split(':')[0]
+        exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
+
+        if exchangeMap[EXCHANGE_SHFE] in exchange:
+            exchange = 'SHF'
+        elif exchangeMap[EXCHANGE_CFFEX] in exchange:
+            exchange = 'CFE'
+        elif exchangeMap[EXCHANGE_CZCE] in exchange:
+            exchange = 'CZC'
+        symbol = symbol + '.' + exchange
+        freq = typeMap[type_]
+        delta = freq_delta[freq]
+        if since:
+            start = int(since)
+        else:
+            start = None
+        end = datetime.now()
+        end = end.year*10000+end.month*100+end.day
+        days = self._select_trade_days(start, end)
+        results = {}
+        
+        if start is None:
+            days = reversed(days)
+        
+        length = 0
+        for date in days:
+            bar, msg = self.ds.bar(symbol, trade_date=date, freq=freq)
+            if msg != "0,":
+                raise Exception(msg)
+            bar["datetime"] = list(map(self.make_dt, bar.date, bar.time))
+            bar["datetime"] -= delta
+            results[date] = bar[self.BARCOLUMN]
+            length += len(bar)
+            if size and (length >= size):
+                break
+        
+        data = pd.concat([results[date] for date in sorted(results.keys())], ignore_index=True)
+        if size:
+            if since:
+                data = data.iloc[:size]
+            else:
+                data = data.iloc[-size:]
+        return data        
+
+    def _loadHistoryBar_old(self, vtSymbol, type_, size= None, since = None):
         if size and not since:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -303,7 +390,7 @@ class CtpGateway(VtGateway):
 
             result["datetime"] = result["datetime"] - freq_delta[typeMap[type_]]
             return result
-
+    
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
     def initPosition(self,vtSymbol):
