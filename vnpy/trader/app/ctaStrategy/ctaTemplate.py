@@ -252,17 +252,16 @@ class CtaTemplate(object):
         self.ctaEngine.mail(my_context,self)
 
     def initBacktesingData(self):
-        pass
-        # if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
-        #     if self.ctaEngine.mode == 'bar':
-        #         initdata = self.loadBar()
-        #         for bar in initdata:
-        #             self.onBar(bar)  # 将历史数据直接推送到onBar
+        if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+            if self.ctaEngine.mode == 'bar':
+                initdata = self.loadBar()
+                for bar in initdata:
+                    self.onBar(bar)  # 将历史数据直接推送到onBar
 
-        #     elif self.ctaEngine.mode =='tick':
-        #         initdata = self.loadTick()
-        #         for tick in initdata:
-        #             self.onTick(tick)  # 将历史数据直接推送到onTick  
+            elif self.ctaEngine.mode =='tick':
+                initdata = self.loadTick()
+                for tick in initdata:
+                    self.onTick(tick)  # 将历史数据直接推送到onTick  
     
     def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
         if xmin: 
@@ -285,7 +284,7 @@ class CtaTemplate(object):
         mdfDict = {
             sym: MatrixDF(size)
             for sym in self.symbolList }
-        
+
 
         setattr(self, variable, bgDict)
         setattr(self, variable2, amDict)
@@ -441,7 +440,7 @@ class BarGenerator(object):
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0,onHFBar =None):
+    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -684,94 +683,94 @@ class ArrayManager(object):
         """获取时间戳序列"""
         return self.datetimeArray
 
-    # # ----------------------------------------------------------------------
-    # def sma(self, n, array=False):
-    #     """简单均线"""
-    #     result = talib.SMA(self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def sma(self, n, array=False):
+        """简单均线"""
+        result = talib.SMA(self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def std(self, n, array=False):
-    #     """标准差"""
-    #     result = talib.STDDEV(self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def std(self, n, array=False):
+        """标准差"""
+        result = talib.STDDEV(self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def cci(self, n, array=False):
-    #     """CCI指标"""
-    #     result = talib.CCI(self.high, self.low, self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def cci(self, n, array=False):
+        """CCI指标"""
+        result = talib.CCI(self.high, self.low, self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def atr(self, n, array=False):
-    #     """ATR指标"""
-    #     result = talib.ATR(self.high, self.low, self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def atr(self, n, array=False):
+        """ATR指标"""
+        result = talib.ATR(self.high, self.low, self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def rsi(self, n, array=False):
-    #     """RSI指标"""
-    #     result = talib.RSI(self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def rsi(self, n, array=False):
+        """RSI指标"""
+        result = talib.RSI(self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def macd(self, fastPeriod, slowPeriod, signalPeriod, array=False):
-    #     """MACD指标"""
-    #     macd, signal, hist = talib.MACD(self.close, fastPeriod,
-    #                                     slowPeriod, signalPeriod)
-    #     if array:
-    #         return macd, signal, hist
-    #     return macd[-1], signal[-1], hist[-1]
+    # ----------------------------------------------------------------------
+    def macd(self, fastPeriod, slowPeriod, signalPeriod, array=False):
+        """MACD指标"""
+        macd, signal, hist = talib.MACD(self.close, fastPeriod,
+                                        slowPeriod, signalPeriod)
+        if array:
+            return macd, signal, hist
+        return macd[-1], signal[-1], hist[-1]
 
-    # # ----------------------------------------------------------------------
-    # def adx(self, n, array=False):
-    #     """ADX指标"""
-    #     result = talib.ADX(self.high, self.low, self.close, n)
-    #     if array:
-    #         return result
-    #     return result[-1]
+    # ----------------------------------------------------------------------
+    def adx(self, n, array=False):
+        """ADX指标"""
+        result = talib.ADX(self.high, self.low, self.close, n)
+        if array:
+            return result
+        return result[-1]
 
-    # # ----------------------------------------------------------------------
-    # def boll(self, n, dev, array=False):
-    #     """布林通道"""
-    #     mid = self.sma(n, array)
-    #     std = self.std(n, array)
+    # ----------------------------------------------------------------------
+    def boll(self, n, dev, array=False):
+        """布林通道"""
+        mid = self.sma(n, array)
+        std = self.std(n, array)
 
-    #     up = mid + std * dev
-    #     down = mid - std * dev
+        up = mid + std * dev
+        down = mid - std * dev
 
-    #     return up, down
+        return up, down
 
-    # # ----------------------------------------------------------------------
-    # def keltner(self, n, dev, array=False):
-    #     """肯特纳通道"""
-    #     mid = self.sma(n, array)
-    #     atr = self.atr(n, array)
+    # ----------------------------------------------------------------------
+    def keltner(self, n, dev, array=False):
+        """肯特纳通道"""
+        mid = self.sma(n, array)
+        atr = self.atr(n, array)
 
-    #     up = mid + atr * dev
-    #     down = mid - atr * dev
+        up = mid + atr * dev
+        down = mid - atr * dev
 
-    #     return up, down
+        return up, down
 
-    # # ----------------------------------------------------------------------
-    # def donchian(self, n, array=False):
-    #     """唐奇安通道"""
-    #     up = talib.MAX(self.high, n)
-    #     down = talib.MIN(self.low, n)
+    # ----------------------------------------------------------------------
+    def donchian(self, n, array=False):
+        """唐奇安通道"""
+        up = talib.MAX(self.high, n)
+        down = talib.MIN(self.low, n)
 
-    #     if array:
-    #         return up, down
-    #     return up[-1], down[-1]
+        if array:
+            return up, down
+        return up[-1], down[-1]
 
 ########################################################################
 class CtaSignal(object):

@@ -16,7 +16,7 @@ import websocket
 import zlib
 
 # 常量定义
-OKEX_SPOT_HOST = 'wss://real.okex.com:10441/websocket?compress=true'
+OKEX_SPOT_HOST = 'wss://real.okex.com:10440/websocket?compress=true'
 OKEX_FUTURES_HOST = 'wss://real.okex.com:10440/websocket/okexapi?compress=true'
 # OKEX_SPOT_HOST = 'wss://okexcomreal.bafang.com:10441/websocket?compress=true'
 # OKEX_FUTURES_HOST = 'wss://okexcomreal.bafang.com:10441/websocket/okexapi?compress=true'
@@ -427,7 +427,8 @@ class OkexSpotApi(OkexApi):
             lambda x: datetime.datetime.strptime(x,"%Y%m%d %H:%M:%S"))
         # delta = datetime.timedelta(hours=8)
         # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)
-        return df#.to_dict()
+        # return df.to_dict()
+        return df
 
 ########################################################################
 class OkexFuturesApi(OkexApi):
@@ -718,9 +719,10 @@ class OkexFuturesApi(OkexApi):
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, timeout=10)
         # print(r)
         text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
+        df = pd.DataFrame(text[:-1], columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
         df["datetime"] = df["datetime"].map(
             lambda x: datetime.datetime.fromtimestamp(x / 1000))
         # delta = datetime.timedelta(hours=8)
         # df.rename(lambda s: datetime.datetime.strptime(s, "%Y-%m-%d %H:%M:%S") + delta)  # 如果服务器有时区差别
-        return df#.to_dict()
+        # return df.to_dict()
+        return df

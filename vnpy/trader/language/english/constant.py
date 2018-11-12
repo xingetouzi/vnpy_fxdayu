@@ -32,7 +32,6 @@ STATUS_REJECTED = 'rejected'
 STATUS_UNKNOWN = 'unknown'
 STATUS_CANCELINPROGRESS = 'processing cancel order'
 STATUS_CANCELLING = 'cancelling'
-STATUS_FINISHED = [STATUS_ALLTRADED,STATUS_CANCELLED,STATUS_REJECTED]
 
 # 合约类型常量
 PRODUCT_EQUITY = 'equity'
@@ -80,7 +79,6 @@ EXCHANGE_ICE = 'ICE'           # ICE交易所
 EXCHANGE_LME = 'LME'           # LME交易所
 
 EXCHANGE_FXCM = 'FXCM'         # FXCM外汇做市商
-EXHCANGE_OANDA = 'OANDA'
 
 EXCHANGE_OKCOIN = 'OKCOIN'       # OKCOIN比特币交易所
 EXCHANGE_HUOBI = 'HUOBI'         # 火币比特币交易所
@@ -94,7 +92,6 @@ EXCHANGE_FCOIN = 'FCOIN'         # FCoin比特币交易所
 EXCHANGE_BIGONE = 'BIGONE'       # BigOne比特币交易所
 EXCHANGE_COINBASE = 'COINBASE'   # Coinbase交易所
 EXCHANGE_BITHUMB = 'BITHUMB'   # Bithumb比特币交易所
-EXCHANGE_OKEX = 'OKEX'
 
 # 货币类型
 CURRENCY_USD = 'USD'            # 美元
@@ -112,5 +109,3 @@ GATEWAYTYPE_FUTURES = 'futures'                 # 期货、期权、贵金属
 GATEWAYTYPE_INTERNATIONAL = 'international'     # 外盘
 GATEWAYTYPE_BTC = 'btc'                         # 比特币
 GATEWAYTYPE_DATA = 'data'                       # 数据（非交易）
-
-VN_SEPARATOR = ':'

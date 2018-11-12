@@ -5,40 +5,40 @@ import hashlib
 import json
 import ssl
 import traceback
-
+from copy import copy
+from threading import Thread, Event, Timer, current_thread
 from queue import Queue, Empty
 from multiprocessing.dummy import Pool
 from time import time, sleep
 from datetime import datetime,timedelta
-import pandas as pd
+from functools import partial
 
-from copy import copy
-from threading import Thread, Event, Timer, current_thread
+import requests
+import websocket
+import pandas as pd
 
 from six.moves.urllib.parse import urlparse, urlencode
 from six.moves import input
 
-import requests
-import websocket
 
 from vnpy.api.bitmex.utils import hmac_new
 
 REST_HOST = 'https://www.bitmex.com/api/v1'
 WEBSOCKET_HOST = 'wss://www.bitmex.com/realtime'
 
-
-
+TESTNET_REST_HOST = "https://testnet.bitmex.com/api/v1"
+TESTNET_WEBSOCKET_HOST = "wss://testnet.bitmex.com/realtime"
 
 ########################################################################
 class BitmexRestApi(object):
     """REST API"""
 
     #----------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, testnet=False):
         """Constructor"""
         self.apiKey = ''
         self.apiSecret = ''
-        
+        self.testnet = testnet
         self.active = False
         self.reqid = 0
         self.queue = Queue()
@@ -76,18 +76,46 @@ class BitmexRestApi(object):
             self.pool.join()
     
     #----------------------------------------------------------------------
-    def addReq(self, method, path, callback, params=None, postdict=None):
+    def addReq(self, method, path, callback, on_error=None, params=None, postdict=None):
         """添加请求"""
         self.reqid += 1
-        req = (method, path, callback, params, postdict, self.reqid)
+        req = (method, path, callback, on_error, params, postdict, self.reqid)
         self.queue.put(req)
         return self.reqid
     
+    @staticmethod
+    def _set_fut_result(fut, rep, exception=None): 
+        try:
+            if exception:
+                fut.set_exception(exception)
+            else:
+                fut.set_result(rep)
+        except Exception as e:
+            fut.set_exception(e)
+
+    def blockReq(self, method, path, params=None, postdict=None, timeout=60):
+        def on_rep(fut, data, reqid):
+            self._set_fut_result(fut, data)
+
+        def on_error(fut, code, data, reqid):
+            e = HTTPError()
+            e.code = code
+            e.reason = data
+            self._set_fut_result(fut, None, exception=e)
+
+        fut = Future()
+        self.addReq(
+            method, path, 
+            partial(on_rep, fut), on_error=partial(on_error, fut), 
+            params=params, postdict=postdict)
+        rep = fut.result(timeout=timeout) # default timeout 60 seconds.
+        return rep
+
     #----------------------------------------------------------------------
     def processReq(self, req, i):
         """处理请求"""
-        method, path, callback, params, postdict, reqid = req
-        url = REST_HOST + path
+        method, path, callback, on_error, params, postdict, reqid = req
+        url = (TESTNET_REST_HOST if self.testnet else REST_HOST) + path
         expires = int(time() + 5) 
         
         rq = requests.Request(url=url, data=postdict)
@@ -110,7 +138,10 @@ class BitmexRestApi(object):
         if code == 200:
             callback(d, reqid)
         else:
-            self.onError(code, d)    
+            if on_error:
+                on_error(code, d, reqid)
+            else:
+                self.onError(code, d, reqid)    
     
     #----------------------------------------------------------------------
     def run(self, i):
@@ -141,7 +172,7 @@ class BitmexRestApi(object):
         return signature
     
     #----------------------------------------------------------------------
-    def onError(self, code, error):
+    def onError(self, code, error, reqid):
         """错误回调"""
         print('on error')
         print(code, error)
@@ -153,7 +184,7 @@ class BitmexRestApi(object):
         print(data, reqid)
 
     def restKline(self,symbol, type_, size, since = None):
-        params = {"symbol":symbol,"binSize":type_,"count":size}
+        params = {"symbol":symbol,"binSize":type_,"count":size,"reverse":True}
         url = REST_HOST + "/" + "trade/bucketed"
         data = requests.get(url, headers=self.header, params = params,timeout=10)
         # print(data.json())
@@ -177,11 +208,11 @@ class BitmexRestApi(object):
             lambda x: float(x))
         df["volume"] = df["volume"].map(
             lambda x: float(x))
-        # df.sort_values(by = ['datetime'], ascending=True, inplace=True)
+        df.sort_values(by = ['datetime'], ascending=True, inplace=True)
         
-        # print(df['datetime'],df['open'])
-        # print(df.to_dict())
-        return df#.to_dict()
+        print(df['datetime'],df['open'])
+        print(df.to_dict())
+        return df.to_dict()
 
 
 ########################################################################
@@ -189,16 +220,20 @@ class BitmexWebsocketApi(object):
     """Websocket API"""
 
     #----------------------------------------------------------------------
-    def __init__(self):
+    def __init__(self, testnet=False):
         """Constructor"""
         self.ws = None
         self.thread = None
         self.active = False
+        self.testnet = testnet
+
+    def get_host(self):
+        return TESTNET_WEBSOCKET_HOST if self.testnet else WEBSOCKET_HOST
 
     #----------------------------------------------------------------------
     def start(self):
         """启动"""
-        self.ws = websocket.create_connection(WEBSOCKET_HOST,
+        self.ws = websocket.create_connection(self.get_host(),
                                               sslopt={'cert_reqs': ssl.CERT_NONE})
     
         self.active = True
@@ -210,7 +245,7 @@ class BitmexWebsocketApi(object):
     #----------------------------------------------------------------------
     def reconnect(self):
         """重连"""
-        self.ws = websocket.create_connection(WEBSOCKET_HOST,
+        self.ws = websocket.create_connection(self.get_host(),
                                               sslopt={'cert_reqs': ssl.CERT_NONE})   
         
         self.onConnect()
@@ -266,11 +301,12 @@ class BitmexWebsocketApiWithHeartbeat(object):
     HEARTBEAT_TIMEOUT = 10
     RECONNECT_TIMEOUT = 5
 
-    def __init__(self):
+    def __init__(self, testnet=False):
         """Constructor"""
         self.ws = None
         self.wsThread = None
         self.active = False
+        self.testnet = testnet
 
         self.heartbeatCount = 0
         self.heartbeatCheckCount = 0
@@ -281,6 +317,9 @@ class BitmexWebsocketApiWithHeartbeat(object):
         self.reconnecting = False
         self.reconnectTimer = None
 
+    def get_host(self):
+        return TESTNET_WEBSOCKET_HOST if self.testnet else WEBSOCKET_HOST
+
     def start(self, trace=False):
         """连接"""
         websocket.enableTrace(trace)
@@ -290,7 +329,7 @@ class BitmexWebsocketApiWithHeartbeat(object):
 
     def initWebsocket(self):
         """"""
-        self.ws = websocket.WebSocketApp(WEBSOCKET_HOST,
+        self.ws = websocket.WebSocketApp(self.get_host(),
                                          on_message=self.onMessageCallback,
                                          on_error=self.onErrorCallback,
                                          on_close=self.onCloseCallback,

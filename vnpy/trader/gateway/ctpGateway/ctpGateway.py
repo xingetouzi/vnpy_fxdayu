@@ -1143,7 +1143,7 @@ class CtpTdApi(TdApi):
 
     #----------------------------------------------------------------------
     def onRtnOrder(self, data):
-        self.writeLog('报单回报%s'%data)
+        # self.writeLog('报单回报%s'%data)
         """报单回报"""
         """{'BusinessUnit': '9999cad', 'RelativeOrderSysID': '', 'UserID': '119247', 'ContingentCondition': '1', 'TraderID': '9999cad', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'UpdateTime': '', 
         'OrderPriceType': '2', 'SequenceNo': 0, 'ActiveTraderID': '', 'ActiveTime': '', 'FrontID': 1, 'RequestID': 0, 'InsertDate': '20181102', 'InstrumentID': 'IF1811', 'ZCETotalTradedVolume': 0, 

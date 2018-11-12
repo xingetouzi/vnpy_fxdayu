@@ -209,7 +209,15 @@ class BarReader(object):
         self.gateway = gateway
         self.gatewayName = gateway.gatewayName
         self.cache = {}
-    
+        self._current_datetime = None
+
+    @property
+    def current_datetime(self):
+        return self._current_datetime
+
+    def update_current_datetime(self, dt):
+        self._current_time = dt
+
     @classmethod
     def new(cls, gateway):
         module_name = gateway.__class__.__name__.lower().replace("gateway", "")
@@ -288,6 +296,9 @@ class BarReader(object):
 
     def read(self, symbol, multipler, unit, size=None, start=None, end=None, keep_active=False, check_result=True):
         # TODO: Get cache and modify read params.
+        # TODO: set param end when there only one input param. 
+        if end is None and not (size and start):
+            end = self.current_datetime
         size_, start_ = self.transform_params(multipler, unit, size, start, end)
         bars = self._read(symbol, multipler, unit, size_, start_)
         

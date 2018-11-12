@@ -144,13 +144,11 @@ class CtaEngine(object):
                     self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
                     req.offset = OFFSET_CLOSETODAY
 
-                # modified by IncenseLee 2016/11/08，改为优先平昨仓
                 elif posBuffer:
                     self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
                     req.offset = OFFSET_CLOSE
                     if (posBuffer - volume)>0:
                        self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
-
 
         elif orderType == CTAORDER_SHORT:
             req.direction = DIRECTION_SHORT
@@ -162,6 +160,7 @@ class CtaEngine(object):
             if contract.exchange != EXCHANGE_SHFE:
                 req.offset = OFFSET_CLOSE
             else:
+                
                 # 获取持仓缓存数据
                 posBuffer = self.ydPositionDict.get(vtSymbol+'_SHORT', None)
                 # 如果获取持仓缓存失败，则默认平昨
@@ -169,7 +168,6 @@ class CtaEngine(object):
                     self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
                     req.offset = OFFSET_CLOSETODAY
 
-                # modified by IncenseLee 2016/11/08，改为优先平昨仓
                 elif posBuffer:
                     self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
                     req.offset = OFFSET_CLOSE
@@ -490,6 +488,12 @@ class CtaEngine(object):
                 if 'accountDict' in strategy.syncList:
                     strategy.accountDict[str(accountName)] = account.position
 
+    def processErrorEvent(self,event):
+        error = event.dict_['data']
+
+        for strategy in self.strategyDict.values():
+            if strategy.inited:
+                self.writeCtaLog(u'ProcessError，%s'%error)        # 待扩展
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -499,45 +503,49 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
+        self.eventEngine.register(EVENT_ERROR, self.processErrorEvent)
 
     #----------------------------------------------------------------------
-    # def insertData(self, dbName, collectionName, data):
-    #     """插入数据到数据库（这里的data可以是VtTickData或者VtBarData）"""
-    #     for collectionName_ in collectionName:
-    #         self.mainEngine.dbInsert(dbName, collectionName_, data.__dict__)
+    def insertData(self, dbName, collectionName, data):
+        """插入数据到数据库（这里的data可以是VtTickData或者VtBarData）"""
+        pass
+        # for collectionName_ in collectionName:
+        #     self.mainEngine.dbInsert(dbName, collectionName_, data.__dict__)
 
     #----------------------------------------------------------------------
-    # def loadBar(self, dbName, collectionName, hours):
-    #     """从数据库中读取Bar数据，startDate是datetime对象"""
-    #     startDate = self.today - timedelta(hours = hours)
-    #     for collectionName_ in collectionName:
-    #         d = {'datetime':{'$gte':startDate}}
+    def loadBar(self, dbName, collectionName, hours):
+        """从数据库中读取Bar数据，startDate是datetime对象"""
+        pass
+        # startDate = self.today - timedelta(hours = hours)
+        # for collectionName_ in collectionName:
+        #     d = {'datetime':{'$gte':startDate}}
             
-    #         barData = self.mainEngine.dbQuery(dbName, collectionName_, d, 'datetime')
+        #     barData = self.mainEngine.dbQuery(dbName, collectionName_, d, 'datetime')
 
-    #         l = []
-    #         for d in barData:
-    #             bar = VtBarData()
-    #             bar.__dict__ = d
-    #             bar.vtSymbol = collectionName_
-    #             l.append(bar)
-    #         return l
+        #     l = []
+        #     for d in barData:
+        #         bar = VtBarData()
+        #         bar.__dict__ = d
+        #         bar.vtSymbol = collectionName_
+        #         l.append(bar)
+        #     return l
 
     #----------------------------------------------------------------------
-    # def loadTick(self, dbName, collectionName, hours):
-    #     """从数据库中读取Tick数据，startDate是datetime对象"""
-    #     startDate = self.today - timedelta(hours = hours)
-    #     for collectionName_ in collectionName:
+    def loadTick(self, dbName, collectionName, hours):
+        """从数据库中读取Tick数据，startDate是datetime对象"""
+        pass
+        # startDate = self.today - timedelta(hours = hours)
+        # for collectionName_ in collectionName:
 
-    #         d = {'datetime':{'$gte':startDate}}
-    #         tickData = self.mainEngine.dbQuery(dbName, collectionName_, d, 'datetime')
+        #     d = {'datetime':{'$gte':startDate}}
+        #     tickData = self.mainEngine.dbQuery(dbName, collectionName_, d, 'datetime')
 
-    #         l = []
-    #         for d in tickData:
-    #             tick = VtTickData()
-    #             tick.__dict__ = d
-    #             l.append(tick)
-    #         return l
+        #     l = []
+        #     for d in tickData:
+        #         tick = VtTickData()
+        #         tick.__dict__ = d
+        #         l.append(tick)
+        #     return l
 
     #----------------------------------------------------------------------
     def writeCtaLog(self, content):
@@ -602,7 +610,6 @@ class CtaEngine(object):
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
             for vtSymbol in vtSymbolset :
-
                 # 保存Tick映射关系
                 if vtSymbol in self.tickStrategyDict:
                     l = self.tickStrategyDict[vtSymbol]
@@ -900,10 +907,10 @@ class CtaEngine(object):
             'tradedVolume':order.tradedVolume,
             'totalVolume':order.totalVolume,
             'status':order.status,
-            'orderTime':order.deliverTime.strftime('%Y%m%d %X'),
             'orderby':order.byStrategy
             }
-
+        if order.deliverTime:
+            flt['orderTime'] = order.deliverTime.strftime('%Y%m%d %X')
         fileName = os.path.join(self.path, strategy.name + '_orderSheet.json')
         with open(fileName,'r') as f:
             data = json.load(f)
