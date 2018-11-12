@@ -1646,33 +1646,14 @@ class FuturesApi(OkexFuturesApi):
                 if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
                     self.filledList[0:99] = self.filledList[1:100]
                     self.filledList[-1] = str(order.exchangeOrderID)
-                    del self.sendOrderDict[str(order.exchangeOrderID)]
-                    del self.wsOrderDict[str(order.exchangeOrderID)]
-                    del self.exchangeOrderDict[str(order.exchangeOrderID)]
+                    if order.exchangeOrderID in self.sendOrderDict.keys():
+                        del self.sendOrderDict[str(order.exchangeOrderID)]
+                    if order.exchangeOrderID in self.wsOrderDict.keys():
+                        del self.wsOrderDict[str(order.exchangeOrderID)]
+                    if order.exchangeOrderID in self.exchangeOrderDict.keys():    
+                        del self.exchangeOrderDict[str(order.exchangeOrderID)]
                     self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
-
-            elif len(self.orphanDict)>0:
-                self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in list(self.orphanDict.values()):
-                    if order.vtSymbol == orphanOrder.vtSymbol and not order.orderTime:
-                        ordertimediff = orphanOrder.createDate - order.orderTime
-                        if ordertimediff.seconds < 10 :
-                            if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
-                                order.vtOrderID = orphanOrder.vtOrderID
-                                order.orderID = orphanOrder.orderID
-                                order.byStrategy = orphanOrder.byStrategy
-                                self.gateway.onOrder(order)
-                                del self.orphanDict[order.vtOrderID]
-                    else:
-                        symbol = order.symbol[:3]+ '_usd'
-                        contract_type = order.symbol[4:]
-                        try:
-                            self.rest_qry_order(symbol,contract_type,order.exchangeOrderID)
-                        except:
-                            self.writeLog(u'***rest_qry_order**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
-                        self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
-
             else:
                 self.writeLog('ws quicker in order_arb_onorder,waiting sendorder rest id:%s'%orderinfo.exchangeOrderID)
                 return False
@@ -1870,10 +1851,6 @@ class FuturesApi(OkexFuturesApi):
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
-
                         self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
                     else:
@@ -2000,10 +1977,6 @@ class FuturesApi(OkexFuturesApi):
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
 
                         self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))

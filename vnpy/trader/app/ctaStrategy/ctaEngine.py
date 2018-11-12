@@ -36,7 +36,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from decimal import *
-import winsound
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -188,7 +187,6 @@ class CtaEngine(object):
             vtOrderIDList.append(vtOrderID)
         self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
                          %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
-        winsound.PlaySound('warn.wav', winsound.SND_ASYNC)
 
         return vtOrderIDList
 
