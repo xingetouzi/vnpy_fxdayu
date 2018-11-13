@@ -103,7 +103,7 @@ class CtaEngine(object):
         # 上期所昨持仓缓存
         self.ydPositionDict = {}  
     #----------------------------------------------------------------------
-    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, levelRate, strategy):
+    def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发单"""
         
         contract = self.mainEngine.getContract(vtSymbol)
@@ -123,7 +123,6 @@ class CtaEngine(object):
         # req.priceType = PRICETYPE_LIMITPRICE
 
         req.priceType = priceType
-        req.levelRate = str(levelRate)
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -457,7 +456,7 @@ class CtaEngine(object):
                     posName = pos.vtSymbol + "_LONG"
                     if 'posDict' in strategy.syncList:
                         strategy.posDict[str(posName)] = pos.position
-                        if 'SHFE' in posName:
+                        if 'CTP' in posName:
                             self.ydPositionDict[str(posName)] = pos.ydPosition
                     if 'eveningDict' in strategy.syncList:
                         strategy.eveningDict[str(posName)] = pos.position - pos.frozen
@@ -466,7 +465,7 @@ class CtaEngine(object):
                     posName2 = pos.vtSymbol + "_SHORT"
                     if 'posDict' in strategy.syncList:
                         strategy.posDict[str(posName2)] = pos.position
-                        if 'SHFE' in posName2:
+                        if 'CTP' in posName2:
                             self.ydPositionDict[str(posName2)] = pos.ydPosition
                     if 'eveningDict' in strategy.syncList:
                         strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
