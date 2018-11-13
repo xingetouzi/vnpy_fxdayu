@@ -261,7 +261,7 @@ class BacktestingEngine(object):
                     except:
                         continue
                     
-                    dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]                    
+                    dataList += [self.parseData(dataClass, item) for item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].to_dict("record")]                    
                     symbols_no_data[symbol].remove(file.replace(".h5",""))
 
         # 从mongodb下载数据，并缓存到本地
@@ -279,7 +279,7 @@ class BacktestingEngine(object):
                             del data_df["_id"]
 
                         # 筛选出需要的时间段
-                        dataList += [self.parseData(dataClass, item.to_dict()) for _,item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].iterrows()]
+                        dataList += [self.parseData(dataClass, item) for item in data_df[(data_df.datetime>=start) & (data_df.datetime<end)].to_dict("record")]
 
                         # 缓存到本地文件
                         if data_df.size>0:
@@ -299,6 +299,8 @@ class BacktestingEngine(object):
                     self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
         except:
             self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
+            import traceback
+            traceback.print_exc()
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: (x.datetime))
