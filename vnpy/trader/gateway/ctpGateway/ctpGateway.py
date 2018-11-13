@@ -842,8 +842,9 @@ class CtpTdApi(TdApi):
             pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
 
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
-        if data['YdPosition'] and not data['TodayPosition']:
-            pos.ydPosition = data['Position']
+        # if data['YdPosition'] and not data['TodayPosition']:
+        #     pos.ydPosition = data['Position']
+        pos.ydPosition = data['YdPosition']
 
         # 计算成本
         size = self.symbolSizeDict[pos.symbol]
