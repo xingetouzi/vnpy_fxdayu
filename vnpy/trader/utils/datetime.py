@@ -77,9 +77,9 @@ def unified_parse_datetime(obj):
         if len(s) == 10: # timestamp 还能再战一两百年
             return datetime.utcfromtimestamp(obj)
         elif len(s) == 14: # YYYYmmddHHMMSS
-            return datetime.strptime("%Y%m%d%H%M%S")
+            return datetime.strptime(s, "%Y%m%d%H%M%S")
         elif len(s) == 8: # YYYYmmdd
-            return datetime.strptime("%Y%m%d")
+            return datetime.strptime(s, "%Y%m%d")
         else:
             try:
                 return parse(s)
