@@ -13,15 +13,15 @@ import numpy as np
 from dateutil.parser import parse
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import VN_SEPARATOR
-from vnpy.trader.app.ctaStrategy.ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 from vnpy.trader.utils import Logger
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
-from .ctaEngine import CtaEngine as OriginCtaEngine
-from .ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
-from .ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
-from .histbar import BarReader
+from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins
+from ..ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
+from ..ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
+from ..histbar import BarReader
+from ..ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 
 _on_bar_re = re.compile("^on%sBar$" % _freq_re_str)
 logger = Logger()
@@ -678,10 +678,24 @@ class BarManager(object):
             self.register(vtSymbol, freq, func)
 
 
-class CtaEngine(OriginCtaEngine):
+class BarManagerPlugin(CtaEnginePlugin):
+    def __init__(self):
+        super(BarManagerPlugin, self).__init__()
+        self.manager = None
+
+    def register(self, engine):
+        super(BarManagerPlugin, self).register(engine)
+        self.manager = BarManager(engine)
+
+    def postTickEvent(self, event):
+        tick = event.dict_["data"]
+        self.manager.on_tick(tick)
+
+
+class CtaEngine(CtaEngineWithPlugins):
     def __init__(self, mainEngine, eventEngine):
         super(CtaEngine, self).__init__(mainEngine, eventEngine)
-        self.barManager = BarManager(self)
+        self.addPlugin(BarManagerPlugin())
         self._barReaders = {}
 
     def getBarReader(self, gatewayName):
@@ -694,25 +708,24 @@ class CtaEngine(OriginCtaEngine):
         return self.getBarReader(gatewayName)
 
     def getArrayManager(self, symbol, freq="1m"):
-        return self.barManager.get_array_manager(symbol, freq=freq)
+        p = self.getPlugin(BarManagerPlugin)
+        return p.manager.get_array_manager(symbol, freq=freq)
 
     def setArrayManagerSize(self, size):
-        return self.barManager.set_size(size)
-
-    def processTickEvent(self, event):
-        super(CtaEngine, self).processTickEvent(event)
-        tick = event.dict_["data"]
-        self.barManager.on_tick(tick)
+        p = self.getPlugin(BarManagerPlugin)
+        return p.manager.set_size(size)
 
     def loadStrategy(self, setting):
         super(CtaEngine, self).loadStrategy(setting)
+        p = self.getPlugin(BarManagerPlugin)
         try:
             name = setting['name']
             strategy = self.strategyDict[name]
         except KeyError as e:
             return
         if isinstance(strategy, CtaTemplate):
-            self.barManager.register_strategy(strategy)
+            p.manager.register_strategy(strategy)
+
 
 class CtaTemplate(OriginCtaTemplate):
     def getArrayManager(self, symbol, freq="1m"):
