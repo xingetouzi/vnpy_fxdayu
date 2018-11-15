@@ -4,6 +4,7 @@ import time
 
 from ..base import AsyncApiWorker
 from ..utils import fetch_stream
+from ..models.response import OandaResponseWithTransactions
 from ..models.transaction import OandaTransactionType, OandaTransactionFactory
 from ..config import *
 
@@ -67,7 +68,7 @@ class TransactionsStreamWorker(AsyncApiWorker):
 
     def on_transaction(self, trans, account_id):
         """Callback when there comes a normol transaction"""
-        self.api.on_transaction(trans)
+        self.api.process_transaction(trans, account_id)
 
     def _set_lasthb(self, account_id):
         if account_id not in self._lasthbs:
@@ -135,20 +136,68 @@ class TransactionsStreamWorker(AsyncApiWorker):
             await asyncio.sleep(1)
 
 
-class FetchOnReconnectTransactionStreamWorker(TransactionsStreamWorker):
+class DropDuplicateTransactionStreamWorker(TransactionsStreamWorker):
     def __init__(self, api):
-        super(self, TransactionWorker).__init__(api)
-        self._queue = asyncio.Queue(loop=self.ioloop) 
+        super(DropDuplicateTransactionStreamWorker, self).__init__(api)
         self._ids = {}
         self._lastids = {}
-        self._account_to_fetch = set()
 
     def start(self):
         for account_id in self.api.accounts:
             self._ids[account_id] = set()
             self._lastids[account_id] = '0'
+        super(DropDuplicateTransactionStreamWorker, self).start()
+
+    def _add_transaction_id(self, trans_id, account_id):
+        ids = self._ids[account_id]
+        lastid = self._lastids[account_id]
+        self._ids[account_id].add(trans_id)
+            # findout new lastid
+        while True:
+            nextid = str(int(lastid) + 1)
+            if nextid not in ids:
+                break
+            lastid = str(int(nextid) - 1)
+        self._lastids[account_id] = lastid
+        # cleanup ids
+        if len(ids) > 10000:
+            to_remove = [id_ for id_ in ids if int(id_) <= int(lastid)]
+            for id_ in to_remove:
+                ids.remove(id_)            
+
+    def on_repeated_transaction(self, trans, account_id):
+        self.debug("账户[%s],略过已处理的事务: %s" % (account_id, trans.id))
+
+    def is_valid_transaction(self, trans_id, account_id):
+        lastid = self._lastids[account_id]
+        ids = self._ids[account_id]
+        return int(trans_id) > int(lastid) and trans_id not in ids
+
+    def process_response(self, response, account_id):
+        """Turn response to transaction"""
+        if isinstance(response, OandaResponseWithTransactions):
+            for trans in response.to_transactions():
+                self.api.process_transaction(trans, account_id)
+            return True # not process response
+        else:
+            return None
+
+    def process_transaction(self, trans, account_id):
+        if not self.is_valid_transaction(trans.id, account_id):
+            self.on_repeated_transaction(trans, account_id)
+            return True
+        self._add_transaction_id(trans.id, account_id)
+
+
+class FetchOnReconnectTransactionStreamWorker(DropDuplicateTransactionStreamWorker):
+    def __init__(self, api):
+        super(FetchOnReconnectTransactionStreamWorker, self).__init__(api)
+        self._queue = asyncio.Queue(loop=self.ioloop) 
+        self._account_to_fetch = set()
+
+    def start(self):
         self.create_task(self._fetcher(self._queue))
-        super(AutoFetchTransactionStreamWorker, self).start()
+        super(FetchOnReconnectTransactionStreamWorker, self).start()
     
     def fetch(self, accound_id):
         async def put_fetch_task(queue, account_id):
@@ -194,34 +243,6 @@ class FetchOnReconnectTransactionStreamWorker(TransactionsStreamWorker):
     def on_fetch_response(self, rep, account_id):
         for trans in rep.transactions:
             self._push_transaction(trans, account_id)
-
-    def on_transaction(self, trans, account_id):
-        self._push_transaction(trans, account_id)
-
-    def _push_transaction(self, trans, account_id):
-        lastid = self._lastids[account_id]
-        ids = self._ids[account_id]
-        flag = int(trans.id) > int(lastid) and trans.id not in ids
-        if flag:
-            self.api.on_transaction(trans)
-            ids.add(trans.id)
-            # findout new lastid
-            while True:
-                nextid = str(int(lastid) + 1)
-                if nextid not in ids:
-                    break
-                lastid = nextid
-            self._lastids[account_id] = lastid
-            # cleanup ids
-            if len(ids) > 10000:
-                to_remove = [id_ for id_ in ids if int(id_) <= int(lastid)]
-            for id_ in to_remove:
-                ids.remove(id_)           
-        else:
-            self.on_repeated_transaction(trans, account_id)
-
-    def on_repeated_transaction(self, trans, account_id):
-        self.debug("账户[%s],略过已处理的事务: %s" % (account_id, trans.id))
 
 
 class AutoFetchTransactionStreamWorker(FetchOnReconnectTransactionStreamWorker):

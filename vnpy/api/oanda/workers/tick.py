@@ -80,7 +80,7 @@ class TickSubscriber(AsyncApiWorker):
         pass
 
     def on_tick(self, tick, accound_id):
-        self.api.on_tick(OandaTick.from_dict(tick))
+        self.api.process_tick(OandaTick.from_dict(tick), accound_id)
 
 
 class HeartbeatTickSubscriber(TickSubscriber):

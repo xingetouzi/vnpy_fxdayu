@@ -85,6 +85,7 @@ NIGHT_TRADING = datetime(1900, 1, 1, 20).time()
 ########################################################################
 class CtpGateway(VtGateway):
     """CTP接口"""
+    BARCOLUMN = ["datetime", "open", "high", "low", "close", "volume"]
 
     #----------------------------------------------------------------------
     def __init__(self, eventEngine, gatewayName='CTP'):
@@ -102,6 +103,7 @@ class CtpGateway(VtGateway):
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
         self.trade_days = None
+        self.current_datetime = None
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -162,6 +164,16 @@ class CtpGateway(VtGateway):
 
         # 初始化并启动查询
         self.initQuery()
+
+    def update_current_datetime(self, dt):
+        if self.current_datetime is None or dt > self.current_datetime:
+            self.current_datetime = dt
+
+    def onTick(self, tick):
+        super(CtpGateway, self).onTick(tick)
+        if tick.datetime is None:
+            tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
+        self.update_current_datetime(tick.datetime)
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
@@ -253,11 +265,8 @@ class CtpGateway(VtGateway):
             yield time % 100
             time = int(time/100)
         yield time
-    
-    BARCOLUMN = ["datetime", "open", "high", "low", "close", "volume"]
 
-
-    def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
+    def loadHistoryBar(self, vtSymbol, type_, size=None, since=None):
         if type_ not in ['1min','5min','15min']:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -296,7 +305,7 @@ class CtpGateway(VtGateway):
             start = int(since)
         else:
             start = None
-        end = datetime.now()
+        end = self.current_datetime or datetime.now()
         end = end.year*10000+end.month*100+end.day
         days = self._select_trade_days(start, end)
         results = {}
@@ -393,8 +402,10 @@ class CtpGateway(VtGateway):
     
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
+
     def initPosition(self,vtSymbol):
         self.qryPosition()
+
 ########################################################################
 class CtpMdApi(MdApi):
     """CTP行情API实现"""

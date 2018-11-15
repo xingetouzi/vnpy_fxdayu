@@ -40,6 +40,7 @@ class OandaData(object):
     def __repr__(self):
         return "%s.from_dict(%s)" % (self.__class__.__name__, self.__dict__)
 
+
 class OandaVnpyConvertableData(OandaData):
     KEYS = []
     
