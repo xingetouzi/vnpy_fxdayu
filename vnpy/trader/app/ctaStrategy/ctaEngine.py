@@ -414,7 +414,7 @@ class CtaEngine(object):
                     s.remove(vtOrderID)
 
             self.callStrategyFunc(strategy, strategy.onOrder, order)
-            self.saveOrderDetail(strategy,order)
+            # self.saveOrderDetail(strategy,order)
 
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):

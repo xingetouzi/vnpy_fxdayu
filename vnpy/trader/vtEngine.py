@@ -215,10 +215,14 @@ class MainEngine(object):
     def initPosition(self, vtSymbol):
         """策略初始化时查询特定接口的持仓"""
         contract = self.getContract(vtSymbol)
-        gatewayName = contract.gatewayName
-        gateway = self.getGateway(gatewayName)
-        if gateway:
-            gateway.initPosition(vtSymbol)
+        if contract:
+            gatewayName = contract.gatewayName
+            gateway = self.getGateway(gatewayName)
+            if gateway:
+                gateway.initPosition(vtSymbol)
+        else:
+            self.writeLog('we don\'t have this symbol %s, Please check symbolList in ctaSetting.json'%vtSymbol)
+            return None
 
     def loadHistoryBar(self,vtSymbol,type_,size = None, since = None):
         """策略初始化时下载历史数据"""

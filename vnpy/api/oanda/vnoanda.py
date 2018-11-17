@@ -17,7 +17,7 @@ from vnpy.api.oanda.models import *
 from vnpy.api.oanda.snapshot import *
 from vnpy.api.oanda.ioloop import BackroundEventLoopProxy
 from vnpy.api.oanda.base import FirstAccountFilter
-from vnpy.api.oanda.workers import TransactionsStreamWorker, HeartbeatTickSubscriber
+from vnpy.api.oanda.workers import FetchOnReconnectTransactionStreamWorker, HeartbeatTickSubscriber
 from vnpy.api.oanda.utils import fetch, fetch_stream
 from vnpy.trader.utils import Logger
 
@@ -39,7 +39,13 @@ class OandaApi(Logger):
         self._logged = False
         self._account_props = OrderedDict()
         self._accounts = {}
-        self._transactor_worker = TransactionsStreamWorker(self)
+        self._tick_handlers = []
+        self._transaction_handlers = []
+        self._response_handlers = []
+        self._init_workers()
+
+    def _init_workers(self):
+        self._transactor_worker = FetchOnReconnectTransactionStreamWorker(self)
         self._tick_worker = HeartbeatTickSubscriber(self)
 
     @property
@@ -182,10 +188,10 @@ class OandaApi(Logger):
         else:
             return status, data
 
-    def _request_and_handle(self, url, rep_map, method="GET", data=None, push=None, block=True):
+    def _request_and_handle(self, url, rep_map, account_id=None, method="GET", data=None, push=None, block=True):
         if push is None:
             push = not block
-        callback = partial(self._handle_response, rep_map, push=push)
+        callback = partial(self._handle_response, rep_map, account_id=account_id, push=push)
         future = asyncio.run_coroutine_threadsafe(
             self._async_request(
                 method, url, data=data, callback=callback
@@ -198,12 +204,13 @@ class OandaApi(Logger):
         else:
             return future
 
-    def _handle_response(self, rep_map, status, data, push=False):
+    def _handle_response(self, rep_map, status, data, account_id=None, push=False):
         try:
             if status in rep_map:
                 rep = rep_map[status].from_dict(data)
                 if push:
-                    self.on_response(rep)
+                    # print(rep, rep_map, status)
+                    self.process_response(rep, account_id)
                 return rep
             else:
                 err = OandaRequestError.new(status, data)
@@ -224,7 +231,7 @@ class OandaApi(Logger):
             400: OandaOrderRejectedResponse,
             404: OandaOrderRejectedResponse,
         }
-        return self._request_and_handle(url, rep_map, method="POST", data=data, block=False)
+        return self._request_and_handle(url, rep_map, account_id=account.id, method="POST", data=data, block=False)
 
     def cancel_order(self, req, account_id=None):
         assert isinstance(req, OandaOrderSpecifier), "type '%s' is not valid oanda order request" % type(req)
@@ -234,7 +241,7 @@ class OandaApi(Logger):
             200: OandaOrderCancelledResponse,
             404: OandaOrderCancelRejectedResponse,
         }
-        return self._request_and_handle(url, rep_map, method="PUT", block=False)
+        return self._request_and_handle(url, rep_map, account_id=account.id, method="PUT", block=False)
 
     def qry_instruments(self, instruments=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -244,7 +251,7 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaInstrumentsQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def qry_orders(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -254,7 +261,7 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaOrderQueryResponse,
         }
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def qry_positions(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -264,7 +271,7 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaPositionsQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def qry_account(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -274,7 +281,7 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaAccountSummaryQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def qry_transaction_sinceid(self, id=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -283,10 +290,10 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaTransactionsQueryResponse
         }
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def query_raw_url(self, url, rep_map=None, data=None, method="GET", block=True, push=None):
-        return self._request_and_handle(url, rep_map, method=method, data=data, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, method=method, data=data, block=block, push=push)
 
     def qry_candles(self, req=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -298,7 +305,37 @@ class OandaApi(Logger):
             200: OandaCandlesQueryResponse
         }
         print(url)
-        return self._request_and_handle(url, rep_map, block=block, push=push)
+        return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
+
+    def register_transaction_handler(self, func):
+        self._transaction_handlers.append(func)
+
+    def register_tick_handler(self, func):
+        self._tick_handlers.append(func)
+
+    def register_response_handler(self, func):
+        self._response_handlers.append(func)
+
+    def process_transaction(self, trans, account_id):
+        for func in self._transaction_handlers:
+                ret = func(trans, account_id)
+                if ret:
+                    return
+        self.on_transaction(trans)
+    
+    def process_tick(self, tick, account_id):
+        for func in self._tick_handlers:
+            ret = func(tick, account_id)
+            if ret:
+                return
+        self.on_tick(tick)
+
+    def process_response(self, response, account_id):
+        for func in self._response_handlers:
+            ret = func(response, account_id)
+            if ret:
+                return
+        self.on_response(response)
 
     def on_transaction(self, trans):
         self.debug(trans)

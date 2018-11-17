@@ -17,11 +17,38 @@ def union_vnpy_data_dicts(dcts):
         for k, v in dct.items():
             union_dct[k].extend(v or [])
     return union_dct
-        
-class OandaOrderCreatedResponse(OandaVnpyConvertableData):
+
+class OandaResponseWithTransactions(OandaVnpyConvertableData):
+    TRANSACTION_KEYS = []
+
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls()
+        obj.__dict__ = super(OandaResponseWithTransactions, cls).from_dict(dct).__dict__
+        factory = OandaTransactionFactory()
+        for k in cls.TRANSACTION_KEYS:
+            v = getattr(obj, k)
+            if v:
+                setattr(obj, k, factory.new(v))
+        return obj
+    
+    def to_transactions(self):
+        trans_lst = [getattr(self, k) for k in self.TRANSACTION_KEYS]
+        return [trans for trans in trans_lst if trans]
+
+    def to_vnpy(self, gateway):
+        dcts = [trans.to_vnpy(gateway) for trans in self.to_transactions()]
+        if dcts:
+            return union_vnpy_data_dicts(dcts)
+        else:
+            return None
+    
+
+class OandaOrderCreatedResponse(OandaResponseWithTransactions):
     KEYS = ["orderCreateTransaction", "orderFillTransaction", "orderCancelTransaction",
         "orderReissueTransaction", "orderReissueRejectTransaction", "relatedTransactionIDs",
         "lastTransactionID"]
+    TRANSACTION_KEYS = ["orderCreateTransaction", "orderFillTransaction", "orderCancelTransaction"]
 
     def __init__(self):
         super(OandaOrderCreatedResponse, self).__init__()
@@ -33,30 +60,11 @@ class OandaOrderCreatedResponse(OandaVnpyConvertableData):
         self.relatedTransactionIDs = None
         self.lastTransactionID = None
 
-    @classmethod
-    def from_dict(cls, dct):
-        obj = super(OandaOrderCreatedResponse, cls).from_dict(dct)
-        factory = OandaTransactionFactory()
-        obj.orderCreateTransaction = obj.orderCreateTransaction and factory.new(obj.orderCreateTransaction)
-        obj.orderFillTransaction = obj.orderFillTransaction and factory.new(obj.orderFillTransaction)
-        obj.orderCancelTransaction = obj.orderCancelTransaction and factor.new(obj.orderCancelTransaction)
 
-    def to_vnpy(self, gateway):
-        dcts = []
-        if self.orderCreateTransaction:
-            dcts.append(self.orderCreateTransaction.to_vnpy(gateway))
-        if self.orderFillTransaction:
-            dcts.append(self.orderFillTransaction.to_vnpy(gateway))
-        if self.orderCancelTransaction:
-            dcts.append(self.orderCancelTransaction.to_vnpy(gateway))
-        if dcts:
-            return union_vnpy_data_dicts(dcts)
-        return None
-
-
-class OandaOrderRejectedResponse(OandaVnpyConvertableData):
+class OandaOrderRejectedResponse(OandaResponseWithTransactions):
     KEYS = ["orderRejectTransaction", "relatedTransactionIDs", "lastTransactionID",
         "errorCode", "errorMessage"]
+    TRANSACTION_KEYS = ["orderRejectTransaction"]
 
     def __init__(self):
         super(OandaOrderRejectedResponse, self).__init__()
@@ -66,20 +74,10 @@ class OandaOrderRejectedResponse(OandaVnpyConvertableData):
         self.errorCode = None
         self.errorMessage = None
 
-    @classmethod
-    def from_dict(cls, dct):
-        obj = super(OandaOrderRejectedResponse, cls).from_dict(dct)
-        factory = OandaTransactionFactory()
-        obj.orderRejectTransaction = obj.orderRejectTransaction and factory.new(obj.orderRejectTransaction)
 
-    def to_vnpy(self, gateway):
-        if self.orderRejectTransaction:
-            return self.orderRejectTransaction.to_vnpy(gateway)
-        return None
-
-
-class OandaOrderCancelledResponse(OandaVnpyConvertableData):
+class OandaOrderCancelledResponse(OandaResponseWithTransactions):
     KEYS = ["orderCancelTransaction", "relatedTransactionIDs", "lastTransactionID"]
+    TRANSACTION_KEYS = ["orderCancelTransaction"]
 
     def __init__(self):
         super(OandaOrderCancelledResponse, self).__init__()
@@ -87,41 +85,18 @@ class OandaOrderCancelledResponse(OandaVnpyConvertableData):
         self.relatedTransactionIDs = None
         self.lastTransactionID = None
 
-    @classmethod
-    def from_dict(cls, dct):
-        obj = super(OandaOrderCancelledResponse, cls).from_dict(dct)
-        factor = OandaTransactionFactory()
-        obj.orderCancelTransaction = obj.orderCancelTransaction and factory.new(obj.orderCancelTransaction)
-        return obj
 
-    def to_vnpy(self, gateway):
-        if self.orderCancelTransaction:
-            return self.orderCancelTransaction.to_vnpy(gateway)
-        return None   
-    
-
-class OandaOrderCancelRejectedResponse(OandaVnpyConvertableData):
+class OandaOrderCancelRejectedResponse(OandaResponseWithTransactions):
     KEYS = ["orderCancelRejectTransaction", "relatedTransactionIDs", "lastTransactionID", "errorCode", "errorMessage"]
+    TRANSACTION_KEYS = ["orderCancelRejectTransaction"]
 
     def __init__(self):
         super(OandaOrderCancelRejectedResponse, self).__init__()
-        self.orderCancelTransaction = None
+        self.orderCancelRejectTransaction = None
         self.relatedTransactionIDs = None
         self.lastTransactionID = None
         self.errorCode = None
         self.errorMessage = None
-
-    @classmethod
-    def from_dict(cls, dct):
-        obj = super(OandaOrderCancelRejectedResponse, cls).from_dict(dct)
-        factor = OandaTransactionFactory()
-        obj.orderCancelRejectTransaction = obj.orderCancelRejectTransaction and factor.new(orderCancelRejectTransaction)
-        return obj
-
-    def to_vnpy(self, gateway):
-        if self.orderCancelRejectTransaction:
-            self.orderCancelRejectTransaction.to_vnpy(gateway)
-        return None
 
 
 class OandaInstrumentsQueryResponse(OandaVnpyConvertableData):
@@ -133,7 +108,8 @@ class OandaInstrumentsQueryResponse(OandaVnpyConvertableData):
 
     @classmethod
     def from_dict(cls, dct):
-        obj = super(OandaInstrumentsQueryResponse, cls).from_dict(dct)
+        obj = cls()
+        obj.__dict__ = super(OandaInstrumentsQueryResponse, cls).from_dict(dct).__dict__
         obj.instruments = obj.instruments or []
         obj.instruments = [OandaInstrument.from_dict(inst) for inst in obj.instruments]
         return obj
@@ -153,7 +129,8 @@ class OandaAccountSummaryQueryResponse(OandaVnpyConvertableData):
     
     @classmethod
     def from_dict(cls, dct):
-        obj = super(OandaAccountSummaryQueryResponse, cls).from_dict(dct)
+        obj = cls()
+        obj.__dict__ = super(OandaAccountSummaryQueryResponse, cls).from_dict(dct).__dict__
         obj.account = obj.account and OandaAccountSummary.from_dict(obj.account)
         return obj
 
@@ -172,7 +149,8 @@ class OandaOrderQueryResponse(OandaVnpyConvertableData):
 
     @classmethod
     def from_dict(cls, dct):
-        obj = super(OandaOrderQueryResponse, cls).from_dict(dct)
+        obj = cls()
+        obj.__dict__ = super(OandaOrderQueryResponse, cls).from_dict(dct).__dict__
         obj.orders = obj.orders or []
         obj.orders = [OandaOrder.from_dict(order) for order in obj.orders]
         return obj
@@ -269,4 +247,4 @@ class OandaCandlesQueryResponse(OandaData):
             candles = candles[1:]            
         if (not candles[-1].complete) and drop_uncomplete:
             candles = candles[:-1]
-        return [candlestick.to_vnpy_bar() for candlestick in candles if candlestick.complete ]
+        return [candlestick.to_vnpy_bar() for candlestick in candles if candlestick.complete]

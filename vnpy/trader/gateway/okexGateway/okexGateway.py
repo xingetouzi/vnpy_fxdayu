@@ -1010,29 +1010,28 @@ class FuturesApi(OkexFuturesApi):
         symbol = self.channelSymbolMap[channel]
         contractType = self.channelcontractTypeMap[channel]
         symbol = symbol+'_'+contractType                         # 从回报获取品种名称
-        
-        d = data['data']
-        contract_id_ = str(d['contractId'])
-        self.contractidDict[contract_id_] = symbol    # 映射contractid 和 symbol
-        
+
         if symbol not in self.tickDict:
+
             tick = VtTickData()
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+            tick.contractType = contractType
             
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
         
-        tick.highPrice = float(d['high'])
-        tick.lowPrice = float(d['low'])
+        d = data['data']
+        # tick.highPrice = float(d['high'])
+        # tick.lowPrice = float(d['low'])
         # tick.lastPrice = float(d['last'])
         tick.volume = float(d['vol'].replace(',', ''))
         tick.upperLimit = float(d['limitHigh'])
         tick.lowerLimit = float(d['limitLow'])
-        tick.openInterest = int(d['hold_amount'])
+        tick.openInterest = float(d['hold_amount'])
         tick.volumeChange = 0                                   # 是否更新最新成交量的标记
         tick.localTime = datetime.now()
 
@@ -1062,7 +1061,8 @@ class FuturesApi(OkexFuturesApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+            tick.contractType = contractType
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
         else:
@@ -1161,7 +1161,8 @@ class FuturesApi(OkexFuturesApi):
             tick.symbol = symbol
             tick.exchange = EXCHANGE_OKEX
             tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+            tick.contract_type = contract_type
+            tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
 
             self.tickDict[symbol] = tick
         else:
@@ -1474,7 +1475,7 @@ class FuturesApi(OkexFuturesApi):
             # req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
         try:
             data = self.future_trade(
-                symbol, contract_type ,req.price, req.volume, type_, req.priceType ,req.levelRate)  # restful
+                symbol, contract_type ,req.price, req.volume, type_, req.priceType)  # restful
         
         except:
             self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
@@ -1647,11 +1648,12 @@ class FuturesApi(OkexFuturesApi):
                     self.filledList[0:99] = self.filledList[1:100]
                     self.filledList[-1] = str(order.exchangeOrderID)
                     if order.exchangeOrderID in self.sendOrderDict.keys():
-                        del self.sendOrderDict[str(order.exchangeOrderID)]
-                    if order.exchangeOrderID in self.wsOrderDict.keys():
-                        del self.wsOrderDict[str(order.exchangeOrderID)]
-                    if order.exchangeOrderID in self.exchangeOrderDict.keys():    
-                        del self.exchangeOrderDict[str(order.exchangeOrderID)]
+                        if order.exchangeOrderID in self.wsOrderDict.keys():
+                            if order.exchangeOrderID in self.exchangeOrderDict.keys():    
+                                del self.sendOrderDict[str(order.exchangeOrderID)]
+                                del self.exchangeOrderDict[str(order.exchangeOrderID)]
+                                del self.wsOrderDict[str(order.exchangeOrderID)]
+                            
                     self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
             else:
@@ -1833,6 +1835,7 @@ class FuturesApi(OkexFuturesApi):
                 for i in range(len(orderinfo)):
                     orderdetail = orderinfo[i]
                     order_id = str(orderdetail['order_id'])
+
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
