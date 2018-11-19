@@ -1,4 +1,5 @@
 import logging
+import traceback
 import time
 import types
 import socket
@@ -14,6 +15,7 @@ import pandas as pd
 import numpy as np
 from vnpy.trader.vtConstant import VN_SEPARATOR
 from vnpy.trader.vtEvent import EVENT_TIMER
+from vnpy.trader.vtConstant import *
 
 from .ctaPlugin import CtaEngineWithPlugins, CtaEnginePlugin
 
@@ -36,6 +38,8 @@ class OpenFalconMetric(object):
 
 
 class OpenFalconMetricFactory(object):
+    PREFIX = "vnpy.cta"
+
     def __init__(self, endpoint, step):
         self.endpoint = endpoint
         self.step = step
@@ -46,7 +50,7 @@ class OpenFalconMetricFactory(object):
         metric = OpenFalconMetric()
         metric.endpoint = self.endpoint
         metric.step = step or self.step
-        metric.metric = metric_name
+        metric.metric = ".".join([self.PREFIX, metric_name]) if self.PREFIX else metric_name
         metric.value = value
         metric.counterType = counter_type
         if tags:
@@ -100,7 +104,8 @@ class MetricAggregator(object):
                 data = data()
             func(data)
         # add metric after aggregation
-        return self.getMetrics()
+        for metric in self.getMetrics():
+            self.plugin.addMetric(metric)
 
     def getMetrics(self): 
         return []
@@ -204,11 +209,14 @@ class CtaMerticPlugin(CtaEnginePlugin):
 
     def pushMetrics(self):
         for func in self._metricFuncs:
-            func()
+            try:
+                func()
+            except: # prevent stop eventengine's thread
+                self.ctaEngine.error(traceback.format_exc())
         payload = [metric.__dict__ for metric in self._metricCaches]
         r = requests.post(open_falcon_url, data=json.dumps(payload))
         self.clearCache()
-        print(r.text)
+        print(r.content)
 
     def clearCache(self):
         self._metricCaches = []
@@ -245,17 +253,29 @@ class CtaMerticPlugin(CtaEnginePlugin):
         self._tradeEvents.append(event)
 
 
+class StrategySplitedAggregator(MetricAggregator):
+    @property
+    def strategys(self):
+        return self.engine.strategyDict
+
+    def getGateways(self, strategy):
+        return [vtSymbol.split(VN_SEPARATOR)[-1] for vtSymbol in strategy.symbolList]
+
+    def getVtSymbols(self, strategy):
+        return strategy.symbolList
+
+
 @register_aggregator
-class BaseStrategyAggregator(MetricAggregator):
-    def addMetrics(self):
+class BaseStrategyAggregator(StrategySplitedAggregator):
+    def getMetrics(self):
         self.addMetricStrategyStatus()
         self.addMetricStrategyGatewayStatus()
 
     def addMetricStrategyStatus(self):
-        for name, strategy in self.engine.strategyDict.items():
+        for name, strategy in self.strategys.items():
             tags = "strategy={}".format(name)
             # metric heartbeat
-            self.plugin.addMetric(1, "strategy.heartbeat", tags, counter_type=OpenFalconMetricCounterType.COUNTER)
+            self.plugin.addMetric(int(time.time()), "strategy.heartbeat", tags, counter_type=OpenFalconMetricCounterType.COUNTER)
             # metric trading status
             trading = strategy.trading
             self.plugin.addMetric(trading, "strategy.trading", tags)
@@ -263,36 +283,34 @@ class BaseStrategyAggregator(MetricAggregator):
     def addMetricStrategyGatewayStatus(self):
         connected = {}
         for name, gateway in self.engine.mainEngine.gatewayDict.items():
-            connected[name] = gateway.connected
-        for name, strategy in self.engine.strategyDict.items():
+            connected[name] = hasattr(gateway, "connected") and gateway.connected
+        for name, strategy in self.strategys.items():
             if strategy.trading: # only count trading strategy
-                gateways = [vtSymbol.split(VN_SEPARATOR)[1] for vtSymbol in strategy.symbolList]
+                gateways = self.getGateways(strategy)
                 for gateway in gateways:
                     tags = "strategy={},gateway={}".format(name, gateway)
                     self.plugin.addMetric(connected[gateway], "gateway.connected", tags)
 
 
 @register_aggregator
-class PositionAggregator(MetricAggregator):
+class PositionAggregator(StrategySplitedAggregator):
     def __init__(self, plugin):
         super(PositionAggregator, self).__init__(plugin)
         self._positions = {}
 
     def aggregatePositionEvents(self, data):
         if not data.empty:
-            for name, strategy in self.engine.strategyDict.items():
-                symbols = set(strategy.symbolList)
+            for name, strategy in self.strategys.items():
+                symbols = set(self.getVtSymbols(strategy))
                 sub = data[data.vtSymbol.apply(lambda x: x in symbols)]
                 if sub.empty:
                     continue
-                try:
-                    self._positions[name] = self._positions[name].append(data.groupby("vtPositionName").last()).\
-                        groupby("vtPositionName").last()
-                except KeyError:
+                if name in self._positions:
+                    self._positions[name] = self._positions[name].append(sub).groupby("vtPositionName").last()
+                else:
                     self._positions[name] = sub.groupby("vtPositionName").last()
 
-    def addMetrics(self):
-        super(PositionAggregator, self).addMetrics()
+    def getMetrics(self):
         metric = "position.volume"
         for strategy_name, positions in self._positions.items():
             if positions.empty:
@@ -304,112 +322,161 @@ class PositionAggregator(MetricAggregator):
 
 
 @register_aggregator
-class TradeAggregator(MetricAggregator):
+class TradeAggregator(StrategySplitedAggregator):
     def __init__(self, plugin):
         super(TradeAggregator, self).__init__(plugin)
-        self._trades = {}
+        self._counts = {}
+        self._volumes = {}
 
     def aggregateTradeEvents(self, data):
         if not data.empty:
-            for name, strategy in self.engine.strategyDict.items():
-                symbols = set(strategy.symbolList)
+            data["gatewayName"] = data["vtSymbol"].apply(lambda x: x.split(VN_SEPARATOR)[-1])
+            for name, strategy in self.strategys.items():
+                symbols = set(self.getVtSymbols(strategy))
                 sub = data[data.vtSymbol.apply(lambda x: x in symbols)]
-                if sub.empty:
-                    continue
-                try:
-                    self._trades[name] = self._trades[name].append(sub.groupby(['vtSymbol']).sum()).\
-                        groupby(['vtSymbol']).sum()
-                except KeyError:
-                    self._trades[name] = sub.groupby(['vtSymbol']).sum()
+                counts = sub.groupby(["gatewayName", 'symbol']).count()
+                volumes = sub.volume.groupby(["gatewayName", 'symbol']).sum()
+                if name in self._counts:
+                    self._counts[name] += counts
+                else:
+                    self._counts[name] = counts
+                if name in self._volumes:
+                    self._volumes[name] += volumes
+                else:
+                    self._volumes[name] = volumes
 
-    def addMetrics(self):
-        super(TradeAggregator, self).addMetrics()
+    def getMetrics(self):
+        # count
         metric = "trade.count"
-        for strategy_name, trades in self._trades.items():
-            if trades.empty:
-                continue
-            for k, dct in trades.to_dict("index").items():
-                tags = "strategy={},gatewayName={},symbol={}".format(
-                    strategy_name, k.split(':')[1], k.split(':')[0])
-                self.plugin.addMetric(dct["volume"], metric, tags)
+        for strategy_name, counts in self._counts.items():
+            for k, v in counts.iteritems():
+                gateway, symbol = k
+                tags = "strategy={},gateway={},symbol={}".format(
+                    strategy_name, gateway, symbol)
+                self.plugin.addMetric(v, metric, tags)
+        # volume
+        metric = "trade.volume"
+        for strategy_name, volumes in self._volumes.items():
+            for k, v in volumes.iteritems():
+                gateway, symbol = k
+                tags = "strategy={},gateway={},symbol={}".format(
+                    strategy_name, gateway, symbol)
+                self.plugin.addMetric(v, metric, tags)
+
+_order_status_map_status = {
+    STATUS_NOTTRADED: 0,
+    STATUS_UNKNOWN: 1,
+    STATUS_PARTTRADED: 2,
+    STATUS_CANCELLING: 3,
+    STATUS_CANCELINPROGRESS: 4,
+    STATUS_ALLTRADED: 5,
+    STATUS_REJECTED: 6,
+    STATUS_CANCELLED: 7,
+}
+
+def orderstatus2int(status):
+    return _order_status_map_status.get(status, _order_status_map_status[STATUS_UNKNOWN])
+
+def issolidorder(status):
+    return status in {STATUS_ALLTRADED, STATUS_REJECTED, STATUS_CANCELLED}
 
 
 @register_aggregator
-class OrderAggregator(MetricAggregator):
+class OrderAggregator(StrategySplitedAggregator):
     def __init__(self, plugin):
         super(OrderAggregator, self).__init__(plugin)
-        self._orders = {}
-        self._activeOrders = {}
+        self._counts = {}
+        self._volumes = {}
+        self._solid_orders = {}
+        self._active_orders = {}
+
+    def merge_orders(self, df):
+        return df.iloc[df.groupby("vtOrderID").apply(lambda x: x["statusint"].idxmax())]
 
     def aggregateOrderEvents(self, data):
         if not data.empty:
-            for name, strategy in self.engine.strategyDict.items():
-                data = data[data.byStrategy.apply(lambda x: x == name)]
+            data["statusint"] = data["status"].apply(lambda x: orderstatus2int(x))
+            data["gatewayName"] = data["vtSymbol"].apply(lambda x: x.split(VN_SEPARATOR)[-1])
+            for name, strategy in self.strategys.items():
+                # filter order belong to this strategy
+                symbols = self.getVtSymbols(strategy)
+                sub = data[data.vtSymbol.apply(lambda x: x in symbols)]
+                # get final status of order
+                sub = self.merge_orders(sub)
+                # drop previous solid order to drop some misordered status
+                if name in self._solid_orders:
+                    previous_solid = set(self._solid_orders[name]["vtOrderID"].tolist())
+                else:
+                    previous_solid = set()
+                sub = sub[~sub["vtOrderID"].apply(lambda x: x in previous_solid)]
+                # handle solid
+                solid_mask = sub["status"].apply(lambda x: issolidorder(x))
+                solid = sub[solid_mask]
+                counts = solid.groupby(["status", "gatewayName", "symbol"]).count()
+                volumes = solid.groupby(["status", "gatewayName", "symbol"])["totalVolume"].sum()
+                if name in self._counts:
+                    self._counts[name] += counts
+                else:
+                    self._counts[name] = counts
+                if name in self._volumes:
+                    self._volumes[name] += volumes
+                else:
+                    self._volumes[name] = volumes
+                if name in self._solid_orders:
+                    self._solid_orders[name] = self._solid_orders[name].append(solid)
+                else:
+                    self._solid_orders[name] = solid
+                self._solid_orders[name] = self._solid_orders[name].iloc[-10000:] # only store last 10000 solid orders.
+                # handle active
+                active = sub[~solid_mask]
+                if name in self._active_orders:
+                    self._active_orders[name] = self._active_orders[name].append(active)
+                else:
+                    self._active_orders[name] = active
+                self._active_orders[name] = self.merge_orders(self._active_orders[name])
 
-                # 未成交订单
-                self.activeEvents(name, data)
-
-                data = data.drop_duplicates(['vtOrderID', 'status'])
-                sub = data.loc[(data['status'] != u'未成交')]
-                if sub.empty:
-                    continue
-                try:
-                    self._orders[name] = self._orders[name].append(sub.groupby(['vtSymbol', 'status']).sum()).\
-                        groupby(['vtSymbol', 'status']).sum()
-                except KeyError:
-                    self._orders[name] = sub.groupby(['vtSymbol', 'status']).sum()
-
-    def activeEvents(self, name, data):
-        try:
-            self._activeOrders[name] = self._activeOrders[name].append(data)
-        except:
-            self._activeOrders[name] = data
-        activeOrders = self.engine.strategyOrderDict[name]
-        activeData = self._activeOrders[name][self._activeOrders[name].vtOrderID.apply(lambda x: x in activeOrders)]
-        self._activeOrders[name] = activeData.drop_duplicates(['vtOrderID'])
-
-    def addMetrics(self):
-        super(OrderAggregator, self).addMetrics()
+    def getMetrics(self):
+        active_counts = {k: v.groupby(["status", "gatewayName", "symbol"]).count() for k, v in self._active_orders[name]}
+        active_volumes = {k: v.groupby(["status", "gatewayName", "symbol"]["totalVolume"].sum()) for k, v in self._active_orders[name]}
+        metric = "order.count"
+        for strategy_name, counts in self._counts.items():
+            counts = counts + active_counts
+            for k, v in counts.iteritems():
+                status, gateway, symbol = k
+                tags = "strategy={},gateway={},symbol={},status={}".format(
+                    strategy_name, gateway, symbol, status)
+                self.plugin.addMetric(v, metric, tags)
         metric = "order.volume"
-        for strategy_name, orders in self._orders.items():
-            if orders.empty:
-                continue
-            for k, dct in orders.to_dict("index").items():
-                tags = "strategy={},gatewayName={},symbol={},status={}".format(
-                    strategy_name, k[0].split(':')[1], k[0].split(':')[0], k[1])
-                self.plugin.addMetric(dct["totalVolume"], metric, tags)
-
-        # 未成交的订单
-        for strategy_name, active_orders in self._activeOrders.items():
-            if active_orders.empty:
-                continue
-            for k, dct in active_orders.groupby('vtSymbol').sum().to_dict("index").items():
-                tags = "strategy={},gatewayName={},symbol={},status={}".format(
-                    strategy_name, k.split(':')[1], k.split(':')[0], u"未成交")
-                self.plugin.addMetric(dct["totalVolume"], metric, tags)
+        for strategy_name, volumes in self._volumes.items():
+                volumes = volumes + active_volumes
+                for k, v in volumes.iteritems():
+                    status, gateway, symbol = k
+                    tags = "strategy={},gateway={},symbol={},status={}".format(
+                        strategy_name, gateway, symbol, status)
+                    self.plugin.addMetric(v, metric, tags)
 
 
 @register_aggregator
-class AccountAggregator(MetricAggregator):
+class AccountAggregator(StrategySplitedAggregator):
     def __init__(self, plugin):
         super(AccountAggregator, self).__init__(plugin)
         self._accounts = {}
 
     def aggregateAccountEvents(self, data):
         if not data.empty:
-            for name, strategy in self.engine.strategyDict.items():
-                try:
-                    self._accounts[name] = self._accounts[name].append(data.groupby("vtAccountID").last()).\
-                        groupby("vtAccountID").last()
-                except KeyError:
+            for name, strategy in self.strategys.items():
+                gateways = set(self.getGateways(strategy))
+                mask = data.gatewayName.apply(lambda x: x in gateways)
+                if name in self._accounts:
+                    self._accounts[name] = self._accounts[name].append(data[mask]).groupby("vtAccountID").last()
+                else:
                     self._accounts[name] = data.groupby("vtAccountID").last()
 
-    def addMetrics(self):
-        super(AccountAggregator, self).addMetrics()
+    def getMetrics(self):
         metric = "account.balance"
         for strategy_name, accounts in self._accounts.items():
-            for k, dct in accounts.to_dict("index").items():
-                tags = "strategy={},gatewayName={},symbol={}".format(
+            for _, dct in accounts.to_dict("index").items():
+                tags = "strategy={},gateway={},account={}".format(
                     strategy_name, dct["gatewayName"], dct["accountID"])
                 self.plugin.addMetric(dct['balance'], metric, tags)
 

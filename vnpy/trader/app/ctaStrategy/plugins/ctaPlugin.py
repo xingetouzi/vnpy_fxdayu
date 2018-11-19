@@ -1,9 +1,11 @@
 import types
 import logging
 
-from vnpy.trader.app.ctaStrategy.ctaEngine import CtaEngine
 from vnpy.trader.utils import Logger
 
+from ..ctaEngine import CtaEngine
+from ..ctaTemplate import CtaTemplate
+from ..ctaBase import ENGINETYPE_BACKTESTING
 
 class CtaEngineWithPlugins(CtaEngine, Logger):
     def __init__(self, mainEngine, eventEngine):
@@ -221,3 +223,20 @@ class CtaEnginePlugin(object):
 
     def postAccountEvent(self, event):
         raise NotImplementedError
+
+
+class CtaTemplateWithPlugins(CtaTemplate):
+    def isBacktesting(self):
+        return self.ctaEngine.engineType == ENGINETYPE_BACKTESTING
+
+    def disablePlugin(self, plug):
+        if self.isBacktesting():
+            self.writeCtaLog("处于回测模式，插件功能禁用")
+        else:
+            return self.ctaEngine.disablePlugin(plug)
+
+    def enablePlugin(self, plug):
+        if self.isBacktesting():
+            self.writeCtaLog("处于回测模式，插件功能禁用")
+        else:
+            return self.ctaEngine.enablePlugin(plug)

@@ -17,7 +17,7 @@ from vnpy.trader.utils import Logger
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
-from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins
+from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
 from ..ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
 from ..ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
 from ..histbar import BarReader
@@ -727,7 +727,7 @@ class CtaEngine(CtaEngineWithPlugins):
             p.manager.register_strategy(strategy)
 
 
-class CtaTemplate(OriginCtaTemplate):
+class CtaTemplate(CtaTemplateWithPlugins):
     def getArrayManager(self, symbol, freq="1m"):
         return self.ctaEngine.getArrayManager(symbol, freq=freq)
 
