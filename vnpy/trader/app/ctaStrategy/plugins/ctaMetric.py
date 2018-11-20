@@ -490,12 +490,15 @@ class AccountAggregator(StrategySplitedAggregator):
                     self._accounts[name] = data[mask].groupby("vtAccountID").last()
 
     def getMetrics(self):
-        metric = "account.balance"
         for strategy_name, accounts in self._accounts.items():
             for _, dct in accounts.to_dict("index").items():
                 tags = "strategy={},gateway={},account={}".format(
                     strategy_name, dct["gatewayName"], dct["accountID"])
+                metric = "account.balance"
                 self.plugin.addMetric(dct['balance'], metric, tags)
+                metric = "account.intraday_pnl_ratio"
+                pnl = (dct["balance"] - dct["preBalance"]) / dct["preBalance"]
+                self.plugin.addMetric(pnl, metric, tags)
 
 
 class CtaEngine(CtaEngineWithPlugins):
