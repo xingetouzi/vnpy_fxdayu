@@ -52,6 +52,7 @@ class OpenFalconMetricFactory(object):
         metric.step = step or self.step
         metric.metric = ".".join([self.PREFIX, metric_name]) if self.PREFIX else metric_name
         metric.value = value
+        metric.timestamp = int(time.time())
         metric.counterType = counter_type
         if tags:
             metric.tags = tags
@@ -104,7 +105,8 @@ class MetricAggregator(object):
                 data = data()
             func(data)
         # add metric after aggregation
-        for metric in self.getMetrics():
+        metrics = self.getMetrics() or []
+        for metric in metrics:
             self.plugin.addMetric(metric)
 
     def getMetrics(self): 
@@ -136,7 +138,7 @@ def register_aggregator(cls):
 class CtaMerticPlugin(CtaEnginePlugin):
     aggregator_classes = []
 
-    def __init__(self, step=10, interval=5):
+    def __init__(self, step=30, interval=15):
         self.hostName = self.getHostName()
         self.timer = 0  # 计数器
         self.step = step
@@ -328,6 +330,10 @@ class TradeAggregator(StrategySplitedAggregator):
         self._counts = {}
         self._volumes = {}
 
+    @staticmethod
+    def series_sum(s1, s2):
+        return pd.concat([s1, s2], axis=1).fillna(0).sum(axis=1)
+
     def aggregateTradeEvents(self, data):
         if not data.empty:
             data["gatewayName"] = data["vtSymbol"].apply(lambda x: x.split(VN_SEPARATOR)[-1])
@@ -337,11 +343,11 @@ class TradeAggregator(StrategySplitedAggregator):
                 counts = sub.groupby(["gatewayName", 'symbol']).count()
                 volumes = sub.volume.groupby(["gatewayName", 'symbol']).sum()
                 if name in self._counts:
-                    self._counts[name] += counts
+                    self._counts[name] = self.series_sum(self._counts[name], counts)
                 else:
                     self._counts[name] = counts
                 if name in self._volumes:
-                    self._volumes[name] += volumes
+                    self._volumes[name] = self.series_sum(self._volumes[name], volumes)
                 else:
                     self._volumes[name] = volumes
 
@@ -390,8 +396,14 @@ class OrderAggregator(StrategySplitedAggregator):
         self._solid_orders = {}
         self._active_orders = {}
 
+    @staticmethod
+    def series_sum(s1, s2):
+        return pd.concat([s1, s2], axis=1).fillna(0).sum(axis=1)
+
     def merge_orders(self, df):
-        return df.iloc[df.groupby("vtOrderID").apply(lambda x: x["statusint"].idxmax())]
+        if df.empty:
+            return df
+        return df.loc[df.groupby("vtOrderID").apply(lambda x: x["statusint"].idxmax()).values]
 
     def aggregateOrderEvents(self, data):
         if not data.empty:
@@ -408,39 +420,43 @@ class OrderAggregator(StrategySplitedAggregator):
                     previous_solid = set(self._solid_orders[name]["vtOrderID"].tolist())
                 else:
                     previous_solid = set()
-                sub = sub[~sub["vtOrderID"].apply(lambda x: x in previous_solid)]
+                sub = sub[sub["vtOrderID"].apply(lambda x: x not in previous_solid)]
                 # handle solid
                 solid_mask = sub["status"].apply(lambda x: issolidorder(x))
                 solid = sub[solid_mask]
-                counts = solid.groupby(["status", "gatewayName", "symbol"]).count()
+                counts = solid.groupby(["status", "gatewayName", "symbol"])["totalVolume"].count()
                 volumes = solid.groupby(["status", "gatewayName", "symbol"])["totalVolume"].sum()
                 if name in self._counts:
-                    self._counts[name] += counts
+                    self._counts[name] = self.series_sum(self._counts[name], counts)
                 else:
                     self._counts[name] = counts
                 if name in self._volumes:
-                    self._volumes[name] += volumes
+                    self._volumes[name] = self.series_sum(self._volumes[name], volumes)
                 else:
                     self._volumes[name] = volumes
                 if name in self._solid_orders:
                     self._solid_orders[name] = self._solid_orders[name].append(solid)
                 else:
                     self._solid_orders[name] = solid
-                self._solid_orders[name] = self._solid_orders[name].iloc[-10000:] # only store last 10000 solid orders.
+                self._solid_orders[name] = self._solid_orders[name].iloc[-100000:] # only store last 10000 solid orders.
                 # handle active
                 active = sub[~solid_mask]
                 if name in self._active_orders:
-                    self._active_orders[name] = self._active_orders[name].append(active)
+                    temp = self._active_orders[name]
+                    current_solid = set(self._solid_orders[name]["vtOrderID"].tolist())
+                    temp = temp[temp["vtOrderID"].apply(lambda x: x not in current_solid)]
+                    self._active_orders[name] = temp.append(active)
                 else:
                     self._active_orders[name] = active
                 self._active_orders[name] = self.merge_orders(self._active_orders[name])
 
     def getMetrics(self):
-        active_counts = {k: v.groupby(["status", "gatewayName", "symbol"]).count() for k, v in self._active_orders[name]}
-        active_volumes = {k: v.groupby(["status", "gatewayName", "symbol"]["totalVolume"].sum()) for k, v in self._active_orders[name]}
+        active_counts = {k: v.groupby(["status", "gatewayName", "symbol"])["totalVolume"].count() for k, v in self._active_orders.items()}
+        active_volumes = {k: v.groupby(["status", "gatewayName", "symbol"])["totalVolume"].sum() for k, v in self._active_orders.items()}
         metric = "order.count"
         for strategy_name, counts in self._counts.items():
-            counts = counts + active_counts
+            if strategy_name in active_counts:
+                counts = self.series_sum(counts, active_counts[strategy_name])
             for k, v in counts.iteritems():
                 status, gateway, symbol = k
                 tags = "strategy={},gateway={},symbol={},status={}".format(
@@ -448,12 +464,13 @@ class OrderAggregator(StrategySplitedAggregator):
                 self.plugin.addMetric(v, metric, tags)
         metric = "order.volume"
         for strategy_name, volumes in self._volumes.items():
-                volumes = volumes + active_volumes
-                for k, v in volumes.iteritems():
-                    status, gateway, symbol = k
-                    tags = "strategy={},gateway={},symbol={},status={}".format(
-                        strategy_name, gateway, symbol, status)
-                    self.plugin.addMetric(v, metric, tags)
+            if strategy_name in active_volumes:
+                volumes = self.series_sum(volumes, active_volumes[strategy_name])
+            for k, v in volumes.iteritems():
+                status, gateway, symbol = k
+                tags = "strategy={},gateway={},symbol={},status={}".format(
+                    strategy_name, gateway, symbol, status)
+                self.plugin.addMetric(v, metric, tags)
 
 
 @register_aggregator
@@ -470,7 +487,7 @@ class AccountAggregator(StrategySplitedAggregator):
                 if name in self._accounts:
                     self._accounts[name] = self._accounts[name].append(data[mask]).groupby("vtAccountID").last()
                 else:
-                    self._accounts[name] = data.groupby("vtAccountID").last()
+                    self._accounts[name] = data[mask].groupby("vtAccountID").last()
 
     def getMetrics(self):
         metric = "account.balance"
