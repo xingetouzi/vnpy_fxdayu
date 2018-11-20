@@ -215,7 +215,7 @@ class OandaTransactionsQueryResponse(OandaVnpyConvertableData):
         obj = cls()
         obj.__dict__ = super(OandaTransactionsQueryResponse, cls).from_dict(dct).__dict__
         obj.transactions = obj.transactions or []
-        obj.transactions = [OandaTransactionFactory.new(trans) for trans in obj.transactions]
+        obj.transactions = [OandaTransactionFactory().new(trans) for trans in obj.transactions]
         return obj
 
     def to_vnpy(self, gateway, excludes=None):

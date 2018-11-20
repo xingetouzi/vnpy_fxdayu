@@ -30,6 +30,8 @@ class AsyncApiWorker(Logger):
             self._api.register_tick_handler(self.process_tick)
         if self.process_response != types.MethodType(AsyncApiWorker.process_response, self):
             self._api.register_response_handler(self.process_response)
+        if self.process_cancel_order != types.MethodType(AsyncApiWorker.process_cancel_order, self):
+            self._api.register_cancel_order_handler(self.process_cancel_order)
 
     def process_transaction(self):
         raise NotImplementedError
@@ -38,6 +40,9 @@ class AsyncApiWorker(Logger):
         raise NotImplementedError
 
     def process_response(self):
+        raise NotImplementedError
+
+    def process_cancel_order(self):
         raise NotImplementedError
 
     def start(self):

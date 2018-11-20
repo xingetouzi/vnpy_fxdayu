@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import json
 import time
 
@@ -61,12 +62,17 @@ class TickSubscriber(AsyncApiWorker):
                         break
             except asyncio.CancelledError:
                 break
+            except (asyncio.TimeoutError, concurrent.futures._base.TimeoutError):
+                pass #TODO: continue without reconnect?
             except Exception as e:
                 self.api.on_error(e)
-            retry_count += 1
-            retry = 1 << (min(retry_count, 4) - 1)
-            self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
-            await asyncio.sleep(retry)
+            try:
+                retry_count += 1
+                retry = 1 << (min(retry_count, 4) - 1)
+                self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
+                await asyncio.sleep(retry)
+            except asyncio.CancelledError:
+                break
         self.debug("账户[%s]Price信道的订阅已被取消" % account_id)
 
     def _on_tick(self, raw, account_id):
