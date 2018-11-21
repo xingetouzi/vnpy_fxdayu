@@ -340,8 +340,8 @@ class TradeAggregator(StrategySplitedAggregator):
             for name, strategy in self.strategys.items():
                 symbols = set(self.getVtSymbols(strategy))
                 sub = data[data.vtSymbol.apply(lambda x: x in symbols)]
-                counts = sub.groupby(["gatewayName", 'symbol']).count()
-                volumes = sub.volume.groupby(["gatewayName", 'symbol']).sum()
+                counts = sub.groupby(["gatewayName", 'symbol']).volume.count()
+                volumes = sub.groupby(["gatewayName", 'symbol']).volume.sum()
                 if name in self._counts:
                     self._counts[name] = self.series_sum(self._counts[name], counts)
                 else:
@@ -435,7 +435,7 @@ class OrderAggregator(StrategySplitedAggregator):
                 else:
                     self._volumes[name] = volumes
                 if name in self._solid_orders:
-                    self._solid_orders[name] = self._solid_orders[name].append(solid)
+                    self._solid_orders[name] = self._solid_orders[name].append(solid, ignore_index=True)
                 else:
                     self._solid_orders[name] = solid
                 self._solid_orders[name] = self._solid_orders[name].iloc[-100000:] # only store last 10000 solid orders.
@@ -445,7 +445,7 @@ class OrderAggregator(StrategySplitedAggregator):
                     temp = self._active_orders[name]
                     current_solid = set(self._solid_orders[name]["vtOrderID"].tolist())
                     temp = temp[temp["vtOrderID"].apply(lambda x: x not in current_solid)]
-                    self._active_orders[name] = temp.append(active)
+                    self._active_orders[name] = temp.append(active, ignore_index=True)
                 else:
                     self._active_orders[name] = active
                 self._active_orders[name] = self.merge_orders(self._active_orders[name])
@@ -497,8 +497,9 @@ class AccountAggregator(StrategySplitedAggregator):
                 metric = "account.balance"
                 self.plugin.addMetric(dct['balance'], metric, tags)
                 metric = "account.intraday_pnl_ratio"
-                pnl = (dct["balance"] - dct["preBalance"]) / dct["preBalance"]
-                self.plugin.addMetric(pnl, metric, tags)
+                if dct["preBalance"]:
+                    pnl = (dct["balance"] - dct["preBalance"]) / dct["preBalance"]
+                    self.plugin.addMetric(pnl, metric, tags)
 
 
 class CtaEngine(CtaEngineWithPlugins):

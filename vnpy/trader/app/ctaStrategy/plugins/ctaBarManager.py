@@ -5,7 +5,7 @@ import re
 from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
-from functools import lru_cache, partial
+from functools import lru_cache, partial, wraps
 from collections import OrderedDict
 from weakref import proxy
 
@@ -650,6 +650,15 @@ class BarManager(object):
         if manager:
             manager.on_bar(bar)
 
+    def must_in_trading(self, func):
+        @wraps(func)
+        def wrapper(obj, bar, *args, **kwargs):
+            if not obj.trading:
+                logger.debug("当前策略未启动，跳过当前Bar,时间:%s" % bar.datetime)
+                return
+            return func(obj, bar, *args, **kwargs)
+        return wrapper
+
     def register_strategy(self, strategy):
         symbols = strategy.symbolList
         for vtSymbol in symbols:
@@ -663,14 +672,14 @@ class BarManager(object):
             if m is not None:
                 freq = m.group(1) + m.group(2)
                 for vtSymbol in symbols:
-                    to_register.append((vtSymbol, freq, v))
+                    to_register.append((vtSymbol, freq, self.must_in_trading(v)))
         for k, v in strategy.__class__.__dict__.items():
             if k == "onBar":
                 k = "on1mBar"
             m = _on_bar_re.match(k)
             if m is not None:
                 freq = m.group(1) + m.group(2)
-                func = partial(v, strategy)
+                func = partial(self.must_in_trading(v), strategy)
                 for vtSymbol in symbols:
                     to_register.append((vtSymbol, freq, func))
         to_register = sorted(to_register, key=lambda x: freq2seconds(standardize_freq(x[1])), reverse=True)
