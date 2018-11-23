@@ -1,6 +1,8 @@
 import asyncio
 import json
 import time
+import concurrent
+from functools import partial
 
 from ..base import AsyncApiWorker
 from ..utils import fetch_stream
@@ -62,6 +64,10 @@ class TransactionsStreamWorker(AsyncApiWorker):
         """Callback when there comes a heartbeat transaction"""
         pass
 
+    def on_connect(self, account_id):
+        """Callback when transaction subscription of a account connnect"""
+        pass
+
     def on_reconnect(self, account_id):
         """Callback when transaction subscription of a account reconnnect"""
         pass
@@ -94,18 +100,24 @@ class TransactionsStreamWorker(AsyncApiWorker):
                     if not connected:
                         retry_count = 0
                         connected = True
+                        self.on_connect(account_id)
                         self.debug("账户[%s]Transaction信道订阅成功" % account_id)
                     self._on_transaction(data.strip(MSG_SEP), account_id)
                     if not self.is_running():
                         break
             except asyncio.CancelledError:
                 break
+            except (asyncio.TimeoutError, concurrent.futures._base.TimeoutError):
+                pass #TODO: continue without reconnect?
             except Exception as e:
                 self.api.on_error(e)
-            retry_count += 1
-            retry = 1 << (min(retry_count, 4) - 1)
-            self.debug("账户[%s]Transaction信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
-            await asyncio.sleep(retry)
+            try:
+                retry_count += 1
+                retry = 1 << (min(retry_count, 4) - 1)
+                self.debug("账户[%s]Transaction信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
+                await asyncio.sleep(retry)
+            except asyncio.CancelledError:
+                break
         self.debug("账户[%s]Transaction信道的订阅已被取消" % account_id)
 
     async def _monitor_sub(self, account_id, wait=None):
@@ -151,13 +163,16 @@ class DropDuplicateTransactionStreamWorker(TransactionsStreamWorker):
     def _add_transaction_id(self, trans_id, account_id):
         ids = self._ids[account_id]
         lastid = self._lastids[account_id]
-        self._ids[account_id].add(trans_id)
+        ids.add(trans_id)
             # findout new lastid
-        while True:
-            nextid = str(int(lastid) + 1)
-            if nextid not in ids:
-                break
-            lastid = str(int(nextid) - 1)
+        if lastid == "0":
+            lastid = trans_id
+        else:
+            while True:
+                lastid = str(int(lastid) + 1)
+                if lastid not in ids:
+                    break
+            lastid = str(int(lastid) - 1)
         self._lastids[account_id] = lastid
         # cleanup ids
         if len(ids) > 10000:
@@ -199,27 +214,30 @@ class FetchOnReconnectTransactionStreamWorker(DropDuplicateTransactionStreamWork
         self.create_task(self._fetcher(self._queue))
         super(FetchOnReconnectTransactionStreamWorker, self).start()
     
-    def fetch(self, accound_id):
+    def fetch(self, account_id):
         async def put_fetch_task(queue, account_id):
             if account_id not in self._account_to_fetch:
                 self._account_to_fetch.add(account_id)
                 return await queue.put(account_id)
         self.create_task(put_fetch_task(self._queue, account_id))
 
+    def unlock_fetch(self, account_id):
+        self._account_to_fetch.remove(account_id)
+
     async def _fetcher(self, queue):
-        def callback(fut):
+        def callback(account_id, fut):
             requeue = True
             try:
                 rep = fut.result()
-                self.on_account_trans_fetch_rep(rep, account_id)
+                self.on_fetch_response(rep, account_id)
                 requeue = False
             except Exception as e:
                 self.on_error(e)
             # requeue
             if requeue:
-                self.fetch_transaction(account_id) 
+                self.fetch(account_id) 
             else:
-                self._account_to_query.remove(account_id)
+                self.unlock_fetch(account_id)
 
         while self.is_running():
             try:
@@ -228,21 +246,21 @@ class FetchOnReconnectTransactionStreamWorker(DropDuplicateTransactionStreamWork
                 continue
             lastid = self._lastids.get(account_id, None)
             if lastid is None:
-                continue
-            self.debug("主动查询账户[%s]从%s开始的事务" % (account_id, lastid))
-            if lastid == "":
-                pass # TODO: query with transaction endpoint
+                self.unlock_fetch(account_id)
+            elif lastid == "0":
+                self.unlock_fetch(account_id)
             else:
+                self.debug("主动查询账户[%s]从%s开始的事务" % (account_id, lastid))
                 fut = self.api.qry_transaction_sinceid(lastid, block=False, push=False)
-                fut.add_done_callback(callback)
+                fut.add_done_callback(partial(callback, account_id))                    
             await asyncio.sleep(1) # queue interval
 
-    def on_reconnect(self, account_id):
+    def on_connect(self, account_id):
         self.fetch(account_id)
 
     def on_fetch_response(self, rep, account_id):
         for trans in rep.transactions:
-            self._push_transaction(trans, account_id)
+            self.on_transaction(trans, account_id)
 
 
 class AutoFetchTransactionStreamWorker(FetchOnReconnectTransactionStreamWorker):

@@ -17,7 +17,7 @@ from vnpy.api.oanda.models import *
 from vnpy.api.oanda.snapshot import *
 from vnpy.api.oanda.ioloop import BackroundEventLoopProxy
 from vnpy.api.oanda.base import FirstAccountFilter
-from vnpy.api.oanda.workers import FetchOnReconnectTransactionStreamWorker, HeartbeatTickSubscriber
+from vnpy.api.oanda.workers import FetchOnReconnectTransactionStreamWorker, HeartbeatTickSubscriber, SolidOrderWorker
 from vnpy.api.oanda.utils import fetch, fetch_stream
 from vnpy.trader.utils import Logger
 
@@ -42,11 +42,13 @@ class OandaApi(Logger):
         self._tick_handlers = []
         self._transaction_handlers = []
         self._response_handlers = []
+        self._cancel_order_handlers = []
         self._init_workers()
 
     def _init_workers(self):
         self._transactor_worker = FetchOnReconnectTransactionStreamWorker(self)
         self._tick_worker = HeartbeatTickSubscriber(self)
+        self._order_worker = SolidOrderWorker(self)
 
     @property
     def headers(self):
@@ -189,6 +191,7 @@ class OandaApi(Logger):
             return status, data
 
     def _request_and_handle(self, url, rep_map, account_id=None, method="GET", data=None, push=None, block=True):
+        print(url)
         if push is None:
             push = not block
         callback = partial(self._handle_response, rep_map, account_id=account_id, push=push)
@@ -236,12 +239,15 @@ class OandaApi(Logger):
     def cancel_order(self, req, account_id=None):
         assert isinstance(req, OandaOrderSpecifier), "type '%s' is not valid oanda order request" % type(req)
         account = self.get_account(account_id)
-        url = "/".join([self.get_rest_host() + ORDER_ENDPOINT, req.to_url(), "cancel"]).format(accountID=account.id)
+        return self.process_cancel_order(req, account.id)
+
+    def _cancel_order(self, req, account_id):
+        url = "/".join([self.get_rest_host() + ORDER_ENDPOINT, req.to_url(), "cancel"]).format(accountID=account_id)
         rep_map = {
             200: OandaOrderCancelledResponse,
             404: OandaOrderCancelRejectedResponse,
         }
-        return self._request_and_handle(url, rep_map, account_id=account.id, method="PUT", block=False)
+        return self._request_and_handle(url, rep_map, account_id=account_id, method="PUT", block=False)
 
     def qry_instruments(self, instruments=None, account_id=None, block=True, push=None):
         account = self.get_account(account_id)
@@ -304,7 +310,6 @@ class OandaApi(Logger):
         rep_map = {
             200: OandaCandlesQueryResponse
         }
-        print(url)
         return self._request_and_handle(url, rep_map, account_id=account.id, block=block, push=push)
 
     def register_transaction_handler(self, func):
@@ -316,11 +321,14 @@ class OandaApi(Logger):
     def register_response_handler(self, func):
         self._response_handlers.append(func)
 
+    def register_cancel_order_handler(self, func):
+        self._cancel_order_handlers.append(func)
+
     def process_transaction(self, trans, account_id):
         for func in self._transaction_handlers:
-                ret = func(trans, account_id)
-                if ret:
-                    return
+            ret = func(trans, account_id)
+            if ret:
+                return
         self.on_transaction(trans)
     
     def process_tick(self, tick, account_id):
@@ -337,6 +345,13 @@ class OandaApi(Logger):
                 return
         self.on_response(response)
 
+    def process_cancel_order(self, req, account_id):
+        for func in self._cancel_order_handlers:
+            ret = func(req, account_id)
+            if ret:
+                return
+        return self._cancel_order(req, account_id)
+
     def on_transaction(self, trans):
         self.debug(trans)
 
@@ -347,7 +362,10 @@ class OandaApi(Logger):
         self.debug(response)
 
     def on_error(self, e):
-        self.error(e)
+        if isinstance(e, Exception):
+            self.error(traceback.format_exc())
+        else:
+            self.error(e)
 
     def on_login_success(self):
         self.info("oanda api login success")

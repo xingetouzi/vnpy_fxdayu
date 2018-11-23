@@ -157,7 +157,8 @@ class OandaMarketOrderRejectTransaction(OandaMarketOrderTransaction):
     KEYS = OandaMarketOrderTransaction.KEYS + ["rejectReason"]
 
     def __init__(self):
-        super(OandaMarketOrderRejectTransaction, self).__init__(type=OandaTransactionType.MARKET_ORDER_REJECT.value)
+        super(OandaMarketOrderRejectTransaction, self).__init__()
+        self.type = OandaTransactionType.MARKET_ORDER_REJECT.value
         self.rejectReason = None
 
     def to_vnpy(self, gateway):
@@ -419,7 +420,11 @@ class OandaTransactionFactory(six.with_metaclass(Singleton, object)):
     
     def new(self, dct):
         if "type" in dct:
-            cls = self.transaction_map.get(OandaTransactionType(dct["type"]), None)
+            try:
+                trans_type = OandaTransactionType(dct["type"])
+            except Exception:
+                trans_type = None
+            cls = self.transaction_map.get(trans_type, None)
             if cls:
                 return cls.from_dict(dct)
             else:

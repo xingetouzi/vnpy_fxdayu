@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import json
 import time
 
@@ -55,27 +56,41 @@ class TickSubscriber(AsyncApiWorker):
                     if not connected:
                         retry_count = 0
                         connected = True
-                        self.debug("账户[%s]Price信道订阅成功" % (account_id,))
-                    self._on_tick(data.strip(MSG_SEP), account_id)
+                        self.debug("账户[%s]Price信道订阅成功,订阅品种数为:%s" % (account_id, len(instruments)))
+                    if not data:
+                        continue
+                    valid = self._on_tick(data.strip(MSG_SEP), account_id)
+                    if not valid:
+                        break
                     if not self.is_running():
                         break
             except asyncio.CancelledError:
                 break
+            except (asyncio.TimeoutError, concurrent.futures._base.TimeoutError):
+                pass #TODO: continue without reconnect?
             except Exception as e:
                 self.api.on_error(e)
-            retry_count += 1
-            retry = 1 << (min(retry_count, 4) - 1)
-            self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
-            await asyncio.sleep(retry)
+            try:
+                retry_count += 1
+                retry = 1 << (min(retry_count, 4) - 1)
+                self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
+                await asyncio.sleep(retry)
+            except asyncio.CancelledError:
+                break
         self.debug("账户[%s]Price信道的订阅已被取消" % account_id)
 
     def _on_tick(self, raw, account_id):
         data = json.loads(raw)
-        if data["type"] == "HEARTBEAT": 
-            self.on_tick_heartbeat(data, account_id)
+        if "type" in data:
+            if data["type"] == "HEARTBEAT": 
+                self.on_tick_heartbeat(data, account_id)
+            else:
+                self.on_tick(data, account_id)
         else:
-            self.on_tick(data, account_id)
-    
+            self.api.on_error(data)
+            return False
+        return True
+
     def on_tick_heartbeat(self, data, accound_id):
         pass
 
@@ -144,7 +159,7 @@ class HeartbeatTickSubscriber(TickSubscriber):
 
     def _on_tick(self, raw, account_id):
         self._set_lasthb(account_id)
-        super(HeartbeatTickSubscriber, self)._on_tick(raw, account_id)
+        return super(HeartbeatTickSubscriber, self)._on_tick(raw, account_id)
 
     def on_reconnect(self, account_id):
         pass

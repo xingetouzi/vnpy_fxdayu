@@ -5,7 +5,7 @@ import re
 from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
-from functools import lru_cache, partial
+from functools import lru_cache, partial, wraps
 from collections import OrderedDict
 from weakref import proxy
 
@@ -13,15 +13,15 @@ import numpy as np
 from dateutil.parser import parse
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import VN_SEPARATOR
-from vnpy.trader.app.ctaStrategy.ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 from vnpy.trader.utils import Logger
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
-from .ctaEngine import CtaEngine as OriginCtaEngine
-from .ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
-from .ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
-from .histbar import BarReader
+from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
+from ..ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
+from ..ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
+from ..histbar import BarReader
+from ..ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 
 _on_bar_re = re.compile("^on%sBar$" % _freq_re_str)
 logger = Logger()
@@ -483,6 +483,51 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             self._am[freq] = ArrayManager(size=self._size)
         return self._am[freq]
 
+
+class HistoryData1MinBarCache(object):
+    def __init__(self, engine, symbol):
+        self._engine = engine
+        self._symbol = symbol
+        self._start = None
+        self._end = None
+        self._bars = None
+        self._dts = None
+    
+    @property
+    def bars(self):
+        return self._bars
+
+    @bars.setter
+    def bars(self, bars):
+        self._bars = bars
+        self._dts = [bar.datetime for bar in bars]
+
+    def get_bars_range(self, start, end):
+        i_start = bisect.bisect_left(self._dts, start)
+        i_end = bisect.bisect_right(self._dts, end)
+        return self._bars[i_start:i_end]
+
+    def fetch(self, start, end):
+        symbol = self._symbol
+        if self._bars is None:
+            self.bars = self._engine.loadHistoryData([symbol], start, end)
+            self._start = start 
+            self._end = end
+        else:
+            if self._start <= end and self._end >= start:  # insect
+                if start < self._start:
+                    bars = self._engine.loadHistoryData([symbol], start, self._start - timedelta(microseconds=1))
+                    self._start = start
+                    self.bars = bars + self._bars
+                if end > self._end:
+                    bars = self._engine.loadHistoryData([symbol], self._end + timedelta(microseconds=1), end)
+                    self._end = end
+                    self.bars = self._bars + bars
+            else:
+                return None
+        return self.get_bars_range(start, end)
+
+
 class BarManager(object):
     class MODE(Enum):
         ON_TICK = "tick"
@@ -495,21 +540,24 @@ class BarManager(object):
         self._logger = Logger()
         self._managers = {}
         self._size = size
+        self._caches = {}
 
     @property
     def mode(self):
         return self._mode
 
     def add_symbol(self, symbol):
-        self._managers[symbol] = SymbolBarManager(self, symbol, size=self._size)
-    
+        if symbol not in self._managers:
+            self._managers[symbol] = SymbolBarManager(self, symbol, size=self._size)
+            if self.is_backtesting():
+                self._caches[symbol] = HistoryData1MinBarCache(self._engine, symbol)
+
     def set_size(self, size):
         for manager in self._managers.values():
             manager.set_size(size)
 
     def register(self, symbol, freq, func):
-        if symbol not in self._managers:
-            self.add_symbol(symbol)
+        self.add_symbol(symbol)
         logger.debug("注册品种%s上的on_%s_bar函数%s" % (symbol, freq, func))
         self._managers[symbol].register(freq, func)
 
@@ -535,9 +583,10 @@ class BarManager(object):
             delta = unit_s * size * 9
         start = dtstart - timedelta(seconds=delta)
         end = dtstart + timedelta(days=2, seconds=unit_s) # fetch one unit time more forward, plus two day to skip weekends.
-        bars_1min = self._engine.loadHistoryData([symbol], start, end)
-        dts_min = [bar.datetime for bar in bars_1min]
-        index = bisect.bisect_left(dts_min, dtstart)
+        cache = self._caches[symbol]
+        bars_1min = cache.fetch(start, end)
+        dts_1min = [bar.datetime for bar in bars_1min]
+        index = bisect.bisect_left(dts_1min, dtstart)
         bars_1min = bars_1min[:index+1]
         end_dt = bars_1min[-1].datetime + timedelta(minutes=1)
         if freq == "1m":
@@ -601,11 +650,21 @@ class BarManager(object):
         if manager:
             manager.on_bar(bar)
 
+    def must_in_trading(self, func):
+        @wraps(func)
+        def wrapper(obj, bar, *args, **kwargs):
+            if not obj.trading:
+                logger.debug("当前策略未启动，跳过当前Bar,时间:%s" % bar.datetime)
+                return
+            return func(obj, bar, *args, **kwargs)
+        return wrapper
+
     def register_strategy(self, strategy):
         symbols = strategy.symbolList
         for vtSymbol in symbols:
             self.add_symbol(vtSymbol)
         # TODO: check if v is function
+        to_register = []
         for k, v in strategy.__dict__.items():
             if k == "onBar":
                 k = "on1mBar"
@@ -613,22 +672,39 @@ class BarManager(object):
             if m is not None:
                 freq = m.group(1) + m.group(2)
                 for vtSymbol in symbols:
-                    self.register(vtSymbol, freq, v)
+                    to_register.append((vtSymbol, freq, self.must_in_trading(v)))
         for k, v in strategy.__class__.__dict__.items():
             if k == "onBar":
                 k = "on1mBar"
             m = _on_bar_re.match(k)
             if m is not None:
                 freq = m.group(1) + m.group(2)
-                func = partial(v, strategy)
+                func = partial(self.must_in_trading(v), strategy)
                 for vtSymbol in symbols:
-                    self.register(vtSymbol, freq, func)
+                    to_register.append((vtSymbol, freq, func))
+        to_register = sorted(to_register, key=lambda x: freq2seconds(standardize_freq(x[1])), reverse=True)
+        for vtSymbol, freq, func in to_register:
+            self.register(vtSymbol, freq, func)
 
 
-class CtaEngine(OriginCtaEngine):
+class BarManagerPlugin(CtaEnginePlugin):
+    def __init__(self):
+        super(BarManagerPlugin, self).__init__()
+        self.manager = None
+
+    def register(self, engine):
+        super(BarManagerPlugin, self).register(engine)
+        self.manager = BarManager(engine)
+
+    def postTickEvent(self, event):
+        tick = event.dict_["data"]
+        self.manager.on_tick(tick)
+
+
+class CtaEngine(CtaEngineWithPlugins):
     def __init__(self, mainEngine, eventEngine):
         super(CtaEngine, self).__init__(mainEngine, eventEngine)
-        self.barManager = BarManager(self)
+        self.addPlugin(BarManagerPlugin())
         self._barReaders = {}
 
     def getBarReader(self, gatewayName):
@@ -641,27 +717,26 @@ class CtaEngine(OriginCtaEngine):
         return self.getBarReader(gatewayName)
 
     def getArrayManager(self, symbol, freq="1m"):
-        return self.barManager.get_array_manager(symbol, freq=freq)
+        p = self.getPlugin(BarManagerPlugin)
+        return p.manager.get_array_manager(symbol, freq=freq)
 
     def setArrayManagerSize(self, size):
-        return self.barManager.set_size(size)
-
-    def processTickEvent(self, event):
-        super(CtaEngine, self).processTickEvent(event)
-        tick = event.dict_["data"]
-        self.barManager.on_tick(tick)
+        p = self.getPlugin(BarManagerPlugin)
+        return p.manager.set_size(size)
 
     def loadStrategy(self, setting):
         super(CtaEngine, self).loadStrategy(setting)
+        p = self.getPlugin(BarManagerPlugin)
         try:
             name = setting['name']
             strategy = self.strategyDict[name]
         except KeyError as e:
             return
         if isinstance(strategy, CtaTemplate):
-            self.barManager.register_strategy(strategy)
+            p.manager.register_strategy(strategy)
 
-class CtaTemplate(OriginCtaTemplate):
+
+class CtaTemplate(CtaTemplateWithPlugins):
     def getArrayManager(self, symbol, freq="1m"):
         return self.ctaEngine.getArrayManager(symbol, freq=freq)
 

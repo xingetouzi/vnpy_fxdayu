@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 
 from vnpy.trader.gateway.okexGateway import OkexGateway
-from vnpy.trader.gateway.ctpGateway import CtpGateway
+#from vnpy.trader.gateway.ctpGateway import CtpGateway
 from vnpy.event import EventEngine
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import VN_SEPARATOR

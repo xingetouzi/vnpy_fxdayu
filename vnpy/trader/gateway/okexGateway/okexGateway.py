@@ -1654,7 +1654,7 @@ class FuturesApi(OkexFuturesApi):
                                 del self.exchangeOrderDict[str(order.exchangeOrderID)]
                                 del self.wsOrderDict[str(order.exchangeOrderID)]
                             
-                    self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
+                                self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
             else:
                 self.writeLog('ws quicker in order_arb_onorder,waiting sendorder rest id:%s'%orderinfo.exchangeOrderID)
@@ -1835,7 +1835,8 @@ class FuturesApi(OkexFuturesApi):
                 for i in range(len(orderinfo)):
                     orderdetail = orderinfo[i]
                     order_id = str(orderdetail['order_id'])
-
+                    if order_id not in self.wsOrderDict.keys():
+                        return
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
@@ -1963,6 +1964,8 @@ class FuturesApi(OkexFuturesApi):
                             del self.exchangeOrderDict[order_id]
                         self.writeLog('gw_batchQryOrder_again_remove_dictKeys_that_filled_or_cancelled(%s)'%(order_id))
                         continue
+                    if order_id not in self.wsOrderDict.keys():
+                        return
 
                     if order_id in self.exchangeOrderDict.keys():
                         vtOrderID = self.exchangeOrderDict[order_id]
