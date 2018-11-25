@@ -3,6 +3,7 @@
 import numpy as np
 import talib
 import pandas as  pd
+from datetime import time,timedelta
 
 from vnpy.trader.vtObject import VtBarData
 class BarGenerator(object):
@@ -319,12 +320,14 @@ class ArrayManager(object):
         self.size = size  # 缓存大小
         self.inited = False  # True if count>=size
 
-        self.openArray = np.zeros(size)  # OHLC
-        self.highArray = np.zeros(size)
-        self.lowArray = np.zeros(size)
-        self.closeArray = np.zeros(size)
-        self.volumeArray = np.zeros(size)
-        self.datetimeArray = np.zeros(size)
+        # self.openArray = np.zeros(size)  # OHLC
+        # self.highArray = np.zeros(size)
+        # self.lowArray = np.zeros(size)
+        # self.closeArray = np.zeros(size)
+        # self.volumeArray = np.zeros(size)
+        # self.datetimeArray = np.zeros(size)
+        dt=np.dtype([('datetime','datetime64[ms]'),('open',np.float32),('high',np.float32),('low',np.float32),('close',np.float32),('volume',np.float32)])
+        self.array=np.array([(np.datetime64('0001-01-01 00:00:01'),0.0,0.0,0.0,0.0,0.0)]*size,dtype=dt)
 
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
@@ -334,54 +337,71 @@ class ArrayManager(object):
             if not self.inited and self.count >= self.size:
                 self.inited = True
 
-            self.openArray[0:self.size - 1] = self.openArray[1:self.size]
-            self.highArray[0:self.size - 1] = self.highArray[1:self.size]
-            self.lowArray[0:self.size - 1] = self.lowArray[1:self.size]
-            self.closeArray[0:self.size - 1] = self.closeArray[1:self.size]
-            self.volumeArray[0:self.size - 1] = self.volumeArray[1:self.size]
-            self.datetimeArray[0:self.size - 1] = self.datetimeArray[1:self.size]
+            # self.openArray[0:self.size - 1] = self.openArray[1:self.size]
+            # self.highArray[0:self.size - 1] = self.highArray[1:self.size]
+            # self.lowArray[0:self.size - 1] = self.lowArray[1:self.size]
+            # self.closeArray[0:self.size - 1] = self.closeArray[1:self.size]
+            # self.volumeArray[0:self.size - 1] = self.volumeArray[1:self.size]
+            # self.datetimeArray[0:self.size - 1] = self.datetimeArray[1:self.size]
 
-            self.openArray[-1] = bar.open
-            self.highArray[-1] = bar.high
-            self.lowArray[-1] = bar.low
-            self.closeArray[-1] = bar.close
-            self.volumeArray[-1] = bar.volume
-            self.datetimeArray[-1] = bar.datetime.timestamp()
+            # self.openArray[-1] = bar.open
+            # self.highArray[-1] = bar.high
+            # self.lowArray[-1] = bar.low
+            # self.closeArray[-1] = bar.close
+            # self.volumeArray[-1] = bar.volume
+            # self.datetimeArray[-1] = bar.datetime.timestamp()
+            self.array['datetime'][0:self.size - 1] = self.array['datetime'][1:self.size]
+            self.array['datetime'][-1] = bar.datetime.strftime('%F %X')
+
+            self.array['open'][0:self.size - 1] = self.array['open'][1:self.size]
+            self.array['open'][-1] = bar.open
+
+            self.array['high'][0:self.size - 1] = self.array['high'][1:self.size]
+            self.array['high'][-1] = bar.high
+
+            self.array['low'][0:self.size - 1] = self.array['low'][1:self.size]
+            self.array['low'][-1] = bar.low
+
+            self.array['close'][0:self.size - 1] = self.array['close'][1:self.size]
+            self.array['close'][-1] = bar.close
+
+            self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
+            self.array['volume'][-1] = bar.volume
 
     # ----------------------------------------------------------------------
     @property
     def open(self):
         """获取开盘价序列"""
-        return self.openArray
+        return self.array['open']
 
     # ----------------------------------------------------------------------
     @property
     def high(self):
         """获取最高价序列"""
-        return self.highArray
+        return self.array['high']
 
     # ----------------------------------------------------------------------
     @property
     def low(self):
         """获取最低价序列"""
-        return self.lowArray
+        return self.array['low']
 
     # ----------------------------------------------------------------------
     @property
     def close(self):
         """获取收盘价序列"""
-        return self.closeArray
+        return self.array['close']
 
     # ----------------------------------------------------------------------
     @property
     def volume(self):
         """获取成交量序列"""
-        return self.volumeArray
+        return self.array['volume']
 
     @property
     def datetime(self):
         """获取时间戳序列"""
-        return self.datetimeArray
+        return self.array['datetime']
 
     # ----------------------------------------------------------------------
     def sma(self, n, array=False):
@@ -471,49 +491,3 @@ class ArrayManager(object):
         if array:
             return up, down
         return up[-1], down[-1]
-
-class MatrixDF(object):
-
-    # ----------------------------------------------------------------------
-    def __init__(self, size=100):
-        """Constructor"""
-        self.count = 0  # 缓存计数
-        self.size = size  # 缓存大小
-        self.inited = False  # True if count>=size
-
-        self.openList = [0] * size  # OHLC
-        self.highList = [0] * size
-        self.lowList = [0] * size
-        self.closeList = [0] * size
-        self.volumeList = [0] * size
-        self.timeList = [0] * size
-        self.df = None
-        # self.df = pd.DataFrame(columns=['datetime','open','high','low','close','volume'])
-
-    # ----------------------------------------------------------------------
-    def updateBar(self, bar):
-        """更新K线"""
-        if bar:  # 如果是实盘K线
-            self.count += 1
-            if not self.inited and self.count >= self.size:
-                self.inited = True
-
-            self.openList[0:self.size - 1] = self.openList[1:self.size]
-            self.highList[0:self.size - 1] = self.highList[1:self.size]
-            self.lowList[0:self.size - 1] = self.lowList[1:self.size]
-            self.closeList[0:self.size - 1] = self.closeList[1:self.size]
-            self.volumeList[0:self.size - 1] = self.volumeList[1:self.size]
-            self.timeList[0:self.size - 1] = self.timeList[1:self.size]
-
-            self.openList[-1] = bar.open
-            self.highList[-1] = bar.high
-            self.lowList[-1] = bar.low
-            self.closeList[-1] = bar.close
-            self.volumeList[-1] = bar.volume
-            self.timeList[-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
-
-            temp = {'datetime':self.timeList,'open':self.openList,'high':self.highList,'low':self.lowList,'close':self.closeList,'volume':self.volumeList}
-            self.df = pd.DataFrame(temp)
-            # temp = {'datetime':bar.datetime.strftime('%Y%m%d %H:%M:%S'),'open':bar.open,'high':bar.high,'low':bar.low,'close':bar.close,'volume':bar.volume}
-            # self.df = self.df.append(temp,ignore_index=True)
-            # self.df = self.df[-self.size:]

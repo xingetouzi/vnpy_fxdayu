@@ -6,7 +6,7 @@
 
 import datetime
 from vnpy.trader.vtConstant import *
-from vnpy.trader.vtUtility import BarGenerator, ArrayManager
+from vnpy.trader.vtUtility import BarGenerator, ArrayManager, MatrixDF
 
 from .ctaBase import *
 

@@ -672,7 +672,7 @@ class SpotApi(OkexSpotApi):
                 order = self.orderDict[orderId]
                 
             order.tradedVolume = d['deal_amount']
-            order.status = statusMap[d['status']]            
+            order.status = statusMap[d['status']]
             
             self.gateway.onOrder(copy(order))
 
@@ -1307,7 +1307,7 @@ class FuturesApi(OkexFuturesApi):
         order.status = statusMap[rawData['status']] 
         order.fee = rawData['fee']
         # lastTradedVolume = order.tradedVolume
-        order.tradedVolume = float(rawData['deal_amount'])
+        order.tradedVolume = int(rawData['deal_amount'])
         self.wsOrderDict[orderId] = order
 
         # 待更新信息： vtOrderID
@@ -1847,7 +1847,7 @@ class FuturesApi(OkexFuturesApi):
 
                         order.status = statusMap[orderdetail['status']]
                         lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = orderdetail['deal_amount']
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
@@ -1868,8 +1868,8 @@ class FuturesApi(OkexFuturesApi):
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
                         order.direction, order.offset = futureOrderTypeMap[str(orderdetail['type'])]
-                        order.totalVolume = orderdetail['amount']    
-                        order.exchangeOrderID = order_id        
+                        order.totalVolume = int(orderdetail['amount'])
+                        order.exchangeOrderID = order_id
                         order.gatewayName = self.gatewayName
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
                         
@@ -1877,7 +1877,7 @@ class FuturesApi(OkexFuturesApi):
                         order.status = statusMap[orderdetail['status']] 
                         order.fee = orderdetail['fee']
                         # lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = float(orderdetail['deal_amount'])
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         self.wsOrderDict[order_id] = order
                     
                     self.order_arbitration(order)    #进入订单信息仲裁匹配
@@ -1920,10 +1920,8 @@ class FuturesApi(OkexFuturesApi):
     #----------------------------------------------------------------
     def batchQryOrder(self, symbol, contract_type, order_id_list):
         """
-                {
-        "orders":
-            [
-                {
+        {"orders":
+            [{
                     "amount":1,
                     "contract_name":"LTC0815",
                     "create_date":1408076414000,
@@ -1937,8 +1935,7 @@ class FuturesApi(OkexFuturesApi):
                     "type":"1",
                     "unit_amount":10,
                     "lever_rate":10
-                }
-            ],
+                }],
         "result":true
         }
         """
@@ -1976,7 +1973,7 @@ class FuturesApi(OkexFuturesApi):
 
                         order.status = statusMap[orderdetail['status']]
                         lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = orderdetail['deal_amount']
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
