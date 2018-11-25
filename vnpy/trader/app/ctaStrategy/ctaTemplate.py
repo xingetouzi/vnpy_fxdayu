@@ -38,8 +38,6 @@ class CtaTemplate(object):
     symbolList = []  # 策略的标的列表
     barsList = []
     ticksList = []
-    posDict = {}
-    eveningDict = {}
 
     # 参数列表，保存了参数的名称
     paramList = ['name',
@@ -68,6 +66,8 @@ class CtaTemplate(object):
             for key in self.paramList:
                 if key in setting:
                     d[key] = setting[key]
+        self.posDict = {}
+        self.eveningDict = {}
         
     # ----------------------------------------------------------------------
     def onInit(self):

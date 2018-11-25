@@ -870,17 +870,16 @@ class CtaEngine(object):
         """读取历史数据"""
         data = self.mainEngine.loadHistoryBar(vtSymbol, type_, size, since)
         histbar = []
-        for i in range(len(data['open'])):
+        for index, row in data.iterrows():
             bar = VtBarData()
-            bar.open = data['open'][i]
-            bar.close = data['close'][i]
-            bar.high = data['high'][i]
-            bar.low = data['low'][i]
-            bar.volume = data['volume'][i]
+            bar.open = row.open
+            bar.close = row.close
+            bar.high = row.high
+            bar.low = row.low
+            bar.volume = row.volume
             bar.vtSymbol = vtSymbol
-            bar.datetime = data['datetime'][i]
+            bar.datetime = row.datetime
             histbar.append(bar)
-
         return histbar
 
     def initPosition(self,strategy):
@@ -1021,3 +1020,6 @@ class CtaEngine(object):
                         traceback.print_exc()
 
         return STRATEGY_GET_CLASS
+
+    def getGateway(self, gatewayName):
+        return self.mainEngine.gatewayDict.get(gatewayName, None)

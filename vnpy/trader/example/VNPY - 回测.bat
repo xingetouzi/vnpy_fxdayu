@@ -1,0 +1,3 @@
+python runBacktesting.py
+
+pause

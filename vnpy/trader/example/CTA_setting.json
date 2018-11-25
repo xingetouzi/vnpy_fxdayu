@@ -1,0 +1,8 @@
+[
+    {
+        "name": "BB",
+        "className": "BollBandsStrategy",
+        "symbolList": ["cu1811:SHFE","j1811:DCE"],
+        "mailAdd":[""]
+    }
+]

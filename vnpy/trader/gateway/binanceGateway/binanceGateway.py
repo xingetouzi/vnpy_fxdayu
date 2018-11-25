@@ -13,6 +13,7 @@ from copy import copy
 from vnpy.api.binance import BinanceApi
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from vnpy.trader.utils.datetime import unified_parse_datetime
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -534,12 +535,13 @@ class GatewayApi(BinanceApi):
 
     def loadHistoryBar(self,symbol,type_,size = None, since = None):
         interval = type_
+        since = unified_parse_datetime(since)
         if size:
             limit = size
         else:
             limit = 0
         if since:
-            startTime = since
+            startTime = int(since.timestamp())
         else:
             startTime = 0
         msg,data = self.queryKlines(symbol,interval,limit,startTime)

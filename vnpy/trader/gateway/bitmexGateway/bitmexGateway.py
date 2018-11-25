@@ -5,6 +5,7 @@ vnpy.api.bitmex的gateway接入
 '''
 from __future__ import print_function
 
+import functools
 import os
 import json
 import hashlib
@@ -13,11 +14,14 @@ import traceback
 from datetime import datetime, timedelta
 from copy import copy
 from math import pow
+from concurrent.futures import Future
+from urllib.error import HTTPError
 
 from vnpy.api.bitmex import BitmexRestApi, BitmexWebsocketApiWithHeartbeat as BitmexWebsocketApi
 from vnpy.api.bitmex.utils import hmac_new
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from vnpy.trader.app.ctaStrategy import CtaTemplate
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -74,6 +78,7 @@ class BitmexGateway(VtGateway):
             apiSecret = str(setting['apiSecret'])
             sessionCount = int(setting['sessionCount'])
             symbols = setting['symbols']
+            testnet = setting.get('testnet', False)
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -82,6 +87,8 @@ class BitmexGateway(VtGateway):
             return
 
         # 创建行情和交易接口对象
+        self.restApi.testnet = testnet
+        self.wsApi.testnet = testnet
         self.restApi.connect(apiKey, apiSecret, sessionCount)
         self.wsApi.connect(apiKey, apiSecret, symbols)
 
@@ -89,6 +96,16 @@ class BitmexGateway(VtGateway):
     def subscribe(self, subscribeReq):
         """订阅行情"""
         pass
+    
+    def setLeverage(self, symbol, leverage):
+        fut = Future()
+        rep = fut.result()
+        return rep
+
+    def getLeverage(self, symbol):
+        fut = Future()
+        rep = fut.result()
+        return rep
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -173,6 +190,17 @@ class BitmexGateway(VtGateway):
         pass
 
 ########################################################################
+def catch_error_with_gateway(func):
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            err = VtErrorData()
+            err.errorMsg = e
+            self.gateway.onError(e)
+            return None
+
 class RestApi(BitmexRestApi):
     """REST API实现"""
 
@@ -209,7 +237,7 @@ class RestApi(BitmexRestApi):
         self.orderId += 1
         orderId = self.date + self.orderId
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(orderId)])
-        symbol = orderReq.symbol.split(':')[0]
+        symbol = orderReq.symbol.split(VN_SEPARATOR)[0]
         
         req = {
             'symbol': orderReq.symbol,
@@ -219,7 +247,8 @@ class RestApi(BitmexRestApi):
             'orderQty': orderReq.volume,
             'clOrdID': str(orderId)
         }
-
+        
+        self.addReq('')
         self.addReq('POST', '/order', self.onSendOrder, postdict=req)
         
         return vtOrderID
@@ -244,13 +273,33 @@ class RestApi(BitmexRestApi):
     def onCancelOrder(self, data, reqid):
         """"""
         pass
-    
+
+    @catch_error_with_gateway
+    def setLeverage(self, symbol, leverage):
+        assert 0<=leverage<=20, "杠杆率应该在0到20之间"
+        req = {"leverage": leverage, "symbol": symbol}
+        rep = self.blockReq('POST', '/position/leverage', postdict=req)
+        if "leverage" in rep:
+            return int(rep["leverage"])
+        else:
+            raise ValueError("setLeverage返回未知数据: %s" % rep)
+
+    @catch_error_with_gateway
+    def getLeverage(self, symbol):
+        fut = Future()
+        rep = self.blockReq("GET", "/position", params={"symbol": symbol})
+        if "leverage" in rep:
+            return int(rep["leverage"])
+        else:
+            raise ValueError("getLeverage返回未知数据: %s" % rep)
+
     #----------------------------------------------------------------------
-    def onError(self, code, error):
+    def onError(self, code, error, reqid):
         """"""
         e = VtErrorData()
         e.errorID = code
-        e.errorID = error
+        e.errMsg = error
+        e.additionalInfo = "请求编号:%s" % reqid
         self.gateway.onError(e)
     
     def rest_future_bar(self,symbol, type_, size, since = None):
@@ -559,6 +608,20 @@ class WebsocketApi(BitmexWebsocketApi):
         """接口断开"""
         self.gateway.connected = False
         self.writeLog(u'Websocket API连接断开')
+
+
+class BitmexCtaTemplate(CtaTemplate):
+    def setLeverage(self, symbol, leverage):
+        symbolName, gatewayName = symbol.split(VN_SEPARATOR)[-1]
+        gateway = self.engine.getGateway()
+        assert isinstance(gateway, BitmexGateway), "只能对bitmex交易所的symbol调用setLeverage方法" 
+        return gateway.setLeverage(symbolName, leverage)
+
+    def getLeverage(self, symbol):
+        symbolName, gatewayName = symbol.split(VN_SEPARATOR)[-1]
+        gateway = self.engine.getGateway()
+        assert isinstance(gateway, BitmexGateway), "只能对bitmex交易所的symbol调用getLeverage方法" 
+        return gateway.getLeverage(symbolName, leverage)
 
 #----------------------------------------------------------------------
 def printDict(d):
