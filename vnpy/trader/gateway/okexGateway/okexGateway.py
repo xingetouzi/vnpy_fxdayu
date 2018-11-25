@@ -1296,7 +1296,7 @@ class FuturesApi(OkexFuturesApi):
         order.price = rawData['price']
         order.price_avg = rawData['price_avg']
         order.direction, order.offset = futureOrderTypeMap[str(rawData['type'])]
-        order.totalVolume = rawData['amount']    
+        order.totalVolume = int(rawData['amount'])    
         order.exchangeOrderID = orderId        
         order.user_id = rawData['user_id']
         order.gatewayName = self.gatewayName
@@ -1306,7 +1306,7 @@ class FuturesApi(OkexFuturesApi):
         order.status = statusMap[rawData['status']] 
         order.fee = rawData['fee']
         # lastTradedVolume = order.tradedVolume
-        order.tradedVolume = float(rawData['deal_amount'])
+        order.tradedVolume = int(rawData['deal_amount'])
         self.wsOrderDict[orderId] = order
 
         # 待更新信息： vtOrderID
@@ -1446,30 +1446,7 @@ class FuturesApi(OkexFuturesApi):
         symbol = req.symbol[:3] + "_usd"
         contract_type = req.symbol[4:]
 
-        # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
-        if not self.gateway.connected:
-            self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
-
-            order.vtSymbol = req.vtSymbol
-            order.status = STATUS_REJECTED
-            order.gatewayName = self.gatewayName
-            order.rejectedInfo = 'BAD NETWORK'
-            order.byStrategy = req.byStrategy
-            order.direction = req.direction
-            order.offset = req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.gateway.onOrder(copy(order))
-            self.orderDict[vtOrderID] = order #更新order信息
-            return vtOrderID
-        
-        # 下单判断状态 2 ： 发单失败，返回失败请求
+        # 下单判断状态 ： 发单失败，返回失败请求
         # result = self.futuresTrade(
             # req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
         try:
@@ -1506,13 +1483,13 @@ class FuturesApi(OkexFuturesApi):
             result= data['result']
 
             if result:
-                # 下单判断状态 3 ： 发单正常，下单成功，返回下单信息
+                # 下单判断状态 ： 发单正常，下单成功，返回下单信息
                 order_id = str(data['order_id'])
                 self.exchangeOrderDict[order_id]= vtOrderID
                 self.localNoDict[str(self.localNo)] = order_id
             
             else:
-                # 下单判断状态 4 ： 发单正常，下单失败，返回报错信息
+                # 下单判断状态 ： 发单正常，下单失败，返回报错信息
                 # {'result': False, 'error_code': 20008}
                 error_code = data['error_code']
                 order = VtOrderData()
@@ -1550,6 +1527,7 @@ class FuturesApi(OkexFuturesApi):
         order.direction = req.direction
         order.offset = req.offset
         order.price = req.price
+        order.price_avg = order.price
         order.totalVolume = req.volume
         order.orderTime = datetime.now()
         order.deliverTime = datetime.now()
@@ -1646,32 +1624,14 @@ class FuturesApi(OkexFuturesApi):
                 if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
                     self.filledList[0:99] = self.filledList[1:100]
                     self.filledList[-1] = str(order.exchangeOrderID)
-                    del self.sendOrderDict[str(order.exchangeOrderID)]
-                    del self.wsOrderDict[str(order.exchangeOrderID)]
-                    del self.exchangeOrderDict[str(order.exchangeOrderID)]
-                    self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
+                    if order.exchangeOrderID in self.sendOrderDict.keys():
+                        if order.exchangeOrderID in self.wsOrderDict.keys():
+                            if order.exchangeOrderID in self.exchangeOrderDict.keys():    
+                                del self.sendOrderDict[str(order.exchangeOrderID)]
+                                del self.exchangeOrderDict[str(order.exchangeOrderID)]
+                                del self.wsOrderDict[str(order.exchangeOrderID)]
+                                self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
                 return True
-
-            elif len(self.orphanDict)>0:
-                self.writeLog('found orphanOrder,id:%s,vt could in:%s'%(order.exchangeOrderID,self.orphanDict.keys()))
-                for orphanOrder in list(self.orphanDict.values()):
-                    if order.vtSymbol == orphanOrder.vtSymbol and not order.orderTime:
-                        ordertimediff = orphanOrder.createDate - order.orderTime
-                        if ordertimediff.seconds < 10 :
-                            if order.totalVolume == orphanOrder.totalVolume and order.direction== orphanOrder.direction and order.offset==orphanOrder.offset:
-                                order.vtOrderID = orphanOrder.vtOrderID
-                                order.orderID = orphanOrder.orderID
-                                order.byStrategy = orphanOrder.byStrategy
-                                self.gateway.onOrder(order)
-                                del self.orphanDict[order.vtOrderID]
-                    else:
-                        symbol = order.symbol[:3]+ '_usd'
-                        contract_type = order.symbol[4:]
-                        try:
-                            self.rest_qry_order(symbol,contract_type,order.exchangeOrderID)
-                        except:
-                            self.writeLog(u'***rest_qry_order**from_order_validation***return_error_ID:%s'%order.exchangeOrderID)
-                        self.writeLog('orphanorder mismatch, go rest try again,vt:%s'%orphanOrder.exchangeOrderID)
 
             else:
                 self.writeLog('ws quicker in order_arb_onorder,waiting sendorder rest id:%s'%orderinfo.exchangeOrderID)
@@ -1752,7 +1712,6 @@ class FuturesApi(OkexFuturesApi):
         # self.subscribeFuturesUserInfo()
     #------------------------------------------------------
     #Restful 配置
-
     def rest_futures_position(self, symbol,contractType):
         """初始化时查询持仓（因为ws接口不给，只能rest）"""
         try:
@@ -1862,17 +1821,13 @@ class FuturesApi(OkexFuturesApi):
 
                         order.status = statusMap[orderdetail['status']]
                         lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = orderdetail['deal_amount']
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
 
                         self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
@@ -1887,7 +1842,7 @@ class FuturesApi(OkexFuturesApi):
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
                         order.direction, order.offset = futureOrderTypeMap[str(orderdetail['type'])]
-                        order.totalVolume = orderdetail['amount']    
+                        order.totalVolume = int(orderdetail['amount'])    
                         order.exchangeOrderID = order_id        
                         order.gatewayName = self.gatewayName
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
@@ -1896,7 +1851,7 @@ class FuturesApi(OkexFuturesApi):
                         order.status = statusMap[orderdetail['status']] 
                         order.fee = orderdetail['fee']
                         # lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = float(orderdetail['deal_amount'])
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         self.wsOrderDict[order_id] = order
                     
                     self.order_arbitration(order)    #进入订单信息仲裁匹配
@@ -1993,17 +1948,13 @@ class FuturesApi(OkexFuturesApi):
 
                         order.status = statusMap[orderdetail['status']]
                         lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = orderdetail['deal_amount']
+                        order.tradedVolume = int(orderdetail['deal_amount'])
                         order.thisTradedVolume = order.tradedVolume - lastTradedVolume
                         order.price = orderdetail['price']
                         order.price_avg = orderdetail['price_avg']
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
                         order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-
-                        self.sendOrderDict[order_id] = order  
-                        self.wsOrderDict[order_id] = order
-                        self.orderDict[vtOrderID] = order   #更新order信息
 
                         self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
