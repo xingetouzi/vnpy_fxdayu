@@ -34,6 +34,7 @@ Open-Falcon中的监控指标，采用和OpenTSDB相似的数据格式：metric�
 其中，metric是监控指标名称，endpoint是监控实体，tags是监控数据的属性标签，counterType是Open-Falcon定义的数据类型(取值为GAUGE、COUNTER)，step为监控数据的上报周期，value和timestamp是有效的监控数据。
 
 对于针对策略为实体来监控的场景，endpoint我们采用```"VNPY_STRATEGY_%s" % 策略名称```来命名,timestamp设置为采样时的服务器本地时间，默认监控指标的metric、type和tags，所监控的内容如下表所示(metric有统一的前缀`"vnpy.cta"`)：
+
 | metric | tags | 监控内容 | type | 
 | :-: | :-: | :-: | :-: |
 | strategy.heartbeat | `"strategy=%s"%(策略名称)` | 策略心跳，说明策略进程在正常运行并记录监控指标 | COUNTER |
