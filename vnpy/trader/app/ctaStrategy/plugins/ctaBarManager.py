@@ -535,11 +535,14 @@ class BarManager(object):
     
     def __init__(self, engine, mode=None, size=None):
         self._engine = proxy(engine)
-        self._callback = None
         self._mode = mode or self.MODE.ON_TICK
         self._logger = Logger()
-        self._managers = {}
         self._size = size
+        self.init()
+
+    def init(self):
+        self._callback = None
+        self._managers = {}
         self._caches = {}
 
     @property
@@ -757,7 +760,7 @@ class BacktestingEngine(OriginBacktestingEngine):
 
     def runBacktesting(self):
         if isinstance(self.strategy, CtaTemplate):
-            # FIXME: 重复回测可能遇到问题
+            self.barManager.init()
             self.barManager.set_mode(self.mode)
             self.barManager.register_strategy(self.strategy)
             self.__prev_bars = None
