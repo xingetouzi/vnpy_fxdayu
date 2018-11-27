@@ -4,4 +4,5 @@ qdarkstyle
 SortedContainers
 flask-restful
 flask-socketio
+aiohttp
 jaqs

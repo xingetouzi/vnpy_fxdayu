@@ -1,9 +1,6 @@
 # encoding: UTF-8
-
 '''
 '''
-
-
 from __future__ import print_function
 
 import logging
@@ -19,10 +16,7 @@ import zlib
 from datetime import datetime, timedelta
 from copy import copy
 from math import pow
-try:
-    from urllib import urlencode
-except ImportError:
-    from urllib.parse import urlencode
+from urllib.parse import urlencode
 
 from requests import ConnectionError
 
@@ -99,7 +93,6 @@ class OkexfGateway(VtGateway):
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
-            print(setting,self.filePath)
             log.logContent = u'连接配置缺少字段，请检查'
             self.onLog(log)
             return
@@ -207,7 +200,7 @@ class OkexfRestApi(RestClient):
     def sign(self, request):
         """BitMEX的签名方案"""
         # 生成签名
-        timestamp = str(time.time())
+        timestamp = (datetime.utcnow().isoformat()[:-3]+'Z')#str(time.time())
         request.data = json.dumps(request.data)
         
         if request.params:
@@ -256,7 +249,7 @@ class OkexfRestApi(RestClient):
         """"""
         self.orderID += 1
         orderID = str(self.loginTime + self.orderID)
-        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
+        vtOrderID = '.'.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
         data = {
@@ -272,7 +265,7 @@ class OkexfRestApi(RestClient):
         order.gatewayName = self.gatewayName
         order.symbol = orderReq.symbol
         order.exchange = 'OKEX'
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+        order.vtSymbol = '.'.join([order.symbol, order.exchange])
         order.orderID = orderID
         order.vtOrderID = vtOrderID
         order.direction = orderReq.direction
@@ -355,7 +348,7 @@ class OkexfRestApi(RestClient):
             
             contract.symbol = d['instrument_id']
             contract.exchange = 'OKEX'
-            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
             
             contract.name = contract.symbol
             contract.productClass = PRODUCT_FUTURES
@@ -379,7 +372,7 @@ class OkexfRestApi(RestClient):
             account.gatewayName = self.gatewayName
             
             account.accountID = currency
-            account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+            account.vtAccountID = '.'.join([account.gatewayName, account.accountID])
             
             account.balance = float(d['equity'])
             account.available = float(d['total_avail_balance'])
@@ -392,27 +385,28 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def onQueryPosition(self, data, request):
         """"""
-        for d in data['holding'][0]:
-            longPosition = VtPositionData()
-            longPosition.gatewayName = self.gatewayName
-            longPosition.symbol = d['instrument_id']
-            longPosition.exchange = 'OKEX'
-            longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.exchange])
-            longPosition.direction = DIRECTION_LONG
-            longPosition.vtPositionName = VN_SEPARATOR.join([longPosition.vtSymbol, longPosition.direction])
-            longPosition.position = int(d['long_qty'])
-            longPosition.frozen = longPosition.position - int(d['long_avail_qty'])
-            longPosition.price = float(d['long_avg_cost'])
-            
-            shortPosition = copy(longPosition)
-            shortPosition.direction = DIRECTION_SHORT
-            shortPosition.vtPositionName = VN_SEPARATOR.join([shortPosition.vtSymbol, shortPosition.direction])
-            shortPosition.position = int(d['short_qty'])
-            shortPosition.frozen = shortPosition.position - int(d['short_avail_qty'])
-            shortPosition.price = float(d['short_avg_cost'])
-            
-            self.gateway.onPosition(longPosition)
-            self.gateway.onPosition(shortPosition)
+        for holding in data['holding']:
+            for d in holding:
+                longPosition = VtPositionData()
+                longPosition.gatewayName = self.gatewayName
+                longPosition.symbol = d['instrument_id']
+                longPosition.exchange = 'OKEX'
+                longPosition.vtSymbol = '.'.join([longPosition.symbol, longPosition.exchange])
+                longPosition.direction = DIRECTION_LONG
+                longPosition.vtPositionName = '.'.join([longPosition.vtSymbol, longPosition.direction])
+                longPosition.position = int(d['long_qty'])
+                longPosition.frozen = longPosition.position - int(d['long_avail_qty'])
+                longPosition.price = float(d['long_avg_cost'])
+                
+                shortPosition = copy(longPosition)
+                shortPosition.direction = DIRECTION_SHORT
+                shortPosition.vtPositionName = '.'.join([shortPosition.vtSymbol, shortPosition.direction])
+                shortPosition.position = int(d['short_qty'])
+                shortPosition.frozen = shortPosition.position - int(d['short_avail_qty'])
+                shortPosition.price = float(d['short_avg_cost'])
+                
+                self.gateway.onPosition(longPosition)
+                self.gateway.onPosition(shortPosition)
     
     #----------------------------------------------------------------------
     def onQueryOrder(self, data, request):
@@ -423,11 +417,11 @@ class OkexfRestApi(RestClient):
             
             order.symbol = d['instrument_id']
             order.exchange = 'OKEX'
-            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+            order.vtSymbol = '.'.join([order.symbol, order.exchange])
             
             self.orderID += 1
             order.orderID = str(self.loginTime + self.orderID)
-            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+            order.vtOrderID = '.'.join([self.gatewayName, order.orderID])
             self.localRemoteDict[order.orderID] = d['order_id']
             
             order.price = float(d['price'])
@@ -486,7 +480,6 @@ class OkexfRestApi(RestClient):
         e.errorID = httpStatusCode
         e.errorMsg = request.response.text
         self.gateway.onError(e)
-        print(request.response.text)
     
     #----------------------------------------------------------------------
     def onError(self, exceptionType, exceptionValue, tb, request):
@@ -595,7 +588,7 @@ class OkexfWebsocketApi(WebsocketClient):
                 "api_key": self.apiKey,
                 "timestamp": timestamp,
                 "passphrase": self.passphrase,
-                "sign": signature
+                "sign": str(signature,encoding = "utf-8")
             }
         }
         self.sendPacket(req)
@@ -635,7 +628,7 @@ class OkexfWebsocketApi(WebsocketClient):
         tick.gatewayName = self.gatewayName
         tick.symbol = subscribeReq.symbol
         tick.exchange = 'OKEX'
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.exchange])
+        tick.vtSymbol = '.'.join([tick.symbol, tick.exchange])
         self.tickDict[tick.symbol] = tick
     
     #----------------------------------------------------------------------
@@ -710,12 +703,12 @@ class OkexfWebsocketApi(WebsocketClient):
             order.gatewayName = self.gatewayName
             order.symbol = '%s-USD-%s' %(currency, expiry)
             order.exchange = 'OKEX'
-            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.exchange])
+            order.vtSymbol = '.'.join([order.symbol, order.exchange])
             
             restApi = self.gateway.restApi
             restApi.orderID += 1
             order.orderID = str(restApi.loginTime + restApi.orderID)
-            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+            order.vtOrderID = '.'.join([self.gatewayName, order.orderID])
             order.orderTime = data['create_date_str'].split(' ')[-1]
             order.price = data['price']
             order.totalVolume = int(data['amount'])
@@ -742,7 +735,7 @@ class OkexfWebsocketApi(WebsocketClient):
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+            trade.vtTradeID = '.'.join([self.gatewayName, trade.tradeID])
             
             trade.direction = order.direction
             trade.offset = order.offset
@@ -760,7 +753,7 @@ class OkexfWebsocketApi(WebsocketClient):
         account = VtAccountData()
         account.gatewayName = self.gatewayName
         account.accountID = currency
-        account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
+        account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
         
         account.balance = data['balance']
         account.available = data['balance'] - data['keep_deposit']
@@ -780,7 +773,7 @@ class OkexfWebsocketApi(WebsocketClient):
             expiry = str(buf['contract_id'])[2:8]
             position.symbol = '%s-USD-%s' %(currency, expiry)
             position.exchange = 'OKEX'
-            position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.exchange])
+            position.vtSymbol = '.'.join([position.symbol, position.exchange])
             position.position = int(buf['hold_amount'])
             position.frozen = int(buf['hold_amount']) - int(buf['eveningup'])
             position.price = float(buf['avgprice'])
@@ -789,14 +782,16 @@ class OkexfWebsocketApi(WebsocketClient):
                 position.direction = DIRECTION_LONG
             else:
                 position.direction = DIRECTION_SHORT
-            position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
+            position.vtPositionName = '.'.join([position.vtSymbol, position.direction])
             self.gateway.onPosition(position)
 
 
 #----------------------------------------------------------------------
 def generateSignature(msg, apiSecret):
     """签名V3"""
-    return base64.b64encode(hmac.new(apiSecret, msg.encode(), hashlib.sha256).digest())
+    mac = hmac.new(bytes(apiSecret,encoding='utf-8'), bytes(msg,encoding='utf-8'),digestmod='sha256')
+    d= mac.digest()
+    return base64.b64encode(d)
 
 
 
@@ -837,4 +832,3 @@ def printDict(d):
     l.sort()
     for k in l:
         print(k, d[k])
-    
