@@ -200,7 +200,6 @@ class CtpGateway(VtGateway):
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.qryAccount, self.qryPosition]
-
             self.qryCount = 0           # 查询触发倒计时
             self.qryTrigger = 2         # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
@@ -234,8 +233,6 @@ class CtpGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
-
-
 
     def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
         if size and not since:
@@ -276,28 +273,20 @@ class CtpGateway(VtGateway):
             exchange = 'CFE'
         elif exchangeMap[EXCHANGE_CZCE] in exchange:
             exchange = 'CZC'
-        # else:
-        #     log = VtLogData()
-        #     log.gatewayName = self.gatewayName
-        #     log.logContent = u'CTP没有该品种交易所信息'
-        #     self.onLog(log)
-        #     return
+
         symbol = symbol + '.' + exchange
 
-        result= pd.DataFrame(columns=['datetime','open','close','high','low','volume'])
-        start_time = since#.strftime('%Y%m%d')
-        end_time = datetime.now().strftime('%Y%m%d')
         if self.ds:
+            result= pd.DataFrame(columns=['datetime','open','close','high','low','volume'])
+            start_time = since#.strftime('%Y%m%d')
+            end_time = datetime.now().strftime('%Y%m%d')
             tradeDays=self.ds.query_trade_dates(start_time,end_time)
 
             for trade_date in tradeDays:
                 minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq=typeMap[type_],fields="")
-                trade_datetime = []
-                for j in range(0,len(minutebar)):
-                    stamp = datetime.strptime((str(minutebar['date'][j]) + ' ' + str(minutebar['time'][j]).zfill(6)),"%Y%m%d %H%M%S")
-                    trade_datetime.insert(j,stamp)
-
-                minutebar['datetime']=trade_datetime
+                minutebar['datetime'] = minutebar['date'].map(lambda x: str(x)) +' '+ minutebar['time'].map(lambda x: str(x).zfill(6))
+                minutebar['datetime'] = minutebar['datetime'].map(lambda x : datetime.strptime(x,"%Y%m%d %H%M%S"))
+            
                 minute=minutebar[['datetime','open','close','high','low','volume']]
                 result=result.append(minute)
 
@@ -308,6 +297,9 @@ class CtpGateway(VtGateway):
         pass
     def initPosition(self,vtSymbol):
         self.qryPosition()
+
+    def qryInstrument(self):
+        self.tdApi.restQryInstrument()
 ########################################################################
 class CtpMdApi(MdApi):
     """CTP行情API实现"""
@@ -335,6 +327,7 @@ class CtpMdApi(MdApi):
         self.tradingDt = None               # 交易日datetime对象
         self.tradingDate = EMPTY_STRING     # 交易日期字符串
         self.tickTime = None                # 最新行情time对象
+        self.lastTick = None
 
     #----------------------------------------------------------------------
     def onFrontConnected(self):
@@ -473,9 +466,14 @@ class CtpMdApi(MdApi):
                 self.tradingDate = self.tradingDt.strftime('%Y%m%d')    # 生成新的日期字符串
 
             tick.date = self.tradingDate    # 使用本地维护的日期
-
             self.tickTime = newTime         # 更新上一个tick时间
+
+        # 处理tick成交量
+        if self.lastTick:
+            tick.lastVolume = tick.volume - self.lastTick.volume
+        tick.volumeChange = 1
         self.gateway.onTick(tick)
+        self.lastTick =tick
     #----------------------------------------------------------------------
     def onRspSubForQuoteRsp(self, data, error, n, last):
         """订阅期权询价"""
@@ -524,7 +522,6 @@ class CtpMdApi(MdApi):
         if self.loginStatus:
             self.subscribeMarketData(str(subscribeReq.symbol))
         self.subscribedSymbols.add(subscribeReq)
-
     #----------------------------------------------------------------------
     def login(self):
         """登录"""
@@ -582,6 +579,8 @@ class CtpTdApi(TdApi):
         self.posDict = {}
         self.symbolExchangeDict = {}        # 保存合约代码和交易所的印射关系
         self.symbolSizeDict = {}            # 保存合约代码和合约大小的印射关系
+        self.contractsList = []
+        self.contractpath = os.path.join(os.getcwd(), 'temp', 'contractList.json')
 
         self.requireAuthentication = False
 
@@ -692,7 +691,12 @@ class CtpTdApi(TdApi):
         """发单错误（柜台）"""
         """{'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 
         'CombOffsetFlag': '0', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'I', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 
-        'LimitPrice': 3178.6, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': '', 'OrderRef': '6', 'Direction': '0'} {'ErrorID': 16, 'ErrorMsg': 'CTP:找不到合约'}"""
+        'LimitPrice': 3178.6, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': '', 'OrderRef': '6', 'Direction': '0'} {'ErrorID': 16, 'ErrorMsg': 'CTP:找不到合约'}
+        {'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 
+        'CombOffsetFlag': '3', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'rb1901', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 
+        'LimitPrice': 3851.0, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 0, 'ExchangeID': '', 'OrderRef': '17', 'Direction': '0'} {'ErrorID': 15, 'ErrorMsg': 'CTP:报单字段有误'}
+        
+        """
         # 推送委托信息
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -740,6 +744,10 @@ class CtpTdApi(TdApi):
     def onRspQueryMaxOrderVolume(self, data, error, n, last):
         """"""
         pass
+
+    def restQryInstrument(self):
+        self.reqID += 1
+        self.reqQryInstrument({}, self.reqID)
 
     #----------------------------------------------------------------------
     def onRspSettlementInfoConfirm(self, data, error, n, last):
@@ -842,10 +850,11 @@ class CtpTdApi(TdApi):
             pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
 
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
-        if data['YdPosition'] and not data['TodayPosition']:
-            pos.ydPosition = data['Position']
-        elif data['Position'] and data['TodayPosition']:
+        # if data['YdPosition'] and not data['TodayPosition']:
+        if data['Position'] and data['TodayPosition']:
             pos.ydPosition = data['YdPosition']
+        elif data['YdPosition'] and not data['TodayPosition']:
+            pos.ydPosition = data['Position']
 
         # 计算成本
         size = self.symbolSizeDict[pos.symbol]
@@ -981,10 +990,14 @@ class CtpTdApi(TdApi):
 
         # 推送
         self.gateway.onContract(contract)
+        self.contractsList.append(contract.symbol)
+        a = {"contracts":self.contractsList}
+
+        with open(self.contractpath,'w') as f:
+            json.dump(a,f,indent=4, ensure_ascii=False)
 
         # 缓存合约代码和交易所映射
         symbolExchangeDict[contract.symbol] = contract.exchange
-
         if last:
             self.writeLog(text.CONTRACT_DATA_RECEIVED)
     #----------------------------------------------------------------------
@@ -1170,7 +1183,7 @@ class CtpTdApi(TdApi):
         'UserProductInfo': '', 'InvestorID': '119247', 'OrderSysID': '', 'GTDDate': '', 'StatusMsg': '已撤单报单被拒绝CFFEX:不被支持的报单类型', 'BranchID': '', 'CombHedgeFlag': '1', 'StopPrice': 0.0, 
         'CombOffsetFlag': '0', 'VolumeTraded': 0, 'OrderLocalID': '         176', 'ParticipantID': '9999', 'OrderType': '0', 'SuspendTime': '', 'SessionID': 221906687, 'VolumeTotal': 1, 'OrderSubmitStatus': '4', 
         'VolumeCondition': '1', 'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'IF1811', 'OrderStatus': '5', 'InstallID': 1}     
-        ！！！！！！！！！！！不支持市价单！！！！！！！！！！！！！！！！！
+        ！！！！！！！！！！！SHFE不支持市价单！！！！！！！！！！！！！！！！！
         
         {'BusinessUnit': '9999cad', 'RelativeOrderSysID': '', 'UserID': '119247', 'ContingentCondition': '1', 'TraderID': '9999cad', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'UpdateTime': '', 'OrderPriceType': '2', 
         'SequenceNo': 205, 'ActiveTraderID': '9999cad', 'ActiveTime': '', 'FrontID': 1, 'RequestID': 0, 'InsertDate': '20181031', 'InstrumentID': 'IF1811', 'ZCETotalTradedVolume': 0, 'ForceCloseReason': '0', 
@@ -1187,6 +1200,14 @@ class CtpTdApi(TdApi):
         'InvestorID': '119247', 'OrderSysID': '       15591', 'GTDDate': '', 'StatusMsg': '全部成交', 'BranchID': '', 'CombHedgeFlag': '1', 'StopPrice': 0.0, 'CombOffsetFlag': '0', 'VolumeTraded': 1, 
         'OrderLocalID': '         207', 'ParticipantID': '9999', 'OrderType': '\x00', 'SuspendTime': '', 'SessionID': 248121201, 'VolumeTotal': 0, 'OrderSubmitStatus': '3', 'VolumeCondition': '1', 
         'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'IF1811', 'OrderStatus': '0', 'InstallID': 1} 
+
+        2018-11-14 16:28:07,534  INFO: CTP_24   报单回报{'BusinessUnit': '', 'RelativeOrderSysID': '', 'UserID': '119247', 'ContingentCondition': '1', 'TraderID': '9999caf', 
+        'IsAutoSuspend': 0, 'BrokerID': '9999', 'UpdateTime': '', 'OrderPriceType': '2', 'SequenceNo': 949, 'ActiveTraderID': '9999caf', 'ActiveTime': '', 'FrontID': 1, 'RequestID': 0, 
+        'InsertDate': '20181112', 'InstrumentID': 'j1901', 'ZCETotalTradedVolume': 0, 'ForceCloseReason': '0', 'ClearingPartID': '', 'TradingDay': '20181113', 'CancelTime': '', 'OrderSource': '\x00', 
+        'ActiveUserID': '', 'MinVolume': 1, 'LimitPrice': 2302.0, 'BrokerOrderSeq': 1692, 'NotifySequence': 1, 'UserForceClose': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': 'DCE', 'ClientID': '9999119227', 
+        'OrderRef': '6', 'Direction': '0', 'TimeCondition': '3', 'InsertTime': '18:13:49', 'UserProductInfo': '', 'InvestorID': '119247', 'OrderSysID': '        1596', 'GTDDate': '', 'StatusMsg': '全部成交', 
+        'BranchID': '', 'CombHedgeFlag': '1', 'StopPrice': 0.0, 'CombOffsetFlag': '1', 'VolumeTraded': 1, 'OrderLocalID': '         506', 'ParticipantID': '9999', 'OrderType': '\x00', 'SuspendTime': '', 
+        'SessionID': -624024875, 'VolumeTotal': 0, 'OrderSubmitStatus': '3', 'VolumeCondition': '1', 'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'j1901', 'OrderStatus': '0', 'InstallID': 1}
 
         """
         # 更新最大报单编号
@@ -1267,7 +1288,11 @@ class CtpTdApi(TdApi):
         """发单错误回报（交易所）"""
         """{'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 
         'CombOffsetFlag': '0', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'I', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 
-        'LimitPrice': 3178.6, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': '', 'OrderRef': '6', 'Direction': '0'} {'ErrorID': 16, 'ErrorMsg': 'CTP:找不到合约'}"""
+        'LimitPrice': 3178.6, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': '', 'OrderRef': '6', 'Direction': '0'} {'ErrorID': 16, 'ErrorMsg': 'CTP:找不到合约'}
+        {'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 
+        'CombOffsetFlag': '1', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'rb1901', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 
+        'LimitPrice': 3988.0, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 10, 'ExchangeID': 'SHFE', 'OrderRef': '4', 'Direction': '0'} {'ErrorID': 51, 'ErrorMsg': 'CTP:平昨仓位不足'}"""
+
         # 推送委托信息
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -1609,11 +1634,6 @@ class CtpTdApi(TdApi):
         """
         {'InstrumentID': 'IF1811', 'LimitPrice': 3157.8, 'VolumeTotalOriginal': 1, 'OrderPriceType': '2', 'Direction': '0', 'CombOffsetFlag': '0', 'OrderRef': '1', 'InvestorID': '119247', 'UserID': '119247', 
         'BrokerID': '9999', 'CombHedgeFlag': '1', 'ContingentCondition': '1', 'ForceCloseReason': '0', 'IsAutoSuspend': 0, 'TimeCondition': '3', 'VolumeCondition': '1', 'MinVolume': 1}
-        策略Demo: 发送限价委托CTP:4, 交易：rb1901:SHFE，买平，数量：10 @ 3988.0
-{'TimeCondition': '3', 'BusinessUnit': '', 'UserID': '119247', 'ContingentCondition': '1', 'CombHedgeFlag': '1', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'GTDDate': '', 'StopPrice': 0.0, 'CombOffsetFlag': '1', 'OrderPriceType': '2', 'InvestorID': '119247', 'RequestID': 0, 'InstrumentID': 'rb1901', 'UserForceClose': 0, 'ForceCloseReason': '0', 'VolumeCondition': '1', 'MinVolume': 1, 'LimitPrice': 3988.0, 'IsSwapOrder': 0, 'VolumeTotalOriginal': 10, 'ExchangeID': 'SHFE', 'OrderRef': '4', 'Direction': '0'} {'ErrorID': 51, 'ErrorMsg': 'CTP:平昨仓位不足'}
-错误代码：51，错误信息：CTP:平昨仓位不足
-错误代码：51，错误信息：CTP:平昨仓位不足
-        
         """
         self.reqID += 1
         self.orderRef += 1
@@ -1622,7 +1642,7 @@ class CtpTdApi(TdApi):
 
         req['InstrumentID'] = orderReq.symbol
         req['LimitPrice'] = orderReq.price
-        req['VolumeTotalOriginal'] = orderReq.volume
+        req['VolumeTotalOriginal'] = int(orderReq.volume)
 
         # 下面如果由于传入的类型本接口不支持，则会返回空字符串
         req['OrderPriceType'] = priceTypeMap.get(orderReq.priceType, '')
@@ -1641,6 +1661,9 @@ class CtpTdApi(TdApi):
         req['TimeCondition'] = defineDict['THOST_FTDC_TC_GFD']               # 今日有效
         req['VolumeCondition'] = defineDict['THOST_FTDC_VC_AV']              # 任意成交量
         req['MinVolume'] = 1                                                 # 最小成交量为1
+
+        # if orderReq.offset == OFFSET_OPEN:
+        #     req['StopPrice'] = orderReq.price + 15
 
         # 判断FAK和FOK
         if orderReq.priceType == PRICETYPE_FAK:

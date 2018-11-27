@@ -3,7 +3,7 @@
 import numpy as np
 import talib
 import pandas as  pd
-from datetime import time,timedelta
+from datetime import datetime, time, timedelta
 
 from vnpy.trader.vtObject import VtBarData
 class BarGenerator(object):
@@ -13,7 +13,7 @@ class BarGenerator(object):
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0, runningTime = (0,0)):
+    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0, alignment='sharp', incomplete = False, marketClose = (23,59)):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -23,52 +23,30 @@ class BarGenerator(object):
         self.onXminBar = onXminBar  # X分钟K线的回调函数
 
         self.hfBar = None  # 高频K线对象
-        self.onHFBar = onBar
         self.xSecond = xSecond
-        self.lastSecond = 0
+        self.onHFBar = onBar
 
-        self.BarDone = None
         self.onCandle = onBar
         self.Candle = None
-
         self.onWCandle = onBar
         self.WeekCandle = None
         self.onMCandle = onBar
         self.MonthCandle = None
 
         self.lastTick = None  # 上一TICK缓存对象
-        self.intraDay = None
+        self.BarDone = None
         self.intraWeek = 0
         self.intraMonth = 0
-        self.runningTime = runningTime
+
+        self.marketClose = marketClose
+        self.alignment = alignment
+        self.incomplete = incomplete
 
     # ----------------------------------------------------------------------
     def updateTick(self, tick):
         """TICK更新"""
         if self.bar and self.BarDone:
-            # 先判断是否生成 Doji（无成交量）
-            # if self.lastTick:
-            #     time_temp = self.lastTick.datetime + timedelta(minutes = 1)
-            #     if tick.datetime > time_temp:
-            #         while tick.datetime > time_temp:
-            #             self.bar = VtBarData()
-            #             self.bar.vtSymbol = tick.vtSymbol
-            #             self.bar.symbol = tick.symbol
-            #             self.bar.exchange = tick.exchange
-            #             self.bar.open = tick.lastPrice
-            #             self.bar.high = tick.lastPrice
-            #             self.bar.low = tick.lastPrice
-            #             self.bar.close = tick.lastPrice
-            #             self.bar.volume = 0
-            #             self.bar.openInterest = tick.openInterest
-            #             self.bar.datetime = tick.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            #             self.bar.date = self.bar.datetime.strftime('%Y%m%d')
-            #             self.bar.time = self.bar.datetime.strftime('%H:%M:%S.%f')
-            #             time_temp = self.bar.datetime + timedelta(minutes = 1)
-            #             self.onBar(self.bar)
-            #             self.bar = None
-
-            if tick.datetime > self.BarDone:
+            if tick.datetime >= self.BarDone:
                 # 推送已经结束的上一分钟K线
                 self.onBar(self.bar)
                 self.bar = None
@@ -98,8 +76,7 @@ class BarGenerator(object):
         # if self.lastTick:
         #     self.bar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
 
-        # 缓存Tick
-        self.lastTick = tick
+        # self.lastTick = tick    # 缓存Tick
     #---------------------------------------------------------------
     def updateHFBar(self,tick):
         # 高频交易的bar
@@ -134,55 +111,78 @@ class BarGenerator(object):
             self.hfBar.volume += tick.lastVolume
         # if self.lastTick:
         #     self.hfBar.volume += (tick.volume - self.lastTick.volume)  # 当前K线内的成交量（原版VNPY）
-        # # 缓存Tick
-        # self.lastTick = tick
+        # 
+        # self.lastTick = tick    # 缓存Tick
             
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
         """多分钟K线更新"""
-        # X分钟已经走完
-        # if self.xminBar and self.BarDone:
-        #     if  bar.datetime > self.BarDone:
-        #         self.onXminBar(self.xminBar)
-        #         print(self.xminBar.datetime)
-        #         # 清空老K线缓存对象
-        #         self.xminBar = None
-        # 尚未创建对象
-        if not self.xminBar:
-            self.xminBar = VtBarData()
-            self.xminBar.vtSymbol = bar.vtSymbol
-            self.xminBar.symbol = bar.symbol
-            self.xminBar.exchange = bar.exchange
+        if self.alignment == 'full':
+            # 尚未创建对象
+            if not self.xminBar:
+                self.xminBar = VtBarData()
+                self.xminBar.vtSymbol = bar.vtSymbol
+                self.xminBar.symbol = bar.symbol
+                self.xminBar.exchange = bar.exchange
 
-            self.xminBar.open = bar.open
-            self.xminBar.high = bar.high
-            self.xminBar.low = bar.low
-            # 生成上一X分钟K线的时间戳
-            self.xminBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.xminBar.date = bar.datetime.strftime('%Y%m%d')
-            self.xminBar.time = bar.datetime.strftime('%H:%M:%S.%f')
-            self.BarDone = 0
+                self.xminBar.open = bar.open
+                self.xminBar.high = bar.high
+                self.xminBar.low = bar.low
+                # 生成上一X分钟K线的时间戳
+                self.xminBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+                self.xminBar.date = bar.datetime.strftime('%Y%m%d')
+                self.xminBar.time = bar.datetime.strftime('%H:%M:%S.%f')
+                self.BarDone = 0
 
-            # if self.xmin < 61:
-            #     diff = bar.datetime.minute % self.xmin
-            #     self.BarDone = self.xminBar.datetime + timedelta(seconds=(self.xmin-diff)*60-1)
-                
-            # elif self.xmin > 60:
-            #     diff = (bar.datetime.hour * 60 ) % self.xmin
-            #     self.BarDone = self.xminBar.datetime + timedelta(seconds=(self.xmin-diff)*60-1)
+            self.xminBar.high = max(self.xminBar.high, bar.high)
+            self.xminBar.low = min(self.xminBar.low, bar.low)
+            self.xminBar.close = bar.close
+            self.xminBar.openInterest = bar.openInterest
+            self.xminBar.volume += bar.volume
+            self.BarDone+=1
 
-        self.xminBar.high = max(self.xminBar.high, bar.high)
-        self.xminBar.low = min(self.xminBar.low, bar.low)
-        self.xminBar.close = bar.close
-        self.xminBar.openInterest = bar.openInterest
-        self.xminBar.volume += int(bar.volume)
-        self.BarDone+=1
+            if self.BarDone == self.xmin:
+                self.onXminBar(self.xminBar)
+                self.xminBar = None
 
-        if self.BarDone == self.xmin:
-            self.onXminBar(self.xminBar)
-            self.xminBar = None
+        elif self.alignment == 'sharp':
+            # X分钟已经走完
+            if self.xminBar and self.BarDone:
+                if  bar.datetime > self.BarDone:
+                    self.onXminBar(self.xminBar)
+                    # 清空老K线缓存对象
+                    self.xminBar = None
+            # 尚未创建对象
+            if not self.xminBar:
+                self.xminBar = VtBarData()
+                self.xminBar.vtSymbol = bar.vtSymbol
+                self.xminBar.symbol = bar.symbol
+                self.xminBar.exchange = bar.exchange
+
+                self.xminBar.open = bar.open
+                self.xminBar.high = bar.high
+                self.xminBar.low = bar.low
+                # 生成上一X分钟K线的时间戳
+                self.xminBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+                self.xminBar.date = bar.datetime.strftime('%Y%m%d')
+                self.xminBar.time = bar.datetime.strftime('%H:%M:%S.%f')
+                self.BarDone = 0
+
+                if self.xmin < 61:
+                    diff = bar.datetime.minute % self.xmin
+                    self.BarDone = self.xminBar.datetime + timedelta(seconds=(self.xmin-diff)*60-1)
+                    
+                elif self.xmin > 60:
+                    diff = (bar.datetime.hour * 60 ) % self.xmin
+                    self.BarDone = self.xminBar.datetime + timedelta(seconds=(self.xmin-diff)*60-1)
+
+            self.xminBar.high = max(self.xminBar.high, bar.high)
+            self.xminBar.low = min(self.xminBar.low, bar.low)
+            self.xminBar.close = bar.close
+            self.xminBar.openInterest = bar.openInterest
+            self.xminBar.volume += bar.volume
         
-        if (bar.datetime.hour, bar.datetime.minute) == self.runningTime:   # 强制收盘切断
+        if (bar.datetime.hour, bar.datetime.minute) == self.marketClose:   # 强制收盘切断
             self.onXminBar(self.xminBar)
             self.xminBar = None
 
@@ -190,21 +190,6 @@ class BarGenerator(object):
     def updateCandle(self, bar):
         """日K线更新"""
         # 尚未创建对象
-        if self.runningTime[0]==23:
-            self.intraDay = bar.datetime
-        else:
-            if time(bar.datetime.hour,bar.datetime.minute) > time(19,00):
-                self.intraDay = bar.datetime+timedelta(hours=5)
-                if self.intraDay.weekday() == 6:
-                    self.intraDay = self.intraDay+timedelta(days=2)
-
-        if self.intraDay.date()!=bar.datetime.date():
-            if self.Candle:
-                # 推送
-                self.onCandle(self.Candle)
-                # 清空老K线缓存对象
-                self.Candle = None
-
         if not self.Candle:
             self.Candle = VtBarData()
 
@@ -215,24 +200,31 @@ class BarGenerator(object):
             self.Candle.open = bar.open
             self.Candle.high = bar.high
             self.Candle.low = bar.low
-            self.Candle.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
-            self.Candle.date = bar.datetime.strftime('%Y%m%d')
-            self.Candle.time = bar.datetime.strftime('%H:%M:%S.%f')
 
         # 累加老K线
+        self.Candle.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
+        self.Candle.date = bar.datetime.strftime('%Y%m%d')
+        self.Candle.time = bar.datetime.strftime('%H:%M:%S.%f')
         self.Candle.high = max(self.Candle.high, bar.high)
         self.Candle.low = min(self.Candle.low, bar.low)
         self.Candle.close = bar.close
         self.Candle.openInterest = bar.openInterest
-        self.Candle.volume += int(bar.volume)
+        self.Candle.volume += bar.volume
+
+        # 推送
+        if (bar.datetime.hour,bar.datetime.minute) == self.marketClose:  # 强制收盘切断
+            if self.Candle:
+                self.onCandle(self.Candle)
+                # 清空老K线缓存对象
+                self.Candle = None
 
     def updateWCandle(self, Candle):
         """周K线更新"""
         # 尚未创建对象
-        a = int(Candle.datetime.now().strftime('%Y%m%d'))
-        b = int(a/7)
-
-        if b != self.intraWeek:
+        abstract_week = Candle.datetime.strftime('%W')
+        if not self.intraWeek:
+            self.intraWeek = abstract_week
+        if abstract_week != self.intraWeek:
             # 推送
             if self.WeekCandle:
                 self.onWCandle(self.WeekCandle)
@@ -258,15 +250,26 @@ class BarGenerator(object):
         self.WeekCandle.low = min(self.WeekCandle.low, Candle.low)
         self.WeekCandle.close = Candle.close
         self.WeekCandle.openInterest = Candle.openInterest
-        self.WeekCandle.volume += int(Candle.volume)
-        self.intraWeek = b
+        self.WeekCandle.volume += Candle.volume
+        self.intraWeek = abstract_week
+
+        if (bar.datetime.hour,bar.datetime.minute) == self.marketClose and self.marketClose != (23,59):
+            if Candle.datetime.strftime('%w') == 5:  # 每周五收盘强切周线
+                self.onWCandle(self.WeekCandle)
+                self.WeekCandle = None
+        elif (bar.datetime.hour,bar.datetime.minute) == self.marketClose and self.marketClose == (23,59):
+            if Candle.datetime.strftime('%w') == 0:  # 7*24市场在周日晚0点切
+                self.onWCandle(self.WeekCandle)
+                self.WeekCandle = None
 
     def updateMCandle(self, Candle):
         """月K线更新"""
         # 尚未创建对象
-        a=int(datetime.now().strftime('%m'))
+        abstract_month=int(Candle.datetime.strftime('%m'))
+        if not self.intraMonth:
+            self.intraMonth = abstract_month 
 
-        if a != self.intraMonth:
+        if abstract_month != self.intraMonth:
             # 推送
             if self.MonthCandle:
                 self.onMCandle(self.MonthCandle)
@@ -292,8 +295,12 @@ class BarGenerator(object):
         self.MonthCandle.low = min(self.MonthCandle.low, Candle.low)
         self.MonthCandle.close = Candle.close
         self.MonthCandle.openInterest = Candle.openInterest
-        self.MonthCandle.volume += int(Candle.volume)
-        self.intraMonth = a
+        self.MonthCandle.volume += Candle.volume
+        self.intraMonth = abstract_month
+
+        # if (Candle.datetime + timedelta(days=3)).strftime('%m') != self.intraMonth:  # 强制月底收盘切断
+        #     self.onMCandle(self.MonthCandle)
+        #     self.MonthCandle = None
 
     #--------------------------            
     def generate(self):
@@ -312,7 +319,6 @@ class ArrayManager(object):
     1. K线时间序列的维护
     2. 常用技术指标的计算
     """
-
     # ----------------------------------------------------------------------
     def __init__(self, size=100):
         """Constructor"""
@@ -320,15 +326,8 @@ class ArrayManager(object):
         self.size = size  # 缓存大小
         self.inited = False  # True if count>=size
 
-        # self.openArray = np.zeros(size)  # OHLC
-        # self.highArray = np.zeros(size)
-        # self.lowArray = np.zeros(size)
-        # self.closeArray = np.zeros(size)
-        # self.volumeArray = np.zeros(size)
-        # self.datetimeArray = np.zeros(size)
-        dt=np.dtype([('datetime','datetime64[ms]'),('open',np.float32),('high',np.float32),('low',np.float32),('close',np.float32),('volume',np.float32)])
-        self.array=np.array([(np.datetime64('0001-01-01 00:00:01'),0.0,0.0,0.0,0.0,0.0)]*size,dtype=dt)
-
+        dt=np.dtype([('datetime','U18'),('open',np.float64),('high',np.float64),('low',np.float64),('close',np.float64),('volume',np.float64)])
+        self.array=np.array([('00010101 00:00:01',0.0,0.0,0.0,0.0,0.0)]*size,dtype=dt)
     # ----------------------------------------------------------------------
     def updateBar(self, bar):
         """更新K线"""
@@ -337,36 +336,23 @@ class ArrayManager(object):
             if not self.inited and self.count >= self.size:
                 self.inited = True
 
-            # self.openArray[0:self.size - 1] = self.openArray[1:self.size]
-            # self.highArray[0:self.size - 1] = self.highArray[1:self.size]
-            # self.lowArray[0:self.size - 1] = self.lowArray[1:self.size]
-            # self.closeArray[0:self.size - 1] = self.closeArray[1:self.size]
-            # self.volumeArray[0:self.size - 1] = self.volumeArray[1:self.size]
-            # self.datetimeArray[0:self.size - 1] = self.datetimeArray[1:self.size]
-
-            # self.openArray[-1] = bar.open
-            # self.highArray[-1] = bar.high
-            # self.lowArray[-1] = bar.low
-            # self.closeArray[-1] = bar.close
-            # self.volumeArray[-1] = bar.volume
-            # self.datetimeArray[-1] = bar.datetime.timestamp()
             self.array['datetime'][0:self.size - 1] = self.array['datetime'][1:self.size]
-            self.array['datetime'][-1] = bar.datetime.strftime('%F %X')
+            self.array['datetime'][-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
 
             self.array['open'][0:self.size - 1] = self.array['open'][1:self.size]
-            self.array['open'][-1] = bar.open
+            self.array['open'][-1] = float(bar.open)
 
             self.array['high'][0:self.size - 1] = self.array['high'][1:self.size]
-            self.array['high'][-1] = bar.high
+            self.array['high'][-1] = float(bar.high)
 
             self.array['low'][0:self.size - 1] = self.array['low'][1:self.size]
-            self.array['low'][-1] = bar.low
+            self.array['low'][-1] = float(bar.low)
 
             self.array['close'][0:self.size - 1] = self.array['close'][1:self.size]
-            self.array['close'][-1] = bar.close
+            self.array['close'][-1] = float(bar.close)
 
             self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
-            self.array['volume'][-1] = bar.volume
+            self.array['volume'][-1] = float(bar.volume)
 
     # ----------------------------------------------------------------------
     @property
@@ -402,6 +388,10 @@ class ArrayManager(object):
     def datetime(self):
         """获取时间戳序列"""
         return self.array['datetime']
+
+    def DataFrame(self):
+        """提供DataFrame"""
+        return pd.DataFrame(self.array)
 
     # ----------------------------------------------------------------------
     def sma(self, n, array=False):

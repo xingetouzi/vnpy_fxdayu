@@ -3,10 +3,15 @@
 '''
 本文件包含了CTA引擎中的策略开发用模板，开发策略时需要继承CtaTemplate类。
 '''
-
-import datetime
+import numpy as np
+import pandas as  pd
+from datetime import datetime,timedelta,time
+import talib
+import requests
+from collections import defaultdict
 from vnpy.trader.vtConstant import *
-from vnpy.trader.vtUtility import BarGenerator, ArrayManager, MatrixDF
+from vnpy.trader.vtObject import VtBarData
+from vnpy.trader.vtUtility import BarGenerator, ArrayManager
 
 from .ctaBase import *
 
@@ -52,7 +57,6 @@ class CtaTemplate(object):
     def __init__(self, ctaEngine, setting):
         """Constructor"""
         self.ctaEngine = ctaEngine
-        # self.posDict = defaultdict(lambda: 0)  # 持仓情况
         self.posDict = {}
         self.eveningDict = {}
         # 设置策略的参数
@@ -222,7 +226,7 @@ class CtaTemplate(object):
             if 'min' in type_:
                 minute = int(type_[:-3])
 
-            if datetime.datetime.now() < (lastbar.datetime + datetime.timedelta(seconds = 60*minute)):
+            if datetime.now() < (lastbar.datetime + timedelta(seconds = 60*minute)):
                 self.writeCtaLog(u'加载历史数据抛弃最后一个非完整K线，频率%s，时间%s'%(type_, lastbar.datetime))
                 data = data[:-1]
                 
@@ -257,32 +261,23 @@ class CtaTemplate(object):
                 for tick in initdata:
                     self.onTick(tick)  # 将历史数据直接推送到onTick  
     
-    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100):
+    def generateBarDict(self, onBar, xmin=0, onXminBar=None, marketClose =(23,59),size = 100):
         if xmin: 
             variable = "bg%sDict"%xmin
             variable2 = "am%sDict"%xmin
-            variable3 = "mdf%sDict"%xmin
         else:
             variable = "bgDict"
             variable2 = "amDict"
-            variable3 = "mdfDict"
-
         bgDict= {
-            sym: BarGenerator(onBar,xmin,onXminBar)
+            sym: BarGenerator(onBar,xmin,onXminBar,marketClose)
             for sym in self.symbolList }
         
         amDict = {
             sym: ArrayManager(size)
             for sym in self.symbolList }
 
-        mdfDict = {
-            sym: MatrixDF(size)
-            for sym in self.symbolList }
-
-
         setattr(self, variable, bgDict)
         setattr(self, variable2, amDict)
-        setattr(self, variable3, mdfDict)
 
     def generateHFBar(self,xSecond,size = 60):
         self.hfDict = {sym: BarGenerator(self.onHFBar,xSecond = xSecond)

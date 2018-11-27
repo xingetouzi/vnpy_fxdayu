@@ -123,6 +123,7 @@ class CtaEngine(object):
         # req.priceType = PRICETYPE_LIMITPRICE
 
         req.priceType = priceType
+        
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -154,7 +155,7 @@ class CtaEngine(object):
             
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
-            # 只有上期所才要考虑平今平昨
+            # # 只有上期所才要考虑平今平昨
             if contract.exchange != EXCHANGE_SHFE:
                 req.offset = OFFSET_CLOSE
             else:
@@ -414,7 +415,7 @@ class CtaEngine(object):
                     s.remove(vtOrderID)
 
             self.callStrategyFunc(strategy, strategy.onOrder, order)
-            # self.saveOrderDetail(strategy,order)
+            self.saveOrderDetail(strategy,order)
 
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):
@@ -483,14 +484,15 @@ class CtaEngine(object):
             if strategy.inited:
                 accountName = account.accountID
                 if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[str(accountName)] = account.position
+                    strategy.accountDict[str(accountName)] = account.available
+                    print(account.available)
 
     def processErrorEvent(self,event):
         error = event.dict_['data']
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                self.writeCtaLog(u'ProcessError，%s'%error)        # 待扩展
+                self.writeCtaLog(u'ProcessError，%s'%error.__dict__)        # 待扩展
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -569,7 +571,6 @@ class CtaEngine(object):
 
         # 获取策略类
         strategyClass = STRATEGY_CLASS.get(className, None)
-        
         
         if not strategyClass:
             STRATEGY_GET_CLASS = self.loadLocalStrategy()
@@ -735,6 +736,21 @@ class CtaEngine(object):
             l = json.load(f)
 
             for setting in l:
+
+                if 'policy' in setting.keys():
+                    POLICY_CLASS  = {}
+                    if setting['policy']:                        
+                        POLICY_CLASS = self.loadPolicy(setting['policy'])
+                        policyClass = POLICY_CLASS.get(setting['policy'], None)
+                        if not policyClass:
+                            self.writeCtaLog(u'找不到Policy：%s' %setting['policy'])
+                            return
+                        newsetting = policyClass(setting)
+                        newsetting.assert_symbol()
+                        print(newsetting.setting)
+                        self.loadStrategy(newsetting.setting)
+                        continue
+
                 self.loadStrategy(setting)
 
         # for strategy in self.strategyDict.values():
@@ -1115,3 +1131,21 @@ class CtaEngine(object):
 
     def getGateway(self, gatewayName):
         return self.mainEngine.gatewayDict.get(gatewayName, None)
+
+    def loadPolicy(self,policyName):
+        POLICY_CLASS ={}
+        path = os.getcwd()
+        for root, subdirs, files in os.walk(path):
+            for name in files:
+                if 'policy' in name and '.pyc' not in name:
+                    try:
+                        module = importlib.import_module('policy')
+                        for k in dir(module):
+                            if policyName in k:
+                                v = module.__getattribute__(k)
+                                POLICY_CLASS[k] = v
+                    except:
+                        print('-' * 20)
+                        print(('Failed to import policy file'))
+                        traceback.print_exc()
+        return POLICY_CLASS
