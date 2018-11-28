@@ -134,7 +134,7 @@ class DefaultMetricSender(MetricSender):
 
     def pushMetrics(self, metrics):
         payload = [metric.__dict__ for metric in metrics]
-        r = requests.post(open_falcon_url, data=json.dumps(payload))
+        r = requests.post(self.url, data=json.dumps(payload))
         print(r.content)
 
 def register_aggregator(cls):

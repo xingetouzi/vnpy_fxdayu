@@ -15,10 +15,10 @@ class LogfileMetricSender(with_metaclass(Singleton, MetricSender)):
         logger = logging.getLogger(__name__)
         filename = "ctaMetric.log"
         filepath = getTempPath(filename)
-        hander = TimedRotatingFileHandler(filepath, when="d", backupCount=7)
+        self.hander = TimedRotatingFileHandler(filepath, when="d", backupCount=7)
         formater = logging.Formatter(fmt="%(asctime)s|%(message)s")
-        hander.setFormatter(formater)
-        logger.addHandler(hander)
+        self.hander.setFormatter(formater)
+        logger.addHandler(self.hander)
         logger.setLevel(logging.INFO)
         logger.propagate = False
         self.logger = logger
@@ -27,3 +27,4 @@ class LogfileMetricSender(with_metaclass(Singleton, MetricSender)):
         payloads = [metric.__dict__ for metric in metrics]
         for payload in payloads:
             self.logger.info(json.dumps(payload))
+        self.hander.close()

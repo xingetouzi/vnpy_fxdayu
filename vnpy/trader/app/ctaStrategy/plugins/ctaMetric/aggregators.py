@@ -33,7 +33,10 @@ class BaseStrategyAggregator(StrategySplitedAggregator):
             self.plugin.addMetric(int(time.time()), "strategy.heartbeat", tags, counter_type=OpenFalconMetricCounterType.COUNTER, strategy=name)
             # metric trading status
             trading = strategy.trading
-            self.plugin.addMetric(trading, "strategy.trading", tags, strategy=name)
+            if trading:
+                self.plugin.addMetric(1, "strategy.trading", tags, strategy=name)
+            else:
+                self.plugin.addMetric(0, "strategy.trading", tags, strategy=name)
 
     def addMetricStrategyGatewayStatus(self):
         connected = {}
@@ -44,7 +47,10 @@ class BaseStrategyAggregator(StrategySplitedAggregator):
                 gateways = self.getGateways(strategy)
                 for gateway in gateways:
                     tags = "strategy={},gateway={}".format(name, gateway)
-                    self.plugin.addMetric(connected[gateway], "gateway.connected", tags, strategy=name)
+                    if connected[gateway]:
+                        self.plugin.addMetric(1, "gateway.connected", tags, strategy=name)
+                    else:
+                        self.plugin.addMetric(0, "gateway.connected", tags, strategy=name)
 
 
 @register_aggregator
@@ -133,6 +139,8 @@ _order_status_map_status = {
     STATUS_CANCELLED: 7,
 }
 
+_activate_set = {STATUS_NOTTRADED, STATUS_UNKNOWN, STATUS_PARTTRADED, STATUS_CANCELLING, STATUS_CANCELINPROGRESS}
+
 def orderstatus2int(status):
     return _order_status_map_status.get(status, _order_status_map_status[STATUS_UNKNOWN])
 
@@ -157,6 +165,16 @@ class OrderAggregator(StrategySplitedAggregator):
         if df.empty:
             return df
         return df.loc[df.groupby("vtOrderID").apply(lambda x: x["statusint"].idxmax()).values]
+
+    # 将消失的活动订单count和volume的value清零
+    def reset_active_orders(self, data, metric, strategy_name):
+        data = data.reset_index().set_index(['gatewayName', 'symbol'])
+        for k, v in data.groupby(level=['gatewayName', 'symbol']).status:
+            for status in _activate_set - set(v.tolist()):
+                gateway, symbol = k
+                tags = "strategy={},gateway={},symbol={},status={}".format(
+                    strategy_name, gateway, symbol, status)
+                self.plugin.addMetric(0, metric, tags, strategy=strategy_name)
 
     def aggregateOrderEvents(self, data):
         if not data.empty:
@@ -215,6 +233,9 @@ class OrderAggregator(StrategySplitedAggregator):
                 tags = "strategy={},gateway={},symbol={},status={}".format(
                     strategy_name, gateway, symbol, status)
                 self.plugin.addMetric(v, metric, tags, strategy=strategy_name)
+
+            self.reset_active_orders(counts, metric, strategy_name)
+
         metric = "order.volume"
         for strategy_name, volumes in self._volumes.items():
             if strategy_name in active_volumes:
@@ -224,6 +245,8 @@ class OrderAggregator(StrategySplitedAggregator):
                 tags = "strategy={},gateway={},symbol={},status={}".format(
                     strategy_name, gateway, symbol, status)
                 self.plugin.addMetric(v, metric, tags, strategy=strategy_name)
+
+            self.reset_active_orders(volumes, metric, strategy_name)
 
 
 @register_aggregator
