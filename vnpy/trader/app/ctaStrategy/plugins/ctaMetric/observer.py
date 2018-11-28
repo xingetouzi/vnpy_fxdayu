@@ -95,7 +95,7 @@ class FileEventHandler(RegexMatchingEventHandler):
 
 class MetricFileObserver(object):
     interval = 10
-    reg = r"ctaMetric.log.*"  # 监控的文件
+    reg = r".*ctaMetric.log.*"  # 监控的文件
 
     def __init__(self, root=".", url=None):
         self._root = os.path.abspath(root)
@@ -135,10 +135,11 @@ class MetricFileObserver(object):
         r = requests.post(self._url, data=json.dumps(payload))
         logging.info("推送%s个指标，response:%s" % (len(payload), r.content))
 
+
 def run_observer(path, url=None):
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
     MetricFileObserver(path, url).run()
 
+
 if __name__ == "__main__":
     run_observer(".")
-    
