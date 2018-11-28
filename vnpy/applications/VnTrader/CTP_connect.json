@@ -1,0 +1,9 @@
+{
+    "brokerID": "9999", 
+    "mdAddress": "tcp://180.168.146.187:10011", 
+    "tdAddress": "tcp://180.168.146.187:10001", 
+    "userID": "",
+    "password": "",
+    "jaqs_username":"",
+    "jaqs_password":""   
+}
