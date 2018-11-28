@@ -17,11 +17,11 @@ from vnpy.trader.utils import Logger
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
-from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
-from ..ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
-from ..ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
-from ..histbar import BarReader
-from ..ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
+from ..ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
+from ...ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
+from ...ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
+from ...histbar import BarReader
+from ...ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 
 _on_bar_re = re.compile("^on%sBar$" % _freq_re_str)
 logger = Logger()
