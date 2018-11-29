@@ -1184,7 +1184,7 @@ class FuturesApi(OkexFuturesApi):
             d = data['data'][i]
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
-            # tick.time = d[3]+".000000"
+            tick.lastTradedTime = d[3]
             tick.type = d[4]
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
