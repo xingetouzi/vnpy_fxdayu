@@ -572,11 +572,10 @@ class SpotApi(OkexSpotApi):
             self.tickDict[symbol] = tick
         else:
             tick = self.tickDict[symbol]
-        for i in range(len(data['data'])):
-            d = data['data'][i]
+        for i,d in enumerate(data['data']):
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
-            tick.time = d[3]+".000000"
+            tick.lastTradedTime = d[3]
             tick.type = d[4]
             tick.volumeChange = 1
             tick.localTime = datetime.now()
@@ -1028,7 +1027,7 @@ class FuturesApi(OkexFuturesApi):
         
         tick.highPrice = float(d['high'])
         tick.lowPrice = float(d['low'])
-        # tick.lastPrice = float(d['last'])
+        tick.lastPrice = float(d['last'])
         tick.volume = float(d['vol'].replace(',', ''))
         tick.upperLimit = float(d['limitHigh'])
         tick.lowerLimit = float(d['limitLow'])
@@ -1171,7 +1170,7 @@ class FuturesApi(OkexFuturesApi):
             d = data['data'][-1]
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
-            # tick.time = d[3]+".000000"                             # 时间戳不准确，使用的是orderbook的时间
+            tick.lastTradedTime = d[3]                            # 时间戳不准确，使用的是orderbook的时间
             tick.type = d[4]
             tick.volumeChange = 1                                    # 是否更新最新成交量的标记
             tick.localTime = datetime.now()
@@ -1180,8 +1179,7 @@ class FuturesApi(OkexFuturesApi):
                 newtick = copy(tick)
                 self.gateway.onTick(newtick)
             return
-        for i in range(len(data['data'])):
-            d = data['data'][i]
+        for i,d in enumerate(data['data']):
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
             tick.lastTradedTime = d[3]
