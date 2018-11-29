@@ -1,0 +1,10 @@
+{
+    "apiKey": "",
+    "secretKey": "",
+    "trace": false,
+    "symbols":["btc_usdt","ltc_btc","bch_eth"],
+    "contracts":["btc_this_week","btc_next_week","btc_quarter",
+        "eos_this_week","eos_next_week","eos_quarter",
+        "eth_this_week","eth_next_week","eth_quarter"],
+    "note":""
+}

@@ -1,0 +1,21 @@
+{
+    "working": true,
+
+    "tick":
+    [
+
+        ["cu1811:SHFE", "CTP"],
+        ["btc_next_week:OKEX", "OKEX"]
+    ],
+
+    "bar":
+    [
+        ["cu1811:SHFE", "CTP"],
+        ["btc_next_week:OKEX", "OKEX"]
+    ],
+
+    "active":
+    {
+
+    }
+}
