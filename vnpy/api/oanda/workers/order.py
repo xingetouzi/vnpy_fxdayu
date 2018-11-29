@@ -32,5 +32,5 @@ class SolidOrderWorker(AsyncApiWorker):
         """
         rejected_orders = self._rejected_orders[account_id]
         if req.clientOrderID in rejected_orders:
-            self.api.on_trans(rejected_orders[req.clientOrderID], account_id)
+            self.api.on_transaction(rejected_orders[req.clientOrderID])
             return True

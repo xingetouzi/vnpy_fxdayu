@@ -4,5 +4,6 @@
     "passphrase": "",
     "leverage": 10,
     "sessionCount": 3,
-    "trace": false
+    "trace": false,
+    "note":""
 }

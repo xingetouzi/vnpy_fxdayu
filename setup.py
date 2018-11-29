@@ -23,6 +23,7 @@ from setuptools import setup
 
 import vnpy
 
+
 def getSubpackages(name):
     """获取该模块下所有的子模块名称"""
     splist = []
@@ -32,6 +33,7 @@ def getSubpackages(name):
             splist.append(".".join(dirpath.split(os.sep)))
     
     return splist
+
 
 setup(
     name='vnpy_fxdayu',
@@ -60,5 +62,10 @@ setup(
                        '*.dat', '*.ini', '*.pfx', '*.scc', '*.crt', '*.key']},
     extras_require={
         'tq': ["tornado>=4.5.1", "sortedcontainers>=1.5.7"],
-    }
+    },
+    entry_points={
+        "console_scripts": [
+            "vnpy = vnpy.__main__:entry_point"
+        ]
+    },
 )

@@ -1,0 +1,8 @@
+[
+    {
+        "name": "DEMO",
+        "className": "DemoStrategy",
+        "symbolList": ["EUR_USD:OANDA"],
+        "mailAdd": []
+    }
+]

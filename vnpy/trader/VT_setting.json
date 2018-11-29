@@ -4,7 +4,7 @@
 
 	"mongoHost": "localhost",
 	"mongoPort": 27017,
-	"mongoLogging": false,
+	"mongoLogging": true,
 
 	"darkStyle": true,
 	"language": "chinese",

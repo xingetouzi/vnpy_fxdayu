@@ -42,3 +42,7 @@ static/
 
 # MAC
 .DS_Store
+
+temp
+.ipynb_checkpoints
+.vscode

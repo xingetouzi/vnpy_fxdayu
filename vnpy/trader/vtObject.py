@@ -40,9 +40,11 @@ class VtTickData(VtBaseData):
         self.time = EMPTY_STRING                # 时间 11:20:56.5
         self.date = EMPTY_STRING                # 日期 20151009
         self.datetime = None                    # python的datetime时间对象
+
         self.type = EMPTY_STRING                # 主动买或主动卖
         self.volumeChange = EMPTY_INT           # 标记tick的更新源
         self.localTime = None                   # 本地时间，datetime 格式
+        self.lastTradedTime = EMPTY_STRING
 
         # 常规行情
         self.openPrice = EMPTY_FLOAT            # 今日开盘价

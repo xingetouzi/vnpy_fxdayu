@@ -56,7 +56,7 @@ def runChildProcess():
     ee.register(EVENT_ERROR, processErrorEvent)
     le.info(u'注册日志事件监听')
     
-    me.connect('OKEX')
+    me.connect('OKEX_1')
     le.info(u'连接行情和交易接口')
     
     sleep(5)                       # 等待CTP接口初始化
