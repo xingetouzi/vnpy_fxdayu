@@ -17,11 +17,11 @@ from vnpy.trader.utils import Logger
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
-from .ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
-from ..ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
-from ..ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
-from ..histbar import BarReader
-from ..ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
+from ..ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins, CtaTemplateWithPlugins
+from ...ctaBacktesting import BacktestingEngine as OriginBacktestingEngine
+from ...ctaTemplate import ArrayManager as OriginArrayManager, CtaTemplate as OriginCtaTemplate
+from ...histbar import BarReader
+from ...ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 
 _on_bar_re = re.compile("^on%sBar$" % _freq_re_str)
 logger = Logger()
@@ -535,12 +535,15 @@ class BarManager(object):
     
     def __init__(self, engine, mode=None, size=None):
         self._engine = proxy(engine)
-        self._callback = None
         self._mode = mode or self.MODE.ON_TICK
         self._logger = Logger()
-        self._managers = {}
         self._size = size
+        self.init()
+
+    def init(self):
+        self._managers = {}
         self._caches = {}
+        self._load_history_bar_backtesting.cache_clear()
 
     @property
     def mode(self):
@@ -746,7 +749,7 @@ class CtaTemplate(CtaTemplateWithPlugins):
 class BacktestingEngine(OriginBacktestingEngine):
     def __init__(self):
         super(BacktestingEngine, self).__init__()
-        self.barManager = BarManager(self)
+        self.barManager = None
         self.__prev_bar = None
 
     def setArrayManagerSize(self, size):
@@ -757,7 +760,7 @@ class BacktestingEngine(OriginBacktestingEngine):
 
     def runBacktesting(self):
         if isinstance(self.strategy, CtaTemplate):
-            # FIXME: 重复回测可能遇到问题
+            self.barManager = BarManager(self)
             self.barManager.set_mode(self.mode)
             self.barManager.register_strategy(self.strategy)
             self.__prev_bars = None
