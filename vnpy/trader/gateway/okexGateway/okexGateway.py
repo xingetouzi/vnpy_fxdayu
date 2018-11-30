@@ -892,8 +892,6 @@ class FuturesApi(OkexFuturesApi):
         self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
         self.orphanDict ={}             # 存储丢单信息
         self.filledList =['']*100       # 缓存交易所id，长度100个
-        self.tradetick = 0
-
         self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
 
         self.cache_some_order = {}
@@ -1024,9 +1022,9 @@ class FuturesApi(OkexFuturesApi):
             tick = self.tickDict[symbol]
         
         d = data['data']
-        # tick.highPrice = float(d['high'])
-        # tick.lowPrice = float(d['low'])
-        # tick.lastPrice = float(d['last'])
+        tick.highPrice = float(d['high'])
+        tick.lowPrice = float(d['low'])
+        tick.lastPrice = float(d['last'])
         tick.volume = float(d['vol'].replace(',', ''))
         tick.upperLimit = float(d['limitHigh'])
         tick.lowerLimit = float(d['limitLow'])
@@ -1167,19 +1165,6 @@ class FuturesApi(OkexFuturesApi):
         else:
             tick = self.tickDict[symbol]
         
-        if not self.tradetick:   # 第一次收到的 tick trade只保留最后一个
-            d = data['data'][-1]
-            tick.lastPrice = float(d[1])
-            tick.lastVolume = float(d[2])
-            tick.lastTradedTime = d[3]                              # 时间戳不准确，使用的是orderbook的时间
-            tick.type = d[4]
-            tick.volumeChange = 1                                    # 是否更新最新成交量的标记
-            tick.localTime = datetime.now()
-            self.tradetick = 1
-            if tick.bidPrice1 and tick.openInterest:
-                newtick = copy(tick)
-                self.gateway.onTick(newtick)
-            return
         for i,d in ranenumerate(data['data']):
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
@@ -1331,12 +1316,19 @@ class FuturesApi(OkexFuturesApi):
         """撤单回调"""
         if self.checkDataError(data):
             return
-        # rawData = data["data"]
-        self.writeLog('info from cancelorder channel: %s'%data)
-        # if rawData['result']:
-        #     orderId = str(rawData['order_id'])  
-        # else:
-        #     print("下单报错信息:",rawData['error_code'])
+        rawData = data["data"]
+        if rawData['result']:
+            orderId = str(rawData['order_id']) 
+            self.writeLog(u'交易所返回撤单成功: id: %s'%orderId)
+        else:
+            error = VtErrorData()
+            error.gatewayName = self.gatewayName
+            error.errorID = rawData['error_code']
+            if str(error.errorID) =='20015':
+                error.errorMsg = u'要撤的订单不存在'
+            elif str(error.errorID) =='20049':
+                error.errorMsg = u'撤单过于频繁'
+            self.gateway.onError(error)
     #----------------------------------------------------------------------
         
     def onSubFuturesBalance(self, data):
@@ -1445,28 +1437,28 @@ class FuturesApi(OkexFuturesApi):
         symbol = req.symbol[:3] + "_usd"
         contract_type = req.symbol[4:]
 
-        # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
-        if not self.gateway.connected:
-            self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
+        # # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
+        # if not self.gateway.connected:
+        #     self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
+        #     order = VtOrderData()
+        #     order.vtOrderID = vtOrderID
+        #     order.orderID = self.localNo
+        #     order.symbol= req.symbol
 
-            order.vtSymbol = req.vtSymbol
-            order.status = STATUS_REJECTED
-            order.gatewayName = self.gatewayName
-            order.rejectedInfo = 'BAD NETWORK'
-            order.byStrategy = req.byStrategy
-            order.direction = req.direction
-            order.offset = req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.gateway.onOrder(copy(order))
-            self.orderDict[vtOrderID] = order #更新order信息
-            return vtOrderID
+        #     order.vtSymbol = req.vtSymbol
+        #     order.status = STATUS_REJECTED
+        #     order.gatewayName = self.gatewayName
+        #     order.rejectedInfo = 'BAD NETWORK'
+        #     order.byStrategy = req.byStrategy
+        #     order.direction = req.direction
+        #     order.offset = req.offset
+        #     order.price = req.price
+        #     order.totalVolume = req.volume
+        #     order.orderTime = datetime.now()
+        #     order.deliverTime = datetime.now()
+        #     self.gateway.onOrder(copy(order))
+        #     self.orderDict[vtOrderID] = order #更新order信息
+        #     return vtOrderID
         
         # 下单判断状态 2 ： 发单失败，返回失败请求
         # result = self.futuresTrade(
@@ -1642,7 +1634,7 @@ class FuturesApi(OkexFuturesApi):
                     trade.status = order.status
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
-                if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED]:
+                if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED, STATUS_REJECTED]:
                     self.filledList[0:99] = self.filledList[1:100]
                     self.filledList[-1] = str(order.exchangeOrderID)
                     if order.exchangeOrderID in self.sendOrderDict.keys():
@@ -1880,7 +1872,7 @@ class FuturesApi(OkexFuturesApi):
                     
                     self.order_arbitration(order)    #进入订单信息仲裁匹配
             else:
-                self.writeLog('rest_qry_order: it returned false')
+                self.writeLog(u'rest_qry_order: 没有订单')
 
     def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
         data = self.futureKline(symbol, type_, contract_type, size, since)
@@ -1988,5 +1980,5 @@ class FuturesApi(OkexFuturesApi):
                             'batchQryOrder: this id: %s has been dropped after filled or cancelled'%order_id)
                     
             else:
-                self.writeLog('batchQryOrder: it returned false')
+                self.writeLog(u'batchQryOrder: 没有订单')
             

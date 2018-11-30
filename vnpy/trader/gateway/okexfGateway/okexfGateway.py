@@ -183,13 +183,27 @@ class OkexfGateway(VtGateway):
 
         granularityMap = {}
         granularityMap['1min'] =60
+        granularityMap['3min'] =180
+        granularityMap['5min'] =300
+        granularityMap['10min'] =600
+        granularityMap['15min'] =900
+        granularityMap['30min'] =1800
         granularityMap['60min'] =3600
+        granularityMap['120min'] =7200
+        granularityMap['240min'] =14400
+        granularityMap['360min'] =21600
+        granularityMap['720min'] =43200
+        granularityMap['1day'] =86400
+        granularityMap['1week'] =604800
 
         params = {'granularity':granularityMap[type_]}
         url = REST_HOST +'/api/futures/v3/instruments/'+instrument_id+'/candles?'
 
-        if since:
-            params['start'] = since
+        #if since:
+            # since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            # params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
+            
+            #params['start'] = datetime.strptime(since,"%Y%m%d").isoformat().split('.')[0]+'Z'
         if end:
             params['end'] = end
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
@@ -198,12 +212,11 @@ class OkexfGateway(VtGateway):
         symbol = instrument_id[:3]
         df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
         df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x / 1000))
-        df["datetime"] = df["datetime"].map(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
-        delta = timedelta(hours=8)
-        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
-        
-        print(df,type_)
-            
+        # df["datetime"] = df["datetime"].map(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
+        # delta = timedelta(hours=8)
+        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
+        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+        print(df)
         return df#.to_csv('a.csv')
         
 

@@ -166,7 +166,6 @@ class BarGenerator(object):
                 self.xminBar.datetime = bar.datetime.replace(second=0, microsecond=0)  # 将秒和微秒设为0
                 self.xminBar.date = bar.datetime.strftime('%Y%m%d')
                 self.xminBar.time = bar.datetime.strftime('%H:%M:%S.%f')
-                self.BarDone = 0
 
                 if self.xmin < 61:
                     diff = bar.datetime.minute % self.xmin

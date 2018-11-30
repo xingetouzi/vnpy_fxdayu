@@ -415,7 +415,7 @@ class CtaEngine(object):
                     s.remove(vtOrderID)
 
             self.callStrategyFunc(strategy, strategy.onOrder, order)
-            self.saveOrderDetail(strategy,order)
+            # self.saveOrderDetail(strategy,order)
 
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):
@@ -492,7 +492,7 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                self.writeCtaLog(u'ProcessError，%s'%error.__dict__)        # 待扩展
+                self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
 
     #--------------------------------------------------
     def registerEvent(self):
@@ -599,11 +599,11 @@ class CtaEngine(object):
             if not os.path.exists(fileName):
                 with open(fileName,'w') as f:
                     json.dump(d,f)
-            fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
-            if not os.path.exists(fileName):
-                d['orders']=[]
-                with open(fileName,'w') as f:
-                    json.dump(d,f)
+            # fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
+            # if not os.path.exists(fileName):
+            #     d['orders']=[]
+            #     with open(fileName,'w') as f:
+            #         json.dump(d,f)
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
