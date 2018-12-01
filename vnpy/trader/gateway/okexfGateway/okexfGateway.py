@@ -24,7 +24,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-
+from .text import ERRORCODE
 
 REST_HOST = 'https://www.okex.com'
 WEBSOCKET_HOST = 'wss://real.okex.com:10440/websocket/okexapi?compress=true'
@@ -42,8 +42,8 @@ statusMapReverse['5'] = STATUS_CANCELLING
 typeMap = {}
 typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = '1'
 typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = '2'
-typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = '3'
-typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = '4'
+typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = '4'  # cover
+typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = '3' # sell
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
 ########################################################################
@@ -178,7 +178,7 @@ class OkexfGateway(VtGateway):
 
     def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
         for key,value in contractMap.items():
-            if value == vtSymbol.split(':')[0]:
+            if value == vtSymbol.split(VN_SEPARATOR)[0]:
                 instrument_id = key
 
         granularityMap = {}
@@ -216,7 +216,7 @@ class OkexfGateway(VtGateway):
         # delta = timedelta(hours=8)
         # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
         df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
-        print(df)
+
         return df#.to_csv('a.csv')
         
 
@@ -298,7 +298,7 @@ class OkexfRestApi(RestClient):
         """"""
         self.orderID += 1
         orderID = str(self.loginTime + self.orderID)
-        vtOrderID = ':'.join([self.gatewayName, orderID])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
@@ -319,7 +319,7 @@ class OkexfRestApi(RestClient):
         order.gatewayName = self.gatewayName
         order.symbol = orderReq.symbol
         order.exchange = 'OKEX'
-        order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.orderID = orderID
         order.vtOrderID = vtOrderID
         order.direction = orderReq.direction
@@ -415,7 +415,7 @@ class OkexfRestApi(RestClient):
             
             contract.symbol = d['instrument_id']
             contract.exchange = 'OKEX'
-            #contract.vtSymbol = ':'.join([contract.symbol, contract.exchange])
+            #contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
             
             contract.name = contract.symbol
             contract.productClass = PRODUCT_FUTURES
@@ -445,7 +445,7 @@ class OkexfRestApi(RestClient):
         for key,value in contractMap.items():
             contract = self.contractDict[key]
             contract.symbol = value
-            contract.vtSymbol = ':'.join([contract.symbol, contract.gatewayName])
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             self.gateway.onContract(contract)
         
         self.queryOrder()
@@ -457,18 +457,26 @@ class OkexfRestApi(RestClient):
         """{'info': {'eos': {'equity': '4', 'margin': '0', 'margin_mode': 'crossed', '
         margin_ratio': '10000', 'realized_pnl': '0', 'total_avail_balance': '4', 
         'unrealized_pnl': '0'}}} """
+        """{"info":{"eos":{"contracts":[{"available_qty":"3.9479","fixed_balance":"0",
+            "instrument_id":"EOS-USD-181228","margin_for_unfilled":"0","margin_frozen":"0",
+            "realized_pnl":"0.06547904","unrealized_pnl":"0"}],"equity":"3.94797857",
+            "margin_mode":"fixed","total_avail_balance":"3.88249953"}}}"""
         for currency, d in data['info'].items():
-            account = VtAccountData()
-            account.gatewayName = self.gatewayName
-            
-            account.accountID = currency
-            account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
-            
-            account.balance = float(d['equity'])
-            account.available = float(d['total_avail_balance'])
-            account.margin = float(d['margin'])
-            account.positionProfit = float(d['unrealized_pnl'])
-            account.closeProfit = float(d['realized_pnl'])
+            if 'contracts' in d.keys(): # fixed-margin
+                self.writeLog('WARNING: temperately not support fixed-margin account')
+                return
+            else:
+                account = VtAccountData()
+                account.gatewayName = self.gatewayName
+                
+                account.accountID = currency
+                account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+                
+                account.balance = float(d['equity'])
+                account.available = float(d['total_avail_balance'])
+                account.margin = float(d['margin'])
+                account.positionProfit = float(d['unrealized_pnl'])
+                account.closeProfit = float(d['realized_pnl'])
             
             self.gateway.onAccount(account)
     
@@ -488,16 +496,16 @@ class OkexfRestApi(RestClient):
                 longPosition.gatewayName = self.gatewayName
                 longPosition.symbol = contractMap.get(d['instrument_id'],None)
                 longPosition.exchange = 'OKEX'
-                longPosition.vtSymbol = ':'.join([longPosition.symbol, longPosition.gatewayName])
+                longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
                 longPosition.direction = DIRECTION_LONG
-                longPosition.vtPositionName = ':'.join([longPosition.vtSymbol, longPosition.direction])
+                longPosition.vtPositionName = VN_SEPARATOR.join([longPosition.vtSymbol, longPosition.direction])
                 longPosition.position = int(d['long_qty'])
                 longPosition.frozen = longPosition.position - int(d['long_avail_qty'])
                 longPosition.price = float(d['long_avg_cost'])
                 
                 shortPosition = copy(longPosition)
                 shortPosition.direction = DIRECTION_SHORT
-                shortPosition.vtPositionName = ':'.join([shortPosition.vtSymbol, shortPosition.direction])
+                shortPosition.vtPositionName = VN_SEPARATOR.join([shortPosition.vtSymbol, shortPosition.direction])
                 shortPosition.position = int(d['short_qty'])
                 shortPosition.frozen = shortPosition.position - int(d['short_avail_qty'])
                 shortPosition.price = float(d['short_avg_cost'])
@@ -512,7 +520,7 @@ class OkexfRestApi(RestClient):
             'filled_qty': '0', 'fee': '0', 'order_id': '1878226413689856', 'price': '3.075', 'price_avg': '0', 
             'status': '0', 'type': '4', 'contract_val': '10', 'leverage': '10'}]} """
         for d in data['order_info']:
-            print(d,"or")
+            #print(d,"or")
 
             order = self.orderDict.get(d['order_id'],None)
 
@@ -522,11 +530,11 @@ class OkexfRestApi(RestClient):
                 
                 order.symbol = contractMap.get(d['instrument_id'],None)
                 order.exchange = 'OKEX'
-                order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
                 self.orderID += 1
                 order.orderID = str(self.loginTime + self.orderID)
-                order.vtOrderID = ':'.join([self.gatewayName, order.orderID])
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 self.localRemoteDict[order.orderID] = d['order_id']
                 order.tradedVolume = 0
             
@@ -558,7 +566,7 @@ class OkexfRestApi(RestClient):
                 trade.orderID = order.orderID
                 trade.vtOrderID = order.vtOrderID
                 trade.tradeID = str(wsApi.tradeID)
-                trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
                 
                 trade.direction = order.direction
                 trade.offset = order.offset
@@ -572,9 +580,10 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        print(data,request,"onsendorderfailed")
+        print(data,"onsendorderfailed")
         order = request.extra
         order.status = STATUS_REJECTED
+        order.rejectedInfo = request.response
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -582,10 +591,11 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：连接错误
         """
-        print(request,"onsendordererror")
+        print(exceptionType,exceptionValue,"onsendordererror")
         order = request.extra
         order.status = STATUS_REJECTED
-        self.gateway.onOrder(vtOrder)
+        order.rejectedInfo = request.response
+        self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
@@ -599,7 +609,11 @@ class OkexfRestApi(RestClient):
             req = self.cancelDict.pop(data['client_oid'])
             self.cancelOrder(req)
 
-        print('\nsendorder',self.cancelDict,self.localRemoteDict,self.orderDict)
+        if data['error_code']:
+            self.writeLog('WARNING:sendorder error %s %s'%(data['error_code'],data['error_message']))
+
+        print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
+        "\norderDict:",self.orderDict.keys())
     
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
@@ -607,7 +621,17 @@ class OkexfRestApi(RestClient):
         2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
         'error_code': '32004', 'order_id': '1882519016480768'} 
         """
-        print(data,"oncalcelOrder")
+        if data['result']:
+            self.writeLog(u'交易所返回%s撤单成功: id: %s'%(data['instrument_id'],str(data['order_id'])))
+        else:
+            error = VtErrorData()
+            error.gatewayName = self.gatewayName
+            error.errorID = data['error_code']
+            if 'error_message' in data.keys():
+                error.errorMsg = data['error_message']
+            else:
+                error.errorMsg = ERRORCODE[str(error.errorID)]
+            self.gateway.onError(error)
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -783,7 +807,7 @@ class OkexfWebsocketApi(WebsocketClient):
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
         tick.exchange = 'OKEX'
-        tick.vtSymbol = ':'.join([tick.symbol, tick.gatewayName])
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
         self.tickDict[tick.symbol] = tick
     
     #----------------------------------------------------------------------
@@ -904,6 +928,7 @@ class OkexfWebsocketApi(WebsocketClient):
             'system_type': 0, 'price': 2.8, 'create_date_str': '2018-11-28 17:36:00', 
             'create_date': 1543397760669, 'status': 0}}  """
         data = d['data']
+        print(data)
         order = self.orderDict.get(str(data['orderid']), None)
         if not order:
             currency = data['contract_name'][:3]
@@ -913,7 +938,7 @@ class OkexfWebsocketApi(WebsocketClient):
             order.gatewayName = self.gatewayName
             order.symbol = contractMap.get('%s-USD-%s' %(currency, expiry),None)
             order.exchange = 'OKEX'
-            order.vtSymbol = ':'.join([order.symbol, order.gatewayName])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
             if 'client_oid' in data.keys():
                 order.orderID = data['client_oid']
@@ -922,7 +947,7 @@ class OkexfWebsocketApi(WebsocketClient):
                 restApi.orderID += 1
                 order.orderID = str(restApi.loginTime + restApi.orderID)
 
-            order.vtOrderID = ':'.join([self.gatewayName, order.orderID])
+            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
             order.orderTime = data['create_date_str']#.split(' ')[-1]
             order.price = data['price']
             order.totalVolume = int(data['amount'])
@@ -949,7 +974,7 @@ class OkexfWebsocketApi(WebsocketClient):
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = ':'.join([self.gatewayName, trade.tradeID])
+            trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
             
             trade.direction = order.direction
             trade.offset = order.offset
@@ -971,16 +996,26 @@ class OkexfWebsocketApi(WebsocketClient):
         """{'binary': 0, 'channel': 'ok_sub_futureusd_userinfo', 'data': {
             'symbol': 'eos_usd', 'balance': 4.0, 'unit_amount': 10.0, 'profit_real': 0.0, 
             'keep_deposit': 0.3003003}} """
+        """{'binary': 0, 'channel': 'ok_sub_futureusd_userinfo', 'data': {
+            'symbol': 'eos_usd', 'balance': 3.88249953, 'contracts': [{
+                'short_order_amount': 0.0, 'pre_long_order_amount': 1.0, 'freeze': 0.52910053, 
+                'balance': 0.0, 'contract_id': 201812280200054, 'long_order_amount': 0.0, 
+                'pre_short_order_amount': 0.0, 'available': 3.41887804, 'profit': 0.06547904, 
+                'bond': 0.0}]}}"""
         data = d['data']
-        currency = data['symbol'].split('_')[0]
-        
-        account = VtAccountData()
-        account.gatewayName = self.gatewayName
-        account.accountID = currency
-        account.vtAccountID = ':'.join([self.gatewayName, account.accountID])
-        
-        account.balance = data['balance']
-        account.available = data['balance'] - data['keep_deposit']
+        if 'contracts' in data.keys():
+            self.writeLog('WARNING: temperately not support fixed-margin account')
+            return
+        else:
+            currency = data['symbol'].split('_')[0]
+            
+            account = VtAccountData()
+            account.gatewayName = self.gatewayName
+            account.accountID = currency
+            account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
+            
+            account.balance = data['balance']
+            account.available = data['balance'] - data['keep_deposit']
         
         self.gateway.onAccount(account)
     
@@ -1006,7 +1041,7 @@ class OkexfWebsocketApi(WebsocketClient):
             position.gatewayName = self.gatewayName
             position.symbol = symbol
             position.exchange = 'OKEX'
-            position.vtSymbol = ':'.join([position.symbol, position.gatewayName])
+            position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
             position.position = int(buf['hold_amount'])
             position.frozen = int(buf['hold_amount']) - int(buf['eveningup'])
             position.price = float(buf['avgprice'])
@@ -1015,7 +1050,7 @@ class OkexfWebsocketApi(WebsocketClient):
                 position.direction = DIRECTION_LONG
             else:
                 position.direction = DIRECTION_SHORT
-            position.vtPositionName = ':'.join([position.vtSymbol, position.direction])
+            position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
             self.gateway.onPosition(position)
 
 

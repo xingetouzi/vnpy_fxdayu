@@ -1165,7 +1165,7 @@ class FuturesApi(OkexFuturesApi):
         else:
             tick = self.tickDict[symbol]
         
-        for i,d in ranenumerate(data['data']):
+        for i,d in enumerate(data['data']):
             tick.lastPrice = float(d[1])
             tick.lastVolume = float(d[2])
             tick.lastTradedTime = d[3]
