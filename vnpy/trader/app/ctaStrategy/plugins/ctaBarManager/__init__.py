@@ -254,6 +254,9 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         if freq in self._ready: # closed
             return
         self._ready.add(freq)
+        am = self.get_array_manager(freq)
+        for bar in self._gen_bars.get(freq, []):
+            am.updateBar(bar)
         self.info("品种%s的无可用历史%sK线,更新关闭" % (self._symbol, freq))
 
     def update_hist_bars(self, freq, bars, end_dt):
