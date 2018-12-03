@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
+import asyncio
 
 import requests
 from requests import ConnectionError
@@ -164,7 +165,7 @@ class OkexfGateway(VtGateway):
         self.qryEnabled = qryEnabled
     
     #----------------------------------------------------------------------
-    def queryInfo(self):
+    async def queryInfo(self):
         """"""
         self.restApi.queryAccount()
         self.restApi.queryPosition()
@@ -198,14 +199,19 @@ class OkexfGateway(VtGateway):
 
         params = {'granularity':granularityMap[type_]}
         url = REST_HOST +'/api/futures/v3/instruments/'+instrument_id+'/candles?'
+        if size:
+            s = datetime.now()-timedelta(seconds = (size*granularityMap[type_]))
+            params['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
 
-        #if since:
-            # since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
-            # params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
+        if since:
+            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
             
-            #params['start'] = datetime.strptime(since,"%Y%m%d").isoformat().split('.')[0]+'Z'
         if end:
             params['end'] = end
+        else:
+            params['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
+
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
         text = eval(r.text)
 
@@ -522,7 +528,7 @@ class OkexfRestApi(RestClient):
         for d in data['order_info']:
             #print(d,"or")
 
-            order = self.orderDict.get(d['order_id'],None)
+            order = self.orderDict.get(str(d['order_id']),None)
 
             if not order:
                 order = VtOrderData()
@@ -537,6 +543,7 @@ class OkexfRestApi(RestClient):
                 order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 self.localRemoteDict[order.orderID] = d['order_id']
                 order.tradedVolume = 0
+                self.writeLog('order by other source, id: %s'%d['order_id'])
             
             order.price = float(d['price'])
             order.price_avg = float(d['price_avg'])
@@ -548,6 +555,7 @@ class OkexfRestApi(RestClient):
             
             dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
             order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()
             
             self.gateway.onOrder(order)
             self.orderDict[d['order_id']] = order
@@ -610,10 +618,12 @@ class OkexfRestApi(RestClient):
             self.cancelOrder(req)
 
         if data['error_code']:
-            self.writeLog('WARNING:sendorder error %s %s'%(data['error_code'],data['error_message']))
+            self.writeLog('WARNING: %s sendorder error %s %s'%(data['client_oid'],data['error_code'],data['error_message']))
 
-        print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
-        "\norderDict:",self.orderDict.keys())
+        self.writeLog('localID:%s,--,exchangeID:%s'%(data['client_oid'],data['order_id']))
+
+        # print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
+        # "\norderDict:",self.orderDict.keys())
     
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
@@ -628,10 +638,22 @@ class OkexfRestApi(RestClient):
             error.gatewayName = self.gatewayName
             error.errorID = data['error_code']
             if 'error_message' in data.keys():
-                error.errorMsg = data['error_message']
+                error.errorMsg = str(data['order_id']) + ' ' + data['error_message']
             else:
-                error.errorMsg = ERRORCODE[str(error.errorID)]
+                error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
+
+            # could be risky,just testify
+            if str(data['error_code']) == '32004':
+                order = self.orderDict.get(str(data['order_id']),None)
+                if order:
+                    order.status = STATUS_CANCELLED
+                    self.gateway.onOrder(order)
+                    self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
+                    for key,value in self.localRemoteDict.items():
+                        if value == str(data['order_id']):
+                            del self.localRemoteDict[key]
+                    del self.orderDict[str(data['order_id'])]
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -948,9 +970,11 @@ class OkexfWebsocketApi(WebsocketClient):
                 order.orderID = str(restApi.loginTime + restApi.orderID)
 
             order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-            order.orderTime = data['create_date_str']#.split(' ')[-1]
+            order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
+            order.deliveryTime = datetime.now()
             order.price = data['price']
             order.totalVolume = int(data['amount'])
+            order.tradedVolume = 0
             order.direction, order.offset = typeMapReverse[str(data['type'])]
             
             self.localRemoteDict[order.orderID] = str(data['orderid'])
@@ -989,7 +1013,6 @@ class OkexfWebsocketApi(WebsocketClient):
                 del self.orderDict[str(data['orderid'])]
             if order.orderID in self.orderDict:
                 del self.orderDict[order.orderID]
-
         
     #----------------------------------------------------------------------
     def onAccount(self, d):

@@ -452,6 +452,8 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 if freq == "1m":
                     bar_1min_finished = bar_finished
                 else: # freq lower than 1m, no hist data fetchable, push directly
+                    if not self.is_ready(freq):
+                        self.close_hist_bars(freq)
                     bars_to_push[freq] = bar_finished
         for freq in self._low_freqs:
             if freq != "1m": # avoid duplicated update

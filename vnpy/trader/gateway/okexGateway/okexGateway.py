@@ -2,7 +2,6 @@
 
 '''
 vnpy.api.okex的gateway接入
-
 Contributor：ipqhjjybj 大佳
 '''
 from __future__ import print_function
@@ -1542,6 +1541,7 @@ class FuturesApi(OkexFuturesApi):
         order.offset = req.offset
         order.price = req.price
         order.totalVolume = req.volume
+        order.tradedVolume = 0
         order.orderTime = datetime.now()
         order.deliverTime = datetime.now()
         order.byStrategy = req.byStrategy
