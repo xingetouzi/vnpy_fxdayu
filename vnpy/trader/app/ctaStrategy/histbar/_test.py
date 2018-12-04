@@ -36,7 +36,7 @@ def test(reader, symbol):
             show_bars(data)
         print("-"*100)
 
-        # 请求历史数据, 保留未完成k线，返回barlist，最后一分钟k线的时间�?
+        # 请求历史数据, 保留未完成k线，返回barlist，最后一分钟k线的时间。
         print("historyActive", params)
         try:
             data, last = reader.historyActive(**params)
