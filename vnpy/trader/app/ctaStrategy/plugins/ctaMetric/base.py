@@ -14,7 +14,7 @@ import pandas as pd
 from vnpy.trader.vtEvent import EVENT_TIMER
 
 from ..ctaPlugin import CtaEngineWithPlugins, CtaEnginePlugin
-
+from ...ctaTemplate import CtaTemplate
 
 class OpenFalconMetricCounterType(Enum):
     GAUGE = "GAUGE"
@@ -285,3 +285,26 @@ class CtaEngine(CtaEngineWithPlugins):
         super(CtaEngine, self).__init__(mainEngine, eventEngine)
         self.addPlugin(CtaMerticPlugin())
         self.disablePlugin(CtaMerticPlugin)
+
+    def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None):
+        plugin = self.getPlugin(CtaMerticPlugin)
+        # auto add strategy tag
+        if strategy:
+            tag_set = set(tags.split(",")) if tags else set()
+            need_add = True
+            for tag in tag_set:
+                if tag.startswith("strategy="):
+                    need_add = False
+                    break
+            if need_add:
+                tag_set.add("strategy=%s" % strategy)
+                tags = ",".join(list(tag_set))
+        plugin.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=strategy)
+
+
+class CtaTemplate(CtaTemplate):
+    def addMetric(self, value, metric, tags=None, step=None, counter_type=None):
+        if not isinstance(self.ctaEngine, CtaEngine):
+            self.writeCtaLog("推送指标失败,ctaEngine不是一个合法的%s对象" % CtaEngine.__name__)
+            return
+        self.ctaEngine.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=self.name)

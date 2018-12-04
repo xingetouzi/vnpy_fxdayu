@@ -243,6 +243,6 @@ class OandaCandlesQueryResponse(OandaData):
 
     def to_vnpy_bars(self, drop_last_uncomplete=True):
         candles = self.candles
-        if (not candles[-1].complete) and drop_last_uncomplete:
+        if candles and (not candles[-1].complete) and drop_last_uncomplete:
             candles = candles[:-1]
         return [candlestick.to_vnpy_bar() for candlestick in candles]
