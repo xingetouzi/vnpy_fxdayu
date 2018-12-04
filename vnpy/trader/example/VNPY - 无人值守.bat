@@ -1,2 +1,0 @@
-python runCtaTrading.py
-pause
