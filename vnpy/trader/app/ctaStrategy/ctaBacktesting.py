@@ -1362,7 +1362,8 @@ class BacktestingEngine(object):
         """显示按日统计的交易结果"""
         # if df is None:
         #     return
-        df = self.calculateDailyResult()
+        if df is None:
+            df = self.calculateDailyResult()
         df, result = self.calculateDailyStatistics(df)
             
         # 输出统计结果
