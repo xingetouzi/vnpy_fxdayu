@@ -235,16 +235,14 @@ class OandaCandlesQueryResponse(OandaData):
         obj.candles = [OandaCandlesTick.from_dict(d) for d in obj.candles]
         return obj
 
-    def to_dataframe(self, drop_uncomplete=True):
+    def to_dataframe(self, drop_last_uncomplete=True):
         import pandas as pd
-        bars = self.to_vnpy_bars(drop_uncomplete=drop_uncomplete)
+        bars = self.to_vnpy_bars(drop_last_uncomplete=drop_last_uncomplete)
         fields = ["datetime", "date", "time", "open", "high", "low", "close", "volume"]
         return pd.DataFrame([{k: bar.__dict__[k] for k in fields} for bar in bars])
 
-    def to_vnpy_bars(self, drop_uncomplete=True):
+    def to_vnpy_bars(self, drop_last_uncomplete=True):
         candles = self.candles
-        if (not candles[0].complete) and len(candles) > 1:
-            candles = candles[1:]            
-        if (not candles[-1].complete) and drop_uncomplete:
+        if (not candles[-1].complete) and drop_last_uncomplete:
             candles = candles[:-1]
-        return [candlestick.to_vnpy_bar() for candlestick in candles if candlestick.complete]
+        return [candlestick.to_vnpy_bar() for candlestick in candles]
