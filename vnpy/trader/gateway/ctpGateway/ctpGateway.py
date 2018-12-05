@@ -1662,14 +1662,14 @@ class CtpTdApi(TdApi):
         pass
 
     #----------------------------------------------------------------------
-    def connect(self, userID, password, brokerID, address, authCode, userProductInfo):
+    def connect(self, userID, password, brokerID, address, authCode, userProductInfo = 'CTP'):
         """初始化连接"""
         self.userID = userID                # 账号
         self.password = password            # 密码
         self.brokerID = brokerID            # 经纪商代码
         self.address = address              # 服务器地址
-        self.authCode = authCode            #验证码
-        self.userProductInfo = userProductInfo  #产品信息
+        self.authCode = authCode            # 验证码
+        self.userProductInfo = userProductInfo  # 产品信息
 
         # 如果尚未建立服务器连接，则进行连接
         if not self.connectionStatus:

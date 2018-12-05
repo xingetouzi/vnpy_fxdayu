@@ -912,8 +912,8 @@ class OkexfWebsocketApi(WebsocketClient):
         
         for n, buf in enumerate(data['asks']):
             price, volume = buf[:2]
-            tick.__setattr__('askPrice%s' %(n+1), float(price))
-            tick.__setattr__('askVolume%s' %(n+1), int(volume))
+            tick.__setattr__('askPrice%s' %(10-n), float(price))
+            tick.__setattr__('askVolume%s' %(10-n), int(volume))
         
         tick.datetime = datetime.fromtimestamp(data['timestamp']/1000)
         tick.date = tick.datetime.strftime('%Y%m%d')
