@@ -527,6 +527,14 @@ class CtpMdApi(MdApi):
     #----------------------------------------------------------------------
     def onRtnDepthMarketData(self, data):
         """行情推送"""
+        """{'AskPrice5': 1.7976931348623157e+308, 'CurrDelta': 1.7976931348623157e+308, 'AskPrice2': 1.7976931348623157e+308, 'BidPrice4': 1.7976931348623157e+308, 
+        'AveragePrice': 35830.96499402925, 'AskVolume4': 0, 'BidPrice1': 3607.0, 'UpdateTime': '07:54:53', 'AskPrice4': 1.7976931348623157e+308, 'PreOpenInterest': 1214400.0, 
+        'LastPrice': 3607.0, 'ExchangeInstID': '', 'BidPrice2': 1.7976931348623157e+308, 'BidPrice3': 1.7976931348623157e+308, 'HighestPrice': 3616.0, 
+        'AskPrice3': 1.7976931348623157e+308, 'BidVolume5': 0, 'ActionDay': '20181203', 'PreSettlementPrice': 3591.0, 'BidVolume4': 0, 'AskVolume2': 0, 'InstrumentID': 'rb1901', 
+        'AskVolume3': 0, 'Volume': 564418, 'Turnover': 20223641600.0, 'BidPrice5': 1.7976931348623157e+308, 'AskVolume5': 0,'OpenPrice': 3590.0, 'PreClosePrice': 3587.0, 
+        'OpenInterest': 1133022.0, 'ClosePrice': 1.7976931348623157e+308, 'LowerLimitPrice': 3339.0, 'BidVolume3': 0, 'BidVolume2': 0, 'UpperLimitPrice': 3842.0, 'BidVolume1': 7, 
+        'TradingDay': '20181203', 'AskVolume1': 94, 'AskPrice1': 3608.0, 'SettlementPrice':1.7976931348623157e+308, 'LowestPrice': 3562.0, 'UpdateMillisec': 500, 'PreDelta': 0.0, 'ExchangeID': ''}
+        """
         # 创建对象
         tick = VtTickData()
         tick.gatewayName = self.gatewayName
@@ -953,9 +961,9 @@ class CtpTdApi(TdApi):
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
         # if data['YdPosition'] and not data['TodayPosition']:
         if data['Position'] and data['TodayPosition']:
-            pos.ydPosition = data['YdPosition']
+            pos.ydPosition = int(data['YdPosition'])
         elif data['YdPosition'] and not data['TodayPosition']:
-            pos.ydPosition = data['Position']
+            pos.ydPosition = int(data['Position'])
 
         # 计算成本
         size = self.symbolSizeDict[pos.symbol]

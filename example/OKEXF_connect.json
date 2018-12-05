@@ -4,6 +4,8 @@
     "passphrase": "",
     "leverage": 10,
     "sessionCount": 3,
+    "setQryEnabled": true,
+    "setQryFreq": 60,
     "trace": false,
     "note":""
 }

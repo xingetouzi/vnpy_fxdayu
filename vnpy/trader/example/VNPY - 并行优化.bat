@@ -1,3 +1,0 @@
-python runOptimization.py
-
-pause

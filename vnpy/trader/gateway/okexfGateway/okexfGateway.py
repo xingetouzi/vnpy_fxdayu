@@ -99,7 +99,12 @@ class OkexfGateway(VtGateway):
         # 创建行情和交易接口对象
         self.restApi.connect(apiKey, apiSecret, passphrase, leverage, sessionCount)
         self.wsApi.connect(apiKey, apiSecret, passphrase)
-        self.initQuery()
+
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
+
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
@@ -124,14 +129,14 @@ class OkexfGateway(VtGateway):
         self.wsApi.stop()
     
     #----------------------------------------------------------------------
-    def initQuery(self):
+    def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.queryInfo]
 
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = 50         # 查询触发点
+            self.qryTrigger = freq         # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
 
             self.startQuery()
@@ -650,10 +655,11 @@ class OkexfRestApi(RestClient):
                     order.status = STATUS_CANCELLED
                     self.gateway.onOrder(order)
                     self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
-                    for key,value in self.localRemoteDict.items():
+                    for key,value in list(self.localRemoteDict.items()):
                         if value == str(data['order_id']):
                             del self.localRemoteDict[key]
-                    del self.orderDict[str(data['order_id'])]
+                            del self.orderDict[key]
+                            del self.orderDict[str(data['order_id'])]
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
