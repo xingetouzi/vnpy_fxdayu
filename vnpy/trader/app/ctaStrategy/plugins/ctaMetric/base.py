@@ -10,15 +10,30 @@ import os
 from collections import defaultdict
 from enum import Enum
 
+import numpy as np
 import pandas as pd
 from vnpy.trader.vtEvent import EVENT_TIMER
 
 from ..ctaPlugin import CtaEngineWithPlugins, CtaEnginePlugin
 from ...ctaTemplate import CtaTemplate
 
+
 class OpenFalconMetricCounterType(Enum):
     GAUGE = "GAUGE"
     COUNTER = "COUNTER"
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """ Special json encoder for numpy types """
+    def default(self, obj):
+        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
+            np.int16, np.int32, np.int64, np.uint8,
+            np.uint16, np.uint32, np.uint64)):
+            return int(obj)
+        elif isinstance(obj, (np.float_, np.float16, np.float32, 
+            np.float64)):
+            return float(obj)
+        return json.JSONEncoder.default(self, obj)
 
 
 class OpenFalconMetric(object):
@@ -30,6 +45,9 @@ class OpenFalconMetric(object):
         self.value = None
         self.counterType = None
         self.tags = ""
+
+    def to_json(self):
+        return json.dumps(self.__dict__, cls=NumpyEncoder)
 
 
 class OpenFalconMetricFactory(object):
@@ -132,9 +150,12 @@ class DefaultMetricSender(MetricSender):
         super(DefaultMetricSender, self).__init__()
         self.url = os.environ.get("OPEN_FALCON_URL", "http://localhost:1988/v1/push")
 
-    def pushMetrics(self, metrics):
+    def dumpMetrics(self, metrics):
         payload = [metric.__dict__ for metric in metrics]
-        r = requests.post(self.url, data=json.dumps(payload))
+        return json.dumps(payload, cls=NumpyEncoder)
+
+    def pushMetrics(self, metrics):
+        r = requests.post(self.url, data=self.dumpMetrics(metrics))
         print(r.content)
 
 def register_aggregator(cls):
