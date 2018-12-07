@@ -17,12 +17,12 @@
 '''
 
 
-
+from __future__ import division
 import json
 import os
 import traceback
 import importlib
-from collections import OrderedDict,defaultdict
+from collections import OrderedDict, defaultdict
 from datetime import datetime, timedelta
 from copy import copy
 from vnpy.event import Event
@@ -83,7 +83,6 @@ class CtaEngine(object):
         # 保存策略名称和委托号列表的字典
         # key为name，value为保存orderID（限价+本地停止）的集合
         self.strategyOrderDict = {}
-        self.symbolList =  []
         # 成交号集合，用来过滤已经收到过的成交推送
         self.tradeSet = set()
 
@@ -327,25 +326,35 @@ class CtaEngine(object):
 
                     if longTriggered or shortTriggered:
                         # 买入和卖出分别以涨停跌停价发单（模拟市价单）
+                        # 对于没有涨跌停价格的市场则使用5档报价
                         if so.direction==DIRECTION_LONG:
-                            price = tick.upperLimit
+                            if tick.upperLimit:
+                                price = tick.upperLimit
+                            else:
+                                price = tick.askPrice5
                         else:
-                            price = tick.lowerLimit
-
+                            if tick.lowerLimit:
+                                price = tick.lowerLimit
+                            else:
+                                price = tick.bidPrice5
+                        
                         # 发出市价委托
-                        self.sendOrder(so.vtSymbol, so.orderType, price, so.volume, so.priceType, so.strategy)
-
-                        # 从活动停止单字典中移除该停止单
-                        del self.workingStopOrderDict[so.stopOrderID]
-
-                        # 从策略委托号集合中移除
-                        s = self.strategyOrderDict[so.strategy.name]
-                        if so.stopOrderID in s:
-                            s.remove(so.stopOrderID)
-
-                        # 更新停止单状态，并通知策略
-                        so.status = STOPORDER_TRIGGERED
-                        so.strategy.onStopOrder(so)
+                        vtOrderID = self.sendOrder(so.vtSymbol, so.orderType, 
+                                                   price, so.volume, so.strategy)
+                        
+                        # 检查因为风控流控等原因导致的委托失败（无委托号）
+                        if vtOrderID:
+                            # 从活动停止单字典中移除该停止单
+                            del self.workingStopOrderDict[so.stopOrderID]
+                            
+                            # 从策略委托号集合中移除
+                            s = self.strategyOrderDict[so.strategy.name]
+                            if so.stopOrderID in s:
+                                s.remove(so.stopOrderID)
+                            
+                            # 更新停止单状态，并通知策略
+                            so.status = STOPORDER_TRIGGERED
+                            so.strategy.onStopOrder(so)
 
     #----------------------------------------------------------------------
     def processTickEvent(self, event):
@@ -598,11 +607,11 @@ class CtaEngine(object):
             if not os.path.exists(fileName):
                 with open(fileName,'w') as f:
                     json.dump(d,f)
-            # fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
-            # if not os.path.exists(fileName):
-            #     d['orders']=[]
-            #     with open(fileName,'w') as f:
-            #         json.dump(d,f)
+            fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
+            if not os.path.exists(fileName):
+                d['orders']=[]
+                with open(fileName,'w') as f:
+                    json.dump(d,f)
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -791,8 +800,18 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def putStrategyEvent(self, name):
         """触发策略状态变化事件（通常用于通知GUI更新）"""
+        strategy = self.strategyDict[name]
+        d = {k:strategy.__getattribute__(k) for k in strategy.varList}
+        
         event = Event(EVENT_CTA_STRATEGY+name)
+        event.dict_['data'] = d
         self.eventEngine.put(event)
+        
+        d2 = {k:str(v) for k,v in d.items()}
+        d2['name'] = name
+        event2 = Event(EVENT_CTA_STRATEGY)
+        event2.dict_['data'] = d2
+        self.eventEngine.put(event2)    
 
     #----------------------------------------------------------------------
     def callStrategyFunc(self, strategy, func, params=None):
