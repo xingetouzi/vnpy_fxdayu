@@ -564,6 +564,7 @@ class OkexfRestApi(RestClient):
             
             dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
             order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
             order.deliveryTime = datetime.now()
             
             self.gateway.onOrder(order)
@@ -589,7 +590,9 @@ class OkexfRestApi(RestClient):
                 trade.offset = order.offset
                 trade.volume = order.thisTradedVolume
                 trade.price = float(data['price_avg'])
-                trade.tradeTime = datetime.now().strftime('%Y%m%d %H:%M:%S')
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                
                 self.gateway.onTrade(trade)
     
     #----------------------------------------------------------------------
@@ -981,22 +984,22 @@ class OkexfWebsocketApi(WebsocketClient):
                 order.orderID = str(restApi.loginTime + restApi.orderID)
 
             order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-            order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
-            order.deliveryTime = datetime.now()
             order.price = data['price']
             order.totalVolume = int(data['amount'])
             order.tradedVolume = 0
             order.direction, order.offset = typeMapReverse[str(data['type'])]
-            
-            self.localRemoteDict[order.orderID] = str(data['orderid'])
-            self.orderDict[str(data['orderid'])] = order
-        
+
+        order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
+        order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+        order.deliveryTime = datetime.now()   
         order.thisTradedVolume = int(data['deal_amount']) - order.tradedVolume
-        
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = int(data['deal_amount'])
+
         self.gateway.onOrder(copy(order))
-        
+        self.localRemoteDict[order.orderID] = str(data['orderid'])
+        self.orderDict[str(data['orderid'])] = order
+
         if order.thisTradedVolume:
             self.tradeID += 1
             
@@ -1015,7 +1018,8 @@ class OkexfWebsocketApi(WebsocketClient):
             trade.offset = order.offset
             trade.volume = order.thisTradedVolume
             trade.price = float(data['price_avg'])
-            trade.tradeTime = datetime.now().strftime('%Y%m%d %H:%M:%S')
+            trade.tradeDatetime = datetime.now()
+            trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
             self.gateway.onTrade(trade)
         if order.status==STATUS_ALLTRADED or order.status==STATUS_CANCELLED:
             if order.orderID in self.localRemoteDict:

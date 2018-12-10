@@ -2,5 +2,7 @@
 	"apiKey": "",
 	"apiSecret": "",
 	"sessionCount": 3,
-	"symbols": ["XBTUSD", "EOSM18", "XRPM18"]
+	"symbols": ["XBTUSD", "EOSM18", "XRPM18"],
+	"setQryEnabled": true,
+    "setQryFreq": 60
 }

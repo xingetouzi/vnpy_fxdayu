@@ -480,7 +480,6 @@ class CtaEngine(object):
                     if 'eveningDict' in strategy.syncList:
                         strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
 
-
                     # 保存策略持仓到数据库
                     self.saveSyncData(strategy)  
 
@@ -493,7 +492,10 @@ class CtaEngine(object):
             if strategy.inited:
                 accountName = account.accountID
                 if 'accountDict' in strategy.syncList:
-                    strategy.accountDict[str(accountName)] = account.available
+                    if str(accountName) not in strategy.accountDict.keys():
+                        strategy.accountDict.update({str(accountName):account.available})
+                    else:
+                        strategy.accountDict[str(accountName)] = account.available
 
     def processErrorEvent(self,event):
         error = event.dict_['data']
@@ -1020,22 +1022,6 @@ class CtaEngine(object):
             if 'eveningDict' in strategy.syncList:
                 strategy.eveningDict[symbol+"_LONG"] = 0
                 strategy.eveningDict[symbol+"_SHORT"] = 0
-
-            if 'accountDict' in strategy.syncList:
-                symbol = symbol.split('.')[0]
-                name = str.lower(symbol.replace('_',''))
-                if 'btc' in name[-3:]:
-                    a = name.split('btc')[0]
-                    strategy.accountDict[a] = 0
-                    strategy.accountDict['btc'] = 0
-                elif 'usdt' in name[-4:]:
-                    a = name.split('usdt')[0]
-                    strategy.accountDict[a] = 0
-                    strategy.accountDict['usdt'] = 0
-                elif 'bnb' in name[-3:]:
-                    a = name.split('bnb')[0]
-                    strategy.accountDict[a] = 0
-                    strategy.accountDict['bnb'] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:

@@ -5,5 +5,7 @@
     "userID": "",
     "password": "",
     "jaqs_username":"",
-    "jaqs_password":""   
+    "jaqs_password":"",
+    "setQryEnabled": true,
+    "setQryFreq": 60
 }
