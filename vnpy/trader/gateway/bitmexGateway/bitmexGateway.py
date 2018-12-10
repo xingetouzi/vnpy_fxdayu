@@ -508,7 +508,7 @@ class WebsocketApi(BitmexWebsocketApi):
         trade.price = d['lastPx']
         trade.volume = d['lastQty']
         trade.tradeTime = d['timestamp'].replace('-','').replace('T',' ').replace('Z','')
-        trade.tradeDatetime = datetime.strptime(trade.tradeTime,, '%Y%m%d %H:%M:%S.%f')
+        trade.tradeDatetime = datetime.strptime(trade.tradeTime, '%Y%m%d %H:%M:%S.%f')
         
         self.gateway.onTrade(trade)
     
