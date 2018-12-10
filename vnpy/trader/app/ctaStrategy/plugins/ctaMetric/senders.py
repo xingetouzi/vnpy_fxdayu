@@ -24,7 +24,6 @@ class LogfileMetricSender(with_metaclass(Singleton, MetricSender)):
         self.logger = logger
         
     def pushMetrics(self, metrics):
-        payloads = [metric.__dict__ for metric in metrics]
-        for payload in payloads:
-            self.logger.info(json.dumps(payload))
+        for metric in metrics:
+            self.logger.info(metric.to_json())
         self.hander.close()

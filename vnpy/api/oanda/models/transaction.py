@@ -368,6 +368,8 @@ class OandaOrderCancelTransaction(OandaTransaction):
             return None
         order = copy(oldOrderData)
         order.cancelTime = self.time
+        if self.reason:
+            order.rejectedInfo = self.reason
         order.status = STATUS_CANCELLED
         return {
             VtOrderData: [order],

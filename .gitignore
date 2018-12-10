@@ -46,3 +46,4 @@ static/
 temp
 .ipynb_checkpoints
 .vscode
+*.orig

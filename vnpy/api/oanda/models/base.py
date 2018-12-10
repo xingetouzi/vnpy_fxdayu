@@ -407,8 +407,9 @@ class OandaCandlesTick(OandaData):
     def to_vnpy_bar(self):
         bar = VtBarData()
         bar.datetime, bar.date, bar.time = parse_datetime_str(self.time)
-        bar.open = self.data.o
-        bar.close = self.data.c
-        bar.high = self.data.h
-        bar.low = self.data.l
+        data = self.data
+        bar.open = data.o
+        bar.close = data.c
+        bar.high = data.h
+        bar.low = data.l
         return bar
