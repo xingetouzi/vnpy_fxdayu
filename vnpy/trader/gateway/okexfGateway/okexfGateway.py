@@ -56,9 +56,10 @@ class OkexfGateway(VtGateway):
         """Constructor"""
         super(OkexfGateway, self).__init__(eventEngine, gatewayName)
         
-        self.qryEnabled = True     # 是否要启动循环查询
+        self.qryEnabled = False     # 是否要启动循环查询
         self.localRemoteDict = {}   # localID:remoteID
         self.orderDict = {}         # remoteID:order
+        self.loop = asyncio.get_event_loop()
 
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
@@ -152,12 +153,15 @@ class OkexfGateway(VtGateway):
 
             # 执行查询函数
             function = self.qryFunctionList[self.qryNextFunction]
-            function()
+            self.loop.run_until_complete(function())
+            # function()
 
             # 计算下次查询函数的索引，如果超过了列表长度，则重新设为0
             self.qryNextFunction += 1
             if self.qryNextFunction == len(self.qryFunctionList):
                 self.qryNextFunction = 0
+
+            # self.loop.close()
 
     #----------------------------------------------------------------------
     def startQuery(self):
@@ -306,7 +310,7 @@ class OkexfRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):# type: (VtOrderReq)->str
-        """"""
+        """限速规则：20次/2s"""
         self.orderID += 1
         orderID = str(self.loginTime + self.orderID)
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
@@ -314,8 +318,8 @@ class OkexfRestApi(RestClient):
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
         for key,value in contractMap.items():
-            if value == orderReq.symbol:
-                symbol = key
+            if value == orderReq.symbol: 
+                symbol = key  
 
         data = {
             'client_oid': orderID,
@@ -351,7 +355,7 @@ class OkexfRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
-        """"""
+        """限速规则：10次/2s"""
         #symbol = cancelOrderReq.symbol
         orderID = cancelOrderReq.orderID
         remoteID = self.localRemoteDict.get(orderID, None)
@@ -465,8 +469,8 @@ class OkexfRestApi(RestClient):
         
     #----------------------------------------------------------------------
     def onQueryAccount(self, data, request):
-        """{'info': {'eos': {'equity': '4', 'margin': '0', 'margin_mode': 'crossed', '
-        margin_ratio': '10000', 'realized_pnl': '0', 'total_avail_balance': '4', 
+        """{'info': {'eos': {'equity': '9.49516783', 'margin': '0.52631594', 'margin_mode': 'crossed', 
+        'margin_ratio': '18.0408', 'realized_pnl': '-0.6195932', 'total_avail_balance': '10.11476103', 
         'unrealized_pnl': '0'}}} """
         """{"info":{"eos":{"contracts":[{"available_qty":"3.9479","fixed_balance":"0",
             "instrument_id":"EOS-USD-181228","margin_for_unfilled":"0","margin_frozen":"0",
@@ -560,6 +564,7 @@ class OkexfRestApi(RestClient):
             
             dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
             order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
             order.deliveryTime = datetime.now()
             
             self.gateway.onOrder(order)
@@ -585,7 +590,9 @@ class OkexfRestApi(RestClient):
                 trade.offset = order.offset
                 trade.volume = order.thisTradedVolume
                 trade.price = float(data['price_avg'])
-                trade.tradeTime = datetime.now().strftime('%Y%m%d %H:%M:%S')
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                
                 self.gateway.onTrade(trade)
     
     #----------------------------------------------------------------------
@@ -593,10 +600,10 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        print(data,"onsendorderfailed")
+        self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = request.response
+        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -607,7 +614,7 @@ class OkexfRestApi(RestClient):
         print(exceptionType,exceptionValue,"onsendordererror")
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = request.response
+        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -659,7 +666,8 @@ class OkexfRestApi(RestClient):
                         if value == str(data['order_id']):
                             del self.localRemoteDict[key]
                             del self.orderDict[key]
-                            del self.orderDict[str(data['order_id'])]
+                            if self.orderDict.get(str(data['order_id']),None):
+                                del self.orderDict[str(data['order_id'])]
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -976,22 +984,22 @@ class OkexfWebsocketApi(WebsocketClient):
                 order.orderID = str(restApi.loginTime + restApi.orderID)
 
             order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-            order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
-            order.deliveryTime = datetime.now()
             order.price = data['price']
             order.totalVolume = int(data['amount'])
             order.tradedVolume = 0
             order.direction, order.offset = typeMapReverse[str(data['type'])]
-            
-            self.localRemoteDict[order.orderID] = str(data['orderid'])
-            self.orderDict[str(data['orderid'])] = order
-        
+
+        order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
+        order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+        order.deliveryTime = datetime.now()   
         order.thisTradedVolume = int(data['deal_amount']) - order.tradedVolume
-        
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = int(data['deal_amount'])
+
         self.gateway.onOrder(copy(order))
-        
+        self.localRemoteDict[order.orderID] = str(data['orderid'])
+        self.orderDict[str(data['orderid'])] = order
+
         if order.thisTradedVolume:
             self.tradeID += 1
             
@@ -1010,7 +1018,8 @@ class OkexfWebsocketApi(WebsocketClient):
             trade.offset = order.offset
             trade.volume = order.thisTradedVolume
             trade.price = float(data['price_avg'])
-            trade.tradeTime = datetime.now().strftime('%Y%m%d %H:%M:%S')
+            trade.tradeDatetime = datetime.now()
+            trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
             self.gateway.onTrade(trade)
         if order.status==STATUS_ALLTRADED or order.status==STATUS_CANCELLED:
             if order.orderID in self.localRemoteDict:
@@ -1023,8 +1032,8 @@ class OkexfWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onAccount(self, d):
         """{'binary': 0, 'channel': 'ok_sub_futureusd_userinfo', 'data': {
-            'symbol': 'eos_usd', 'balance': 4.0, 'unit_amount': 10.0, 'profit_real': 0.0, 
-            'keep_deposit': 0.3003003}} """
+            'symbol': 'eos_usd', 'balance': 10.11476103, 'unit_amount': 10.0, 
+            'profit_real': -0.6195932, 'keep_deposit': 1.5e-07}}"""
         """{'binary': 0, 'channel': 'ok_sub_futureusd_userinfo', 'data': {
             'symbol': 'eos_usd', 'balance': 3.88249953, 'contracts': [{
                 'short_order_amount': 0.0, 'pre_long_order_amount': 1.0, 'freeze': 0.52910053, 
@@ -1043,8 +1052,10 @@ class OkexfWebsocketApi(WebsocketClient):
             account.accountID = currency
             account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
             
-            account.balance = data['balance']
-            account.available = data['balance'] - data['keep_deposit']
+            account.available = data['balance']
+            account.closeProfit = data['profit_real']
+            account.balance = data['balance'] - data['profit_real']
+            account.margin = data['keep_deposit']
         
         self.gateway.onAccount(account)
     

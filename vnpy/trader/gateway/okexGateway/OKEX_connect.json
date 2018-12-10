@@ -6,5 +6,7 @@
     "contracts":["btc_this_week","btc_next_week","btc_quarter",
         "bch_this_week","bch_next_week","bch_quarter",
         "eth_this_week","eth_next_week","eth_quarter"],
+    "setQryEnabled": false,
+    "setQryFreq": 60,
     "note":""
 }

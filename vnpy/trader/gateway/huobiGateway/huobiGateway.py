@@ -85,7 +85,11 @@ class HuobiGateway(VtGateway):
         self.tradeApi.connect(exchange, symbols, accessKey, secretKey)
 
         # 初始化并启动查询
-        self.initQuery()
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
+
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
@@ -119,14 +123,14 @@ class HuobiGateway(VtGateway):
             self.tradeApi.close()
 
     #----------------------------------------------------------------------
-    def initQuery(self):
+    def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.qryInfo]
 
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = 1         # 查询触发点
+            self.qryTrigger = freq         # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
 
             self.startQuery()
@@ -684,6 +688,7 @@ class HuobiTradeApi(TradeApi):
                 order.price = float(d['price'])
                 order.totalVolume = float(d['amount'])
                 order.orderTime = datetime.fromtimestamp(d['created-at']/1000).strftime('%H:%M:%S')
+                order.orderDatetime = datetime.fromtimestamp(d['created-at']/1000)
 
                 if 'buy' in d['type']:
                     order.direction = DIRECTION_LONG
@@ -695,6 +700,7 @@ class HuobiTradeApi(TradeApi):
             # 数据更新，只有当成交数量或者委托状态变化时，才执行推送
             if d['canceled-at']:
                 order.cancelTime = datetime.fromtimestamp(d['canceled-at']/1000).strftime('%H:%M:%S')
+                order.cancelDatetime = datetime.fromtimestamp(d['canceled-at']/1000)
 
             newTradedVolume = float(d['field-amount'])
             newStatus = statusMapReverse.get(d['state'], STATUS_UNKNOWN)
@@ -766,6 +772,7 @@ class HuobiTradeApi(TradeApi):
 
             dt = datetime.fromtimestamp(d['created-at']/1000)
             trade.tradeTime = dt.strftime('%H:%M:%S')
+            trade.tradeDatetime = dt
 
             self.gateway.onTrade(trade)
 

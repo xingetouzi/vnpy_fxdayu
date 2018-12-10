@@ -163,7 +163,11 @@ class CtpGateway(VtGateway):
 
 
         # 初始化并启动查询
-        self.initQuery()
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
+
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
 
     def update_current_datetime(self, dt):
         if self.current_datetime is None or dt > self.current_datetime:
@@ -209,13 +213,13 @@ class CtpGateway(VtGateway):
             self.tdApi.close()
 
     #----------------------------------------------------------------------
-    def initQuery(self):
+    def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.qryAccount, self.qryPosition]
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = 2         # 查询触发点
+            self.qryTrigger = freq      # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
 
             self.startQuery()
@@ -819,6 +823,7 @@ class CtpTdApi(TdApi):
         order.status = STATUS_REJECTED
         order.price = data['LimitPrice']
         order.totalVolume = data['VolumeTotalOriginal']
+        order.orderDatetime = datetime.now()
         self.gateway.onOrder(order)
 
         # 推送错误信息
@@ -1351,6 +1356,8 @@ class CtpTdApi(TdApi):
         order.cancelTime = data['CancelTime']
         order.frontID = data['FrontID']
         order.sessionID = data['SessionID']
+        order.orderDatetime = datetime.strptime(' '.join([data['TradingDay'], order.orderTime]), '%Y%m%d %H:%M:S')
+        order.cancelDatetime = datetime.strptime(' '.join([data['TradingDay'], order.cancelTime]), '%Y%m%d %H:%M:S')
 
         # 推送
         self.gateway.onOrder(order)
@@ -1388,6 +1395,7 @@ class CtpTdApi(TdApi):
         trade.price = data['Price']
         trade.volume = data['Volume']
         trade.tradeTime = data['TradeTime']
+        trade.tradeDatetime =datetime.strptime(' '.join([data['TradingDay'], trade.tradeTime]), '%Y%m%d %H:%M:S')
 
         # 推送
         self.gateway.onTrade(trade)
@@ -1415,6 +1423,7 @@ class CtpTdApi(TdApi):
         order.status = STATUS_REJECTED
         order.price = data['LimitPrice']
         order.totalVolume = data['VolumeTotalOriginal']
+        order.orderDatetime = datetime.now()
         self.gateway.onOrder(order)
 
         # 推送错误信息

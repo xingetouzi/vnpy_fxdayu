@@ -51,7 +51,8 @@ class CtaTemplate(object):
 
     # 同步列表，保存了需要保存到数据库的变量名称
     syncList = ['posDict',
-                'eveningDict']
+                'eveningDict',
+                'accountDict']
 
     # ----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
@@ -59,6 +60,7 @@ class CtaTemplate(object):
         self.ctaEngine = ctaEngine
         self.posDict = {}
         self.eveningDict = {}
+        self.accountDict = {}
         # 设置策略的参数
         if setting:
             d = self.__dict__

@@ -147,7 +147,7 @@ class OkexGateway(VtGateway):
         self.spotApi = SpotApi(self)     
         self.futuresApi = FuturesApi(self)
         
-        self.leverage = 0
+        self.qryEnabled = False
         self.connected = False
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)     
@@ -185,6 +185,11 @@ class OkexGateway(VtGateway):
         self.futuresApi.init(apiKey, secretKey, trace, contracts)
         self.spotApi.init(apiKey, secretKey, trace, symbols)
 
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
+
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
@@ -268,14 +273,14 @@ class OkexGateway(VtGateway):
         self.spotApi.close()
         
     #----------------------------------------------------------------------
-    def initQuery(self):
+    def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.qryPosition]
             
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = 2         # 查询触发点
+            self.qryTrigger = freq         # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
             
             self.startQuery()  
@@ -1279,7 +1284,8 @@ class FuturesApi(OkexFuturesApi):
         order.exchangeOrderID = orderId        
         order.user_id = rawData['user_id']
         order.gatewayName = self.gatewayName
-        order.createDate  = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
+        order.orderDatetime  = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
         
         order.deliverTime = datetime.now()
         order.status = statusMap[rawData['status']] 
@@ -1478,6 +1484,7 @@ class FuturesApi(OkexFuturesApi):
             order.offset = req.offset
             order.price = req.price
             order.totalVolume = req.volume
+            order.orderDatetime = datetime.now()
             order.orderTime = datetime.now()
             order.deliverTime = datetime.now()
             self.orderDict[vtOrderID] = order   #更新order信息
@@ -1514,6 +1521,7 @@ class FuturesApi(OkexFuturesApi):
                 order.offset= req.offset
                 order.price = req.price
                 order.totalVolume = req.volume
+                order.orderDatetime = datetime.now()
                 order.orderTime = datetime.now()
                 order.deliverTime = datetime.now()
                 self.gateway.onOrder(copy(order))
@@ -1540,6 +1548,7 @@ class FuturesApi(OkexFuturesApi):
         order.totalVolume = req.volume
         order.tradedVolume = 0
         order.orderTime = datetime.now()
+        order.orderDatetime = datetime.now()
         order.deliverTime = datetime.now()
         order.byStrategy = req.byStrategy
         order.status = STATUS_UNKNOWN
@@ -1628,6 +1637,7 @@ class FuturesApi(OkexFuturesApi):
                     trade.fee = order.fee
                     trade.volume = order.tradedVolume - order2.tradedVolume
                     trade.tradeTime = order.deliverTime
+                    trade.tradeDatetime = trade.tradeTime
                     trade.status = order.status
                     self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
                     self.gateway.onTrade(trade)
@@ -1838,7 +1848,7 @@ class FuturesApi(OkexFuturesApi):
                         order.price_avg = orderdetail['price_avg']
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
-                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
                         self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))
@@ -1856,7 +1866,7 @@ class FuturesApi(OkexFuturesApi):
                         order.totalVolume = int(orderdetail['amount'])    
                         order.exchangeOrderID = order_id        
                         order.gatewayName = self.gatewayName
-                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
                         
                         order.deliverTime = datetime.now()
                         order.status = statusMap[orderdetail['status']] 
@@ -1964,7 +1974,7 @@ class FuturesApi(OkexFuturesApi):
                         order.price_avg = orderdetail['price_avg']
                         order.deliverTime = datetime.now()
                         order.fee = orderdetail['fee']
-                        order.createDate  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
+                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
 
                         self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
                                 order.symbol,order.vtOrderID,order.status))

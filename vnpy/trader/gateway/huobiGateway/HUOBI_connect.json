@@ -4,5 +4,7 @@
 	"secretKey": "",
 	"symbols": ["bchbtc","ethbtc","ltcbtc","btcusdt","adausdt","ethusdt"],
 	"proxyHost": "127.0.0.1",
-	"proxyPort": 1080
+	"proxyPort": 1080,
+	"setQryEnabled": false,
+    "setQryFreq": 60
 }

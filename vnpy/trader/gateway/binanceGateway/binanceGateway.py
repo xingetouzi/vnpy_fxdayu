@@ -80,6 +80,7 @@ class BinanceGateway(VtGateway):
             apiKey = str(setting['apiKey'])
             secretKey = str(setting['secretKey'])
             symbols = setting['symbols']
+            self.qryEnabled = setting['qryEnabled']
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -179,7 +180,7 @@ class BinanceGateway(VtGateway):
             self.writeLog("BINANCE Type_ hint：1min,5min,15min,30min,60min,120min,240min,360min,480min,1day,1week,1year")
             return '-1'
         candletype = KLINE_PERIOD_MAP[type_]
-        symbol = vtSymbol.split(':')[0]
+        symbol = vtSymbol.split(VN_SEPARATOR)[0]
         data = self.api.loadHistoryBar(symbol,candletype,size)
         return data
 
@@ -256,7 +257,7 @@ class GatewayApi(BinanceApi):
 
             contract.symbol = d['symbol']
             contract.exchange = EXCHANGE_BINANCE
-            contract.vtSymbol = ':'.join([contract.symbol, self.gatewayName])
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, self.gatewayName])
             contract.name = contract.vtSymbol
             contract.productClass = PRODUCT_SPOT
             contract.size = 1
@@ -287,16 +288,17 @@ class GatewayApi(BinanceApi):
 
             order.symbol = d['symbol']
             order.exchange = EXCHANGE_BINANCE
-            order.vtSymbol = ':'.join([order.symbol, self.gatewayName])
+            order.vtSymbol = VN_SEPARATOR.join([order.symbol, self.gatewayName])
 
             order.orderID = d['clientOrderId']
-            order.vtOrderID = ':'.join([order.gatewayName, order.orderID])
+            order.vtOrderID = VN_SEPARATOR.join([order.gatewayName, order.orderID])
 
             order.direction = directionMapReverse[d['side']]
             order.price = float(d['price'])
             order.totalVolume = float(d['origQty'])
             order.tradedVolume = float(d['executedQty'])
             date, order.orderTime = self.generateDateTime(d['time'])
+            order.orderDatetime = datetime.strptime(' '.join([date, order.orderTime]),'%Y%m%d %H:%M:%S.%f')
             order.status = statusMapReverse[d['status']]
 
             self.gateway.onOrder(order)
@@ -319,9 +321,9 @@ class GatewayApi(BinanceApi):
                 pos.gatewayName = self.gatewayName
                 pos.symbol = d['asset']
                 pos.exchange = EXCHANGE_BINANCE
-                pos.vtSymbol = ':'.join([pos.vtSymbol, pos.direction])
+                pos.vtSymbol = VN_SEPARATOR.join([pos.vtSymbol, pos.direction])
                 pos.direction = DIRECTION_LONG
-                pos.vtPositionName = ':'.join([pos.symbol, pos.direction])
+                pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
                 pos.frozen = locked
                 pos.position = free + locked
                 self.gateway.onPosition(pos)
@@ -370,9 +372,9 @@ class GatewayApi(BinanceApi):
                 pos.gatewayName = self.gatewayName
                 pos.symbol = d['a']
                 pos.exchange = EXCHANGE_BINANCE
-                pos.vtSymbol = ':'.join([pos.vtSymbol, pos.direction])
+                pos.vtSymbol = VN_SEPARATOR.join([pos.vtSymbol, pos.direction])
                 pos.direction = DIRECTION_LONG
-                pos.vtPositionName = ':'.join([pos.symbol, pos.direction])
+                pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
                 pos.frozen = locked
                 pos.position = free + locked
                 self.gateway.onPosition(pos)
@@ -388,19 +390,20 @@ class GatewayApi(BinanceApi):
 
         order.symbol = d['s']
         order.exchange = EXCHANGE_BINANCE
-        order.vtSymbol = ':'.join([order.symbol, self.gatewayName])
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, self.gatewayName])
 
         if d['C'] != 'null':
             order.orderID = d['C']  # 撤单原始委托号
         else:
             order.orderID = d['c']
-        order.vtOrderID = ':'.join([order.gatewayName, order.orderID])
+        order.vtOrderID = VN_SEPARATOR.join([order.gatewayName, order.orderID])
 
         order.direction = directionMapReverse[d['S']]
         order.price = float(d['p'])
         order.totalVolume = float(d['q'])
         order.tradedVolume = float(d['z'])
         date, order.orderTime = self.generateDateTime(d['T'])
+        order.orderDatetime = datetime.strptime(' '.join([date, order.orderTime]),'%Y%m%d %H:%M:%S.%f')
         order.status = statusMapReverse[d['X']]
 
         self.gateway.onOrder(order)
@@ -416,11 +419,12 @@ class GatewayApi(BinanceApi):
             trade.orderID = order.orderID
             trade.vtOrderID = order.vtOrderID
             trade.tradeID = str(d['t'])
-            trade.vtTradeID = ':'.join([trade.gatewayName, trade.tradeID])
+            trade.vtTradeID = VN_SEPARATOR.join([trade.gatewayName, trade.tradeID])
             trade.direction = order.direction
             trade.price = float(d['L'])
             trade.volume = float(d['l'])
             date, trade.tradeTime = self.generateDateTime(d['E'])
+            trade.orderDatetime = datetime.strptime(' '.join([date, trade.tradeTime]),'%Y%m%d %H:%M:%S.%f')
 
             self.gateway.onTrade(trade)
 
@@ -438,7 +442,7 @@ class GatewayApi(BinanceApi):
             tick.gatewayName = self.gatewayName
             tick.symbol = symbol
             tick.exchange = EXCHANGE_BINANCE
-            tick.vtSymbol = ':'.join([tick.symbol, self.gatewayName])
+            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, self.gatewayName])
 
             self.tickDict[symbol] = tick
 
@@ -513,7 +517,7 @@ class GatewayApi(BinanceApi):
         """"""
         self.orderId += 1
         orderId = self.date + str(self.orderId).rjust(6, '0')
-        vtOrderID = ':'.join([self.gatewayName, orderId])
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderId])
         side = directionMap.get(orderReq.direction, '')
         if orderReq.priceType == 0:
             orderReq.priceType = PRICETYPE_LIMITPRICE

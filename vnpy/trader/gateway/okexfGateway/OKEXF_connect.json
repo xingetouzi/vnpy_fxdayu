@@ -5,7 +5,7 @@
     "leverage": 10,
     "contracts":["eos_this_week","eos_quarter"],
     "sessionCount": 3,
-    "setQryEnabled": true,
+    "setQryEnabled": false,
     "setQryFreq": 60,
     "trace": false,
     "note":""

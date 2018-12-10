@@ -158,6 +158,8 @@ class VtTradeData(VtBaseData):
         self.fee = EMPTY_FLOAT                  # 成交手续费
         self.status = EMPTY_UNICODE
         self.orderTime = EMPTY_STRING           # 成交单的委托时间
+        self.tradeDatetime = None               # 成交时间Datetime格式
+
 
 
 ########################################################################
@@ -187,14 +189,15 @@ class VtOrderData(VtBaseData):
         self.thisTradedVolume = EMPTY_FLOAT     # 本次成交数量
         self.status = EMPTY_UNICODE             # 报单状态
         self.priceType = EMPTY_UNICODE           
-        self.orderTime = None                   # 本地发单时间
+        self.orderTime = EMPTY_STRING           # 本地发单时间
         self.cancelTime = EMPTY_STRING          # 撤单时间
         self.exchangeOrderID = EMPTY_STRING     # 交易所返回的id
         self.byStrategy = EMPTY_STRING          # 发出该订单的策略
         self.deliverTime = None                 # 更新时间
         self.rejectedInfo = EMPTY_UNICODE       # 拒单理由
         self.fee = EMPTY_FLOAT                  # 挂单手续费
-        self.createDate = None                  # 订单记录的发单时间
+        self.orderDatetime = None               # 订单的发单时间Datetime格式
+        self.cancelDateime = None               # 订单的撤单时间Datetime格式
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号
