@@ -6,6 +6,6 @@
     "password": "",
     "jaqs_username":"",
     "jaqs_password":"",
-    "setQryEnabled": true,
+    "setQryEnabled": false,
     "setQryFreq": 60
 }

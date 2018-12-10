@@ -98,7 +98,7 @@ class CtpGateway(VtGateway):
         self.mdConnected = False        # 行情API连接状态，登录完成后为True
         self.tdConnected = False        # 交易API连接状态
 
-        self.qryEnabled = True         # 循环查询
+        self.qryEnabled = False         # 循环查询
 
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)

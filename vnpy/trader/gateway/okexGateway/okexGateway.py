@@ -147,7 +147,7 @@ class OkexGateway(VtGateway):
         self.spotApi = SpotApi(self)     
         self.futuresApi = FuturesApi(self)
         
-        self.qryEnabled = True
+        self.qryEnabled = False
         self.connected = False
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)     

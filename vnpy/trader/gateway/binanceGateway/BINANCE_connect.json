@@ -2,6 +2,6 @@
   "apiKey": "",
   "secretKey": "",
   "symbols": ["LTCBTC"],
-  "setQryEnabled": true,
+  "setQryEnabled": false,
   "setQryFreq": 60
 }

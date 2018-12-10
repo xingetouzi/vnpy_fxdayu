@@ -56,7 +56,7 @@ class OkexfGateway(VtGateway):
         """Constructor"""
         super(OkexfGateway, self).__init__(eventEngine, gatewayName)
         
-        self.qryEnabled = True     # 是否要启动循环查询
+        self.qryEnabled = False     # 是否要启动循环查询
         self.localRemoteDict = {}   # localID:remoteID
         self.orderDict = {}         # remoteID:order
         self.loop = asyncio.get_event_loop()

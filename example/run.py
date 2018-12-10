@@ -19,7 +19,7 @@ from vnpy.trader.vtEngine import MainEngine
 from vnpy.trader.uiQt import createQApp
 
 # 加载底层接口
-from vnpy.trader.gateway import (huobiGateway, okexGateway,binanceGateway,okexFGateway)
+from vnpy.trader.gateway import (huobiGateway, okexGateway,binanceGateway,okexfGateway)
                                 #  , bitfinexGateway,
                                 #  bitmexGateway, fcoinGateway,
                                 #  bigoneGateway, lbankGateway,
@@ -52,7 +52,7 @@ def main():
     # me.addGateway(bitmexGateway)
     me.addGateway(huobiGateway)
     me.addGateway(okexGateway)
-    me.addGateway(okexFGateway)
+    me.addGateway(okexfGateway)
     me.addGateway(binanceGateway)
     # me.addGateway(bitfinexGateway)
     
