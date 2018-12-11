@@ -12,7 +12,7 @@ from collections import defaultdict
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtUtility import BarGenerator, ArrayManager
-from vnpy.trader.utils import mail
+from vnpy.trader.utils.email import mail
 
 from .ctaBase import *
 

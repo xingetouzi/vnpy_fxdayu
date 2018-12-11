@@ -22,7 +22,7 @@ def mail(my_context,strategy):
         return "Please fill email address in ctaSetting.json"
     
     if not my_context:
-        return "Please write email context: %s"%strategy.name
+        return "Please write email context"
 
     ret=True
     try:
@@ -41,8 +41,8 @@ def mail(my_context,strategy):
         else:
             server.sendmail(mailaccount,[to_receiver],msg.as_string())
         server.quit()
-        msg = "%s: Send email successfully ..."%strategy.name
+        msg = "Send email successfully ..."
     except Exception:
         ret=False
-        msg = "%s: Send email failed ..."%strategy.name
+        msg = "Send email failed ..."
     return msg
