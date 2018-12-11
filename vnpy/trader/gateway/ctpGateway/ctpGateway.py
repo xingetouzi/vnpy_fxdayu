@@ -163,7 +163,7 @@ class CtpGateway(VtGateway):
 
 
         # 初始化并启动查询
-        setQryEnabled = setting.get('setQryEnabled', None)
+        setQryEnabled = setting.get('setQryEnabled', False)
         self.setQryEnabled(setQryEnabled)
 
         setQryFreq = setting.get('setQryFreq', 60)
@@ -1104,7 +1104,7 @@ class CtpTdApi(TdApi):
 
         # 推送
         self.gateway.onContract(contract)
-        self.contractsList.append(contract.symbol)
+        self.contractsList.append(contract.symbol+'.'+contract.exchange)
         a = {"contracts":self.contractsList}
 
         with open(getTempPath('contractList.json'),'w') as f:
@@ -1356,8 +1356,9 @@ class CtpTdApi(TdApi):
         order.cancelTime = data['CancelTime']
         order.frontID = data['FrontID']
         order.sessionID = data['SessionID']
-        order.orderDatetime = datetime.strptime(' '.join([data['TradingDay'], order.orderTime]), '%Y%m%d %H:%M:S')
-        order.cancelDatetime = datetime.strptime(' '.join([data['TradingDay'], order.cancelTime]), '%Y%m%d %H:%M:S')
+        order.orderDatetime = datetime.strptime(' '.join([data['TradingDay'], order.orderTime]), '%Y%m%d %H:%M:%S')
+        if order.cancelTime:
+            order.cancelDatetime = datetime.strptime(' '.join([data['TradingDay'], order.cancelTime]), '%Y%m%d %H:%M:%S')
 
         # 推送
         self.gateway.onOrder(order)
@@ -1395,7 +1396,7 @@ class CtpTdApi(TdApi):
         trade.price = data['Price']
         trade.volume = data['Volume']
         trade.tradeTime = data['TradeTime']
-        trade.tradeDatetime =datetime.strptime(' '.join([data['TradingDay'], trade.tradeTime]), '%Y%m%d %H:%M:S')
+        trade.tradeDatetime =datetime.strptime(' '.join([data['TradingDay'], trade.tradeTime]), '%Y%m%d %H:%M:%S')
 
         # 推送
         self.gateway.onTrade(trade)

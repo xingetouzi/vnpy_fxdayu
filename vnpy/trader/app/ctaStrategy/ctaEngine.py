@@ -31,10 +31,7 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
-from vnpy.trader.vtGlobal import globalSetting
-import smtplib
-from email.mime.text import MIMEText
-from email.utils import formataddr
+from vnpy.trader.utils.email import mail
 from decimal import *
 
 from .ctaBase import *
@@ -107,6 +104,7 @@ class CtaEngine(object):
         
         contract = self.mainEngine.getContract(vtSymbol)
         req = VtOrderReq()
+        reqcount = 1 
         
         req.symbol = contract.symbol
         req.exchange = contract.exchange
@@ -139,14 +137,25 @@ class CtaEngine(object):
                 posBuffer = self.ydPositionDict.get(vtSymbol+'_LONG', None)
                 # 如果获取持仓缓存失败，则默认平昨
                 if not posBuffer:
-                    self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
+                    self.writeCtaLog(u'获取昨持多仓为0，发出平今指令')
                     req.offset = OFFSET_CLOSETODAY
 
                 elif posBuffer:
-                    self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
-                    req.offset = OFFSET_CLOSE
-                    if (posBuffer - volume)>0:
-                       self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
+                    if volume <= posBuffer:
+                        req.offset = OFFSET_CLOSE
+                        self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
+                        req.offset = OFFSET_CLOSE
+                        if (posBuffer - volume)>0:
+                            self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
+                    else:
+                        req.offset = OFFSET_CLOSE
+                        req.volume = posBuffer
+                        self.writeCtaLog(u'{}平仓量{}，大于昨多仓，拆分优先平昨仓数:{}'.format(vtSymbol, volume, posBuffer))
+                        req2 = copy(req)
+                        req2.offset = OFFSET_CLOSETODAY
+                        req2.volume = volume - posBuffer
+                        self.writeCtaLog(u'{}平仓量大于昨多仓，拆分到平今仓数:{}'.format(vtSymbol, req2.volume))
+                        reqcount = 2
 
         elif orderType == CTAORDER_SHORT:
             req.direction = DIRECTION_SHORT
@@ -158,24 +167,38 @@ class CtaEngine(object):
             if contract.exchange != EXCHANGE_SHFE:
                 req.offset = OFFSET_CLOSE
             else:
-                
                 # 获取持仓缓存数据
                 posBuffer = self.ydPositionDict.get(vtSymbol+'_SHORT', None)
                 # 如果获取持仓缓存失败，则默认平昨
                 if not posBuffer:
-                    self.writeCtaLog(u'获取昨持仓为0，发出平今指令')
+                    self.writeCtaLog(u'获取昨持空仓为0，发出平今指令')
                     req.offset = OFFSET_CLOSETODAY
 
                 elif posBuffer:
-                    self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
-                    req.offset = OFFSET_CLOSE
-                    if (posBuffer - volume)>0:
-                       self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
+                    if volume <= posBuffer:
+                        req.offset = OFFSET_CLOSE
+                        self.writeCtaLog(u'{}优先平昨，昨空仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
+                        req.offset = OFFSET_CLOSE
+                        if (posBuffer - volume)>0:
+                            self.writeCtaLog(u'{}剩余昨空仓{}'.format(vtSymbol,(posBuffer - volume)))
+                    else:
+                        req.offset = OFFSET_CLOSE
+                        req.volume = posBuffer
+                        self.writeCtaLog(u'{}平仓量{}，大于昨空仓，拆分优先平昨仓数:{}'.format(vtSymbol, volume, posBuffer))
+                        req2 = copy(req)
+                        req2.offset = OFFSET_CLOSETODAY
+                        req2.volume = volume - posBuffer
+                        self.writeCtaLog(u'{}平仓量大于昨空仓，拆分到平今仓数:{}'.format(vtSymbol, req2.volume))
+                        reqcount = 2
 
         # 委托转换
         # reqList = self.mainEngine.convertOrderReq(req) # 不转了
 
-        reqList = [req]
+        if reqcount == 1:
+            reqList = [req]
+        else:
+            reqList = [req,req2]
+
         vtOrderIDList = []
         # if not reqList:
         #     return vtOrderIDList
@@ -184,7 +207,7 @@ class CtaEngine(object):
             self.orderStrategyDict[vtOrderID] = strategy                                 # 保存vtOrderID和策略的映射关系
             self.strategyOrderDict[strategy.name].add(vtOrderID)                         # 添加到策略委托号集合中
             vtOrderIDList.append(vtOrderID)
-        self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
+            self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
                          %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
 
         return vtOrderIDList
@@ -829,7 +852,7 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            self.mail(content,strategy)
+            mail(content,strategy)
             self.writeCtaLog(content)
 
     #----------------------------------------------------------------------------------------
@@ -1055,60 +1078,13 @@ class CtaEngine(object):
         else:
             self.writeCtaLog(u'策略实例不存在：%s' %name)
     
-    def mail(self,my_context,strategy):
-        mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
-        mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
-        if "" in [mailaccount,mailpass,mailserver,mailport]:
-            return self.writeCtaLog(u'Please fill sender\'s mail info in vtSetting.json')
-
-        if strategy.mailAdd:
-            if len(strategy.mailAdd)>1:
-                to_receiver = strategy.mailAdd[0]
-                cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
-                cc_receiver = ",".join(cc_receiver)
-                my_receiver = ",".join([to_receiver,cc_receiver])
-            elif len(strategy.mailAdd)==1:
-                to_receiver = my_receiver = strategy.mailAdd[0]
-                cc_receiver = ""
-        else:
-            self.writeCtaLog(u"Please fill email address in ctaSetting.json")
-            return False
-        
-        if not my_context:
-            self.writeCtaLog(u"Please write email context: %s"%strategy.name)
-            return False
-
-        ret=True
-        try:
-            my_context = my_context +"<br><br> from strategy: "+ strategy.name+"<br><br>Good Luck<br>"+ datetime.now().strftime("%Y%m%d %H:%M:%S")
-            msg=MIMEText(my_context,'html','utf-8')
-            msg['From']=formataddr(['VNPY_CryptoCurrency',mailaccount])
-            msg['To']=to_receiver#formataddr(["收件人昵称",to_receiver])
-            if cc_receiver:
-                msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
-            msg['Subject'] = '策略信息播报'
-    
-            server=smtplib.SMTP_SSL(mailserver, mailport)
-            server.login(mailaccount, mailpass)
-            if cc_receiver:
-                server.sendmail(mailaccount,[to_receiver,cc_receiver],msg.as_string())
-            else:
-                server.sendmail(mailaccount,[to_receiver],msg.as_string())
-            server.quit()
-            self.writeCtaLog(u"%s: Send email successfully ..."%strategy.name)
-        except Exception:
-            ret=False
-            self.writeCtaLog(u"%s: Send email failed ..."%strategy.name)
-        return ret
-
     def loadLocalStrategy(self):
         # 用来保存策略类的字典
         STRATEGY_GET_CLASS = {}
 
-        # 获取目录路径
+        # 获取目录路径， 遍历当前目录下的文件
         path = os.getcwd()
 
-        # 遍历strategy目录下的文件
         for root, subdirs, files in os.walk(path):
             for name in files:
                 # 只有文件名中包含strategy且非.pyc的文件，才是策略文件
@@ -1138,18 +1114,15 @@ class CtaEngine(object):
 
     def loadPolicy(self,policyName):
         POLICY_CLASS ={}
-        path = os.getcwd()
-        for root, subdirs, files in os.walk(path):
-            for name in files:
-                if 'policy' in name and '.pyc' not in name:
-                    try:
-                        module = importlib.import_module('policy')
-                        for k in dir(module):
-                            if policyName in k:
-                                v = module.__getattribute__(k)
-                                POLICY_CLASS[k] = v
-                    except:
-                        print('-' * 20)
-                        print(('Failed to import policy file'))
-                        traceback.print_exc()
+        if os.path.exists('policy.py'):
+            try:
+                module = importlib.import_module('policy')
+                for k in dir(module):
+                    if policyName in k:
+                        v = module.__getattribute__(k)
+                        POLICY_CLASS[k] = v
+            except:
+                print('-' * 20)
+                print(('Failed to import policy file'))
+                traceback.print_exc()
         return POLICY_CLASS

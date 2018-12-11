@@ -12,6 +12,7 @@ from collections import defaultdict
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtUtility import BarGenerator, ArrayManager
+from vnpy.trader.utils import mail
 
 from .ctaBase import *
 
@@ -180,14 +181,14 @@ class CtaTemplate(object):
     #     self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
 
     # # ----------------------------------------------------------------------
-    # def loadTick(self, hours=1):
-    #     """读取tick数据"""
-    #     return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
+    def loadTick(self, hours=1):
+        """读取tick数据"""
+        return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
 
-    #     # ----------------------------------------------------------------------
-    # def loadBar(self, hours=1):
-    #     """读取bar数据"""
-    #     return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
+    # ----------------------------------------------------------------------
+    def loadBar(self, hours=1):
+        """读取bar数据"""
+        return self.ctaEngine.loadBar(self.barDbName, self.symbolList, hours)
 
     # ----------------------------------------------------------------------
     def writeCtaLog(self, content):
@@ -211,7 +212,7 @@ class CtaTemplate(object):
     #     if self.trading:
     #         self.ctaEngine.saveSyncData(self)
 
-    #     #--------------------------------------------------    
+    #--------------------------------------------------    
     # def loadSyncData(self):
     #     """从数据库读取同步数据"""
     #     self.ctaEngine.loadSyncData(self)
@@ -251,7 +252,8 @@ class CtaTemplate(object):
         
     def mail(self,my_context):
         """邮件发送模块"""
-        self.ctaEngine.mail(my_context,self)
+        msg = mail(my_context,self)
+        self.writeCtaLog('%s'%msg)
 
     def initBacktesingData(self):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
@@ -265,7 +267,7 @@ class CtaTemplate(object):
                 for tick in initdata:
                     self.onTick(tick)  # 将历史数据直接推送到onTick  
     
-    def generateBarDict(self, onBar, xmin=0, onXminBar=None, marketClose =(23,59),size = 100):
+    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100, alignment='sharp', incomplete = False, marketClose = (23,59)):
         if xmin: 
             variable = "bg%sDict"%xmin
             variable2 = "am%sDict"%xmin
@@ -273,7 +275,7 @@ class CtaTemplate(object):
             variable = "bgDict"
             variable2 = "amDict"
         bgDict= {
-            sym: BarGenerator(onBar,xmin,onXminBar,marketClose)
+            sym: BarGenerator(onBar,xmin,onXminBar, alignment, incomplete, marketClose)
             for sym in self.symbolList }
         
         amDict = {
