@@ -92,7 +92,7 @@ class BitmexGateway(VtGateway):
         self.restApi.connect(apiKey, apiSecret, sessionCount)
         self.wsApi.connect(apiKey, apiSecret, symbols)
 
-        setQryEnabled = setting.get('setQryEnabled', None)
+        setQryEnabled = setting.get('setQryEnabled', False)
         self.setQryEnabled(setQryEnabled)
 
         setQryFreq = setting.get('setQryFreq', 60)
@@ -508,7 +508,7 @@ class WebsocketApi(BitmexWebsocketApi):
         trade.price = d['lastPx']
         trade.volume = d['lastQty']
         trade.tradeTime = d['timestamp'].replace('-','').replace('T',' ').replace('Z','')
-        trade.tradeDatetime = datetime.strptime(trade.tradeTime,, '%Y%m%d %H:%M:%S.%f')
+        trade.tradeDatetime = datetime.strptime(trade.tradeTime, '%Y%m%d %H:%M:%S.%f')
         
         self.gateway.onTrade(trade)
     
