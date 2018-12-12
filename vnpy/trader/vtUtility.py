@@ -318,6 +318,8 @@ class ArrayManager(object):
     1. K线时间序列的维护
     2. 常用技术指标的计算
     """
+    DATETIME_FORMAT = '%Y%m%d %H:%M:%S'
+
     # ----------------------------------------------------------------------
     def __init__(self, size=100):
         """Constructor"""
@@ -336,7 +338,7 @@ class ArrayManager(object):
                 self.inited = True
 
             self.array['datetime'][0:self.size - 1] = self.array['datetime'][1:self.size]
-            self.array['datetime'][-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
+            self.array['datetime'][-1] = bar.datetime.strftime(self.DATETIME_FORMAT)
 
             self.array['open'][0:self.size - 1] = self.array['open'][1:self.size]
             self.array['open'][-1] = float(bar.open)
@@ -388,7 +390,7 @@ class ArrayManager(object):
         """获取时间戳序列"""
         return self.array['datetime']
 
-    def DataFrame(self):
+    def to_dataframe(self):
         """提供DataFrame"""
         return pd.DataFrame(self.array)
 

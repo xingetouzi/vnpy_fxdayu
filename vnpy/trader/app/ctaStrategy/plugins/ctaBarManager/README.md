@@ -44,6 +44,29 @@ freq为符合以上描述的频率标识。CtaBarManager将会自动订阅symbol
 
 第三条推送规则：当同一个时间点有多个频率的Bar数据推送时，将按频率从低到高来推送。
 
+### 手动注册回调函数
+除了以上的自动注册机制以外，也可以在策略的`OnInit`方法中使用`CtaTemplate.registerOnBar`接口手动注册某品种下某频率K线的回调函数，接口定义如下：
+```python
+class CtaTemplate:
+    
+    ...
+
+    def registerOnBar(self, symbol, freq, func):
+        """注册对应品种频率的Bar
+        
+        Parameters
+        ----------
+        symbol : str
+            合约代码
+        freq : str
+            频率标识
+        func : function
+            回调函数
+        """
+        ...
+```
+> 只有通过以上两个方法注册过回调函数的相应品种频率的K线，系统才会合成并推送Bar数据，对应的`ArrayManager`中才会有数据。如果只是希望获取到某频率的Bar数据，可以在调用registerOnBar时在func参数填入None。
+
 ### 从ArrayManager获取bar数据
 除开回调函数中的bar参数包含了当前对应频率的Bar数据，CtaBarManager还将获取到的历史数据及接收到的合成Bar数据拼接并放入了预先定义好的ArrayManager对象中。CtaTemplate新增getArrayManager方法用于获取相应的ArrayManager对象，定义如下:
 ```python
@@ -67,6 +90,51 @@ class DemoStrategy(CtaTemplate):
         ...
 ```
 
-### ArrayManager中新增datetime属性
-ArrayManager新增datetime属性，里面存放按`"%Y%m%d%H%M%S"`规则转化为整数的Bar开始时间。
+### ArrayManager中新增datetime相关属性
+ArrayManager新增两个与datetime相关的属性
+- datetime属性，里面存放按`"%Y%m%d %H:%M:%S"`规则转换出的字符串。
+- datetimeint属性，里面存放按`"%Y%m%d%H%M%S"`规则转化为整数的Bar开始时间。
 
+### 使用MergeArrayManager合成不同频率的ArrayManager
+`ArrayManager`中只存放已完成的Bar数据，有时候需要在更高频率的回调中获取低频的Bar数据，可能还会想将此时低频Bar数据中最近的那根未完成的Bar纳入考虑。
+对这种场景，增加了`MergeArrayManager`方法:
+```python
+class CtaTemplate:
+    def mergeArrayManager(self, am1, am2, size=None):
+    """
+    合成**同一时刻**下两种不同频率的ArrayManager,将使用当前的高频Bar数据合成低频的未完成Bar并和原来的低频Bar数据整合，得到一个新的ArrayManager
+    
+    Parameters
+    ----------
+    am1 : ArrayManager
+        参与合成的第一个ArrayManager
+    am2 : ArrayManager
+        参与合成的第二个ArrayManager
+    size : int, optional
+        返回ArrayManager的size (默认值为None, 返回的ArrayManager将和输入的ArrayManager有相同的size)
+    
+    Returns:
+    --------
+    am : ArrayManager
+        包含整合后低频Bar数据的ArrayManager
+    """
+    ...
+```
+用例：
+```python
+class DemoStrategy(CtaTemplate):
+    ...
+
+    def onBar(self, bar):
+        symbol = self.symbolList[0]
+        am = self.getArrayManager(symbol, "1m")
+        am_5m = self.getArrayManager(symbol, "5m")
+        am_5m_with_uncomplete_bar = self.mergeArrayManager(am, am_5m, size=10)
+        # am_5m_with_uncomplete_bar = self.mergeArrayManager(am_5m, am, size=10)
+        # this will give the same result
+
+    def on5mBar(self, bar):
+        pass
+    
+    ...
+```
