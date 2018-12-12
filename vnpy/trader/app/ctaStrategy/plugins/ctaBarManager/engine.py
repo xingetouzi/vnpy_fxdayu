@@ -75,6 +75,9 @@ class BacktestingEngine(OriginBacktestingEngine):
     def setArrayManagerSize(self, size):
         return self.barManager.set_size(size)
 
+    def registerOnBar(self, symbol, freq, func):
+        return self.barManager.register(symbol, freq, func)
+
     def getArrayManager(self, symbol, freq="1m"):
         return self.barManager.get_array_manager(symbol, freq=freq)
 
