@@ -13,6 +13,7 @@ import numpy as np
 from dateutil.parser import parse
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.utils import Logger
+from vnpy.trader.vtConstant import VN_SEPARATOR
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
 
