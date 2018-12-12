@@ -180,7 +180,7 @@ class CtaTemplate(object):
     #     """向数据库中插入bar数据"""
     #     self.ctaEngine.insertData(self.barDbName, self.vtSymbol, bar)
 
-    # # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def loadTick(self, hours=1):
         """读取tick数据"""
         return self.ctaEngine.loadTick(self.tickDbName, self.symbolList, hours)
