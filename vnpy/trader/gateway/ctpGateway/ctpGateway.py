@@ -15,7 +15,7 @@ import pandas as pd
 from vnpy.api.ctp import MdApi, TdApi, defineDict
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES
+from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES, VN_SEPARATOR
 from jaqs.data import DataView,RemoteDataService
 from .language import text
 
@@ -1104,7 +1104,7 @@ class CtpTdApi(TdApi):
 
         # 推送
         self.gateway.onContract(contract)
-        self.contractsList.append(contract.symbol+'.'+contract.exchange)
+        self.contractsList.append(contract.symbol + VN_SEPARATOR + contract.exchange)
         a = {"contracts":self.contractsList}
 
         with open(getTempPath('contractList.json'),'w') as f:
