@@ -13,7 +13,7 @@ class BarGenerator(object):
     2. 基于1分钟K线合成X分钟K线（X可以是2、3、5、10、15、30、60）
     """
     # ----------------------------------------------------------------------
-    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0, alignment='sharp', incomplete = False, marketClose = (23,59)):
+    def __init__(self, onBar, xmin=0, onXminBar=None, xSecond = 0, alignment='sharp', marketClose = (23,59)):
         """Constructor"""
         self.bar = None  # 1分钟K线对象
         self.onBar = onBar  # 1分钟K线回调函数
@@ -40,7 +40,6 @@ class BarGenerator(object):
 
         self.marketClose = marketClose
         self.alignment = alignment
-        self.incomplete = incomplete
 
     # ----------------------------------------------------------------------
     def updateTick(self, tick):
@@ -307,10 +306,6 @@ class BarGenerator(object):
         self.onBar(self.bar)
         self.bar = None
 
-    def updateHalfBar(self,Bar):
-        """非完整Bar的合并"""
-        pass
-
 # ########################################################################
 class ArrayManager(object):
     """
@@ -324,6 +319,7 @@ class ArrayManager(object):
     def __init__(self, size=100):
         """Constructor"""
         self.count = 0  # 缓存计数
+        self.finished = True
         self.size = size  # 缓存大小
         self.inited = False  # True if count>=size
 
@@ -333,6 +329,10 @@ class ArrayManager(object):
     def updateBar(self, bar):
         """更新K线"""
         if bar:  # 如果是实盘K线
+            if not self.finished:
+                self.finished = True
+                return
+
             self.count += 1
             if not self.inited and self.count >= self.size:
                 self.inited = True
@@ -354,6 +354,29 @@ class ArrayManager(object):
 
             self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
             self.array['volume'][-1] = float(bar.volume)
+
+    # ----------------------------------------------------------------------
+    def updateArray(self, bar):
+        if bar:  # 如果是实盘K线
+            if self.finished:
+                self.array['datetime'][0:self.size - 1] = self.array['datetime'][1:self.size]
+                self.array['open'][0:self.size - 1] = self.array['open'][1:self.size]
+                self.array['high'][0:self.size - 1] = self.array['high'][1:self.size]
+                self.array['low'][0:self.size - 1] = self.array['low'][1:self.size]
+                self.array['close'][0:self.size - 1] = self.array['close'][1:self.size]
+                self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
+
+                self.count +=1
+                if not self.inited and self.count >= self.size:
+                    self.inited = True
+                self.array['datetime'][-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
+                self.array['open'][-1] = float(bar.open)
+
+            self.finished = False
+            self.array['high'][-1] = max(float(bar.high),self.array['high'][-1])
+            self.array['low'][-1] = min(float(bar.low),self.array['low'][-1])
+            self.array['close'][-1] = float(bar.close)
+            self.array['volume'][-1] += float(bar.volume)
 
     # ----------------------------------------------------------------------
     @property

@@ -252,8 +252,11 @@ class CtaTemplate(object):
         
     def mail(self,my_context):
         """邮件发送模块"""
-        msg = mail(my_context,self)
-        self.writeCtaLog('%s'%msg)
+        if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
+            pass
+        else:
+            msg = mail(my_context,self)
+            self.writeCtaLog('%s'%msg)
 
     def initBacktesingData(self):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
@@ -267,7 +270,7 @@ class CtaTemplate(object):
                 for tick in initdata:
                     self.onTick(tick)  # 将历史数据直接推送到onTick  
     
-    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100, alignment='sharp', incomplete = False, marketClose = (23,59)):
+    def generateBarDict(self, onBar, xmin=0, onXminBar=None, size = 100, alignment='sharp', marketClose = (23,59)):
         if xmin: 
             variable = "bg%sDict"%xmin
             variable2 = "am%sDict"%xmin
@@ -275,7 +278,7 @@ class CtaTemplate(object):
             variable = "bgDict"
             variable2 = "amDict"
         bgDict= {
-            sym: BarGenerator(onBar,xmin,onXminBar, alignment, incomplete, marketClose)
+            sym: BarGenerator(onBar,xmin,onXminBar, alignment=alignment, marketClose=marketClose)
             for sym in self.symbolList }
         
         amDict = {
