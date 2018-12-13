@@ -787,23 +787,11 @@ class BacktestingEngine(object):
     #-------------------------------------------
     def initPosition(self,strategy):
         for symbol in strategy.symbolList:
-            if 'posDict' in strategy.syncList:
-                strategy.posDict[symbol+"_LONG"] = 0
-                strategy.posDict[symbol+"_SHORT"] = 0
-            if 'eveningDict' in strategy.syncList:
-                strategy.eveningDict[symbol+"_LONG"] = 0
-                strategy.eveningDict[symbol+"_SHORT"] = 0
-            if 'bondDict' in strategy.syncList:
-                strategy.bondDict[symbol+"_LONG"] = 0
-                strategy.bondDict[symbol+"_SHORT"] = 0
-            
-            symbolPair = symbol.split('_')
-            if 'accountDict' in strategy.syncList:
-                strategy.accountDict[symbolPair[0]] = 0
-                strategy.accountDict[symbolPair[1]] = 0
-            if 'frozenDict' in strategy.syncList:
-                strategy.frozenDict[symbolPair[0]] = 0
-                strategy.frozenDict[symbolPair[1]] = 0
+            strategy.posDict[symbol+"_LONG"] = 0
+            strategy.posDict[symbol+"_SHORT"] = 0
+            strategy.eveningDict[symbol+"_LONG"] = 0
+            strategy.eveningDict[symbol+"_SHORT"] = 0
+
         print("仓位字典构造完成","\n初始仓位:",strategy.posDict)
     
     def mail(self,content,strategy):

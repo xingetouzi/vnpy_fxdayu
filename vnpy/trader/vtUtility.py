@@ -319,6 +319,7 @@ class ArrayManager(object):
     def __init__(self, size=100):
         """Constructor"""
         self.count = 0  # 缓存计数
+        self.finished = True
         self.size = size  # 缓存大小
         self.inited = False  # True if count>=size
 
@@ -328,6 +329,10 @@ class ArrayManager(object):
     def updateBar(self, bar):
         """更新K线"""
         if bar:  # 如果是实盘K线
+            if not self.finished:
+                self.finished = True
+                return
+
             self.count += 1
             if not self.inited and self.count >= self.size:
                 self.inited = True
@@ -349,16 +354,29 @@ class ArrayManager(object):
 
             self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
             self.array['volume'][-1] = float(bar.volume)
-    
-    
-    def rollingUpdateBar(self, bar):
+
+    # ----------------------------------------------------------------------
+    def updateArray(self, bar):
         if bar:  # 如果是实盘K线
-            self.array['datetime'][-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
-            self.array['open'][-1] = float(bar.open)
-            self.array['high'][-1] = float(bar.high)
-            self.array['low'][-1] = float(bar.low)
+            if self.finished:
+                self.array['datetime'][0:self.size - 1] = self.array['datetime'][1:self.size]
+                self.array['open'][0:self.size - 1] = self.array['open'][1:self.size]
+                self.array['high'][0:self.size - 1] = self.array['high'][1:self.size]
+                self.array['low'][0:self.size - 1] = self.array['low'][1:self.size]
+                self.array['close'][0:self.size - 1] = self.array['close'][1:self.size]
+                self.array['volume'][0:self.size - 1] = self.array['volume'][1:self.size]
+
+                self.count +=1
+                if not self.inited and self.count >= self.size:
+                    self.inited = True
+                self.array['datetime'][-1] = bar.datetime.strftime('%Y%m%d %H:%M:%S')
+                self.array['open'][-1] = float(bar.open)
+
+            self.finished = False
+            self.array['high'][-1] = max(float(bar.high),self.array['high'][-1])
+            self.array['low'][-1] = min(float(bar.low),self.array['low'][-1])
             self.array['close'][-1] = float(bar.close)
-            self.array['volume'][-1] = float(bar.volume)
+            self.array['volume'][-1] += float(bar.volume)
 
     # ----------------------------------------------------------------------
     @property
