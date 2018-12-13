@@ -498,8 +498,8 @@ class BacktestingEngine(object):
                         # self.strategy.posDict[symbol] -= order.totalVolume
                     
                     trade.volume = order.totalVolume
-                    trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
-                    trade.dt = self.dt
+                    trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                    trade.tradeDatetime = self.dt
                     self.strategy.onTrade(trade)
                     
                     self.tradeDict[tradeID] = trade
@@ -582,8 +582,8 @@ class BacktestingEngine(object):
                     trade.direction = so.direction
                     trade.offset = so.offset
                     trade.volume = so.volume
-                    trade.tradeTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
-                    trade.dt = self.dt
+                    trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                    trade.tradeDatetime = self.dt
                     
                     self.tradeDict[tradeID] = trade
                     
@@ -623,7 +623,7 @@ class BacktestingEngine(object):
         order.vtOrderID = orderID
         order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
         order.priceType = priceType
-        # order.levelRate = levelRate
+        order.OrderDatetime = self.dt
         
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
@@ -677,7 +677,8 @@ class BacktestingEngine(object):
             order = self.workingLimitOrderDict[vtOrderID]
             
             order.status = STATUS_CANCELLED
-            order.cancelTime = self.dt#.strftime('%Y%m%d %H:%M:%S')
+            order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+            order.cancelDatetime = self.dt
             
             self.strategy.onOrder(order)
             
@@ -851,8 +852,8 @@ class BacktestingEngine(object):
                         
                         # 清算开平仓交易
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
-                        result = TradingResult(entryTrade.price, entryTrade.dt, 
-                                               exitTrade.price, exitTrade.dt,
+                        result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, 
+                                               exitTrade.price, exitTrade.tradeDatetime,
                                                -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
@@ -896,8 +897,8 @@ class BacktestingEngine(object):
                         
                         # 清算开平仓交易
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
-                        result = TradingResult(entryTrade.price, entryTrade.dt, 
-                                               exitTrade.price, exitTrade.dt,
+                        result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, 
+                                               exitTrade.price, exitTrade.tradeDatetime,
                                                closedVolume, self.rate, self.slippage, self.size,self.levelRate)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
@@ -936,7 +937,7 @@ class BacktestingEngine(object):
                 endPrice = self.tickDict[symbol].lastPrice
 
             for trade in tradeList:
-                result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
+                result = TradingResult(trade.price, trade.tradeDatetime, endPrice, self.dt,
                                        trade.volume, self.rate, self.slippage, self.size,self.levelRate)
 
                 resultList.append(result)
@@ -950,7 +951,7 @@ class BacktestingEngine(object):
                 endPrice = self.tickDict[symbol].lastPrice
 
             for trade in tradeList:
-                result = TradingResult(trade.price, trade.dt, endPrice, self.dt,
+                result = TradingResult(trade.price, trade.tradeDatetime, endPrice, self.dt,
                                        -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
                 resultList.append(result)
                 deliverSheet.append(result.__dict__)
@@ -1245,7 +1246,7 @@ class BacktestingEngine(object):
         
         # 将成交添加到每日交易结果中
         for trade in self.tradeDict.values():
-            date = trade.dt.date()
+            date = trade.tradeDatetime.date()
             symbol = trade.vtSymbol
             dailyResult = self.dailyResultDict[symbol][date]
             dailyResult.addTrade(trade)
