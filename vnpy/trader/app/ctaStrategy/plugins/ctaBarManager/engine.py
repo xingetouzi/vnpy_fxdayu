@@ -70,7 +70,7 @@ class BacktestingEngine(OriginBacktestingEngine):
     def __init__(self):
         super(BacktestingEngine, self).__init__()
         self.barManager = None
-        self.__prev_bar = None
+        self.__prev_bars = {}
 
     def setArrayManagerSize(self, size):
         return self.barManager.set_size(size)
@@ -86,13 +86,13 @@ class BacktestingEngine(OriginBacktestingEngine):
             self.barManager = BarManager(self)
             self.barManager.set_mode(self.mode)
             self.barManager.register_strategy(self.strategy)
-            self.__prev_bars = None
+            self.__prev_bars = {}
         super(BacktestingEngine, self).runBacktesting()
 
     def newBar(self, bar):
         if isinstance(self.strategy, CtaTemplate):
             # NOTE: there is one bar lag behind
-            prev_bar = self.__prev_bar
+            prev_bar = self.__prev_bars.get(bar.vtSymbol, None)
             if prev_bar:
                 self.barDict[bar.vtSymbol] = prev_bar
                 self.dt = prev_bar.datetime
@@ -101,7 +101,7 @@ class BacktestingEngine(OriginBacktestingEngine):
             self.barManager.on_bar(bar) # equal to: self.strategy.onBar(prev_bar)
             if prev_bar:
                 self.updateDailyClose(prev_bar.vtSymbol, prev_bar.datetime, prev_bar.close)
-            self.__prev_bar = bar
+            self.__prev_bars[bar.vtSymbol] = bar
         else:
             super(BacktestingEngine, self).newBar(bar)
         

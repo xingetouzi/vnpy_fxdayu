@@ -1736,3 +1736,26 @@ def get_time_list(start=None, end=None):
         data.append(d)
     return data
 
+
+class PatchedBacktestingEngine(BacktestingEngine):
+    def __init__(self):
+        super(PatchedBacktestingEngine, self).__init__()
+        self._cancelledLimitOrderDict = OrderedDict()
+
+    def cancelOrder(self, vtOrderID):
+        if vtOrderID in self.workingLimitOrderDict and vtOrderID not in self._cancelledLimitOrderDict:
+            order = self.workingLimitOrderDict[vtOrderID]
+            self._cancelledLimitOrderDict[vtOrderID] = order
+
+    def crossLimitOrder(self, bar):
+        # do cancel all cancelled orders
+        for vtOrderID, order in self._cancelledLimitOrderDict.items():
+            order.status = STATUS_CANCELLED
+            order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+            order.cancelDatetime = self.dt
+            self.strategy.onOrder(order)
+            del self.workingLimitOrderDict[vtOrderID]
+        self._cancelledLimitOrderDict.clear()
+        super(PatchedBacktestingEngine, self).crossLimitOrder(bar)
+
+BacktestingEngine = PatchedBacktestingEngine

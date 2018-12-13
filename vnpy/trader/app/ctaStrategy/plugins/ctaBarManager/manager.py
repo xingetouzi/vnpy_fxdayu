@@ -235,8 +235,9 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         else:
             since = self._gen_since.get(freq, None)
             if since is None:
-                self._set_gen_since(freq, dt)
-            elif dt > since:
+                since = dt
+                self._set_gen_since(freq, since)
+            if bt.is_new_bar(since, dt):
                 bar = self.new_bar_from_tick(tick, freq)
                 self._begin_gen_bar(freq, bar)
         return finished_bar
@@ -268,8 +269,9 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         else:
             since = self._gen_since.get(freq, None)
             if since is None:
-                self._set_gen_since(freq, dt)
-            elif dt > since:
+                since = dt - timedelta(minutes=1) # current 1min bar is already complete, so set since to a minute ago
+                self._set_gen_since(freq, since)
+            if bt.is_new_bar(since, dt):
                 bar = self.new_bar_from_bar(bar, freq)
                 self._begin_gen_bar(freq, bar)
         return finished_bar
@@ -311,7 +313,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 bar_finished = self._update_with_tick(tick, freq)
             else:
                 bar_finished = bar_1min_finished
-            if bar_1min_finished and (True if freq == "1m" else self.is_ready("1m")):
+            if bar_1min_finished and (freq == "1m" or self.is_ready("1m")):
                 if not self.is_ready(freq):
                     self.fetch_hist_bars(freq)
                     if self.is_ready(freq) and freq in self._push_bars:
@@ -323,9 +325,12 @@ class SymbolBarManager(Logger, BarUtilsMixin):
     def on_bar(self, bar):
         """on_bar can only process 1min bar"""
         bars_to_push = {}
+        bar_1min_finished = None
         for freq in self._low_freqs:
             bar_finished = self._update_with_bar(bar, freq)
-            if freq == "1m" or self.is_ready("1m"):
+            if freq == "1m":
+                bar_1min_finished = bar_finished
+            if bar_1min_finished and (freq == "1m" or self.is_ready("1m")):
                 if not self.is_ready(freq):
                     self.fetch_hist_bars(freq)
                     if self.is_ready(freq) and freq in self._push_bars:
