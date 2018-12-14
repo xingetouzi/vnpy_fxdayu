@@ -153,11 +153,11 @@ class VtTradeData(VtBaseData):
         self.offset = EMPTY_UNICODE             # 成交开平仓
         self.price = EMPTY_FLOAT                # 成交价格
         self.volume = EMPTY_FLOAT               # 成交数量
-        self.tradeTime = None                   # 成交时间
+        self.tradeTime = EMPTY_STRING           # 成交时间
         self.fee = EMPTY_FLOAT                  # 成交手续费
         self.status = EMPTY_UNICODE
         self.orderTime = EMPTY_STRING           # 成交单的委托时间
-        self.tradeDatetime = None               # 成交时间Datetime格式
+        self.tradeDatetime = None               # 成交日期时间，python的datetime时间对象
 
 
 ########################################################################
@@ -194,8 +194,8 @@ class VtOrderData(VtBaseData):
         self.deliverTime = None                 # 更新时间
         self.rejectedInfo = EMPTY_UNICODE       # 拒单理由
         self.fee = EMPTY_FLOAT                  # 挂单手续费
-        self.orderDatetime = None               # 订单的发单时间Datetime格式
-        self.cancelDateime = None               # 订单的撤单时间Datetime格式
+        self.orderDatetime = None               # 订单的发单日期时间，python的datetime时间对象
+        self.cancelDatetime = None              # 订单的撤单日期时间，python的datetime时间对象
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号

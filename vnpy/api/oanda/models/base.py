@@ -199,10 +199,13 @@ class OandaOrder(OandaVnpyConvertableData):
         order.gatewayName = gateway.gatewayName
         order.status = OandaOrderState(self.state).to_vnpy()
         if self.cancellingTransactionID:
-            order.cancelTime = self.cancelledTime
-        order.orderTime = self.createTime
-        order.direction = DIRECTION_LONG if self.units > 0 else DIRECTION_SHORT
-        order.totalVolume = abs(self.units)
+            order.cancelDatetime = parse(self.cancelledTime)
+            order.cancelTime = order.cancelDatetime.strftime("%H:%M:%S")
+        order.orderDatetime = parse(self.createTime)
+        order.orderTime = order.orderDatetime.strftime("%H:%M:%S")
+        order.totalVolume = str2num(self.units)
+        order.direction = DIRECTION_LONG if order.totalVolume > 0 else DIRECTION_SHORT
+        order.totalVolume = abs(order.totalVolume)
         order.symbol = self.instrument
         order.offset = OandaOrderPositionFill(self.positionFill).to_vnpy()
         return order
