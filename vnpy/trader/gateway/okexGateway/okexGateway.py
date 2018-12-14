@@ -1633,7 +1633,6 @@ class FuturesApi(OkexFuturesApi):
                     trade.direction = order.direction
                     trade.offset = order.offset
                     trade.price = order.price_avg   # OKEX提供的price是委托价
-                    trade.price_avg = order.price_avg
                     trade.fee = order.fee
                     trade.volume = order.tradedVolume - order2.tradedVolume
                     trade.tradeTime = order.deliverTime
