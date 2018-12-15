@@ -82,8 +82,8 @@ class BacktestingEngine(object):
 
         self.cachePath = os.path.join(os.path.expanduser("~"), ".vnpy_data")       # 本地数据缓存地址
         self.logActive = False      # 回测日志开关
-        self.logPath = None         # 回测日志自定义路径
-        self.logFolderName = u'策略报告_' + datetime.now().strftime("%Y%m%d-%H%M%S") # 当次日志文件夹名称
+        self.logFolderName = u'BackTest_Reports_' + datetime.now().strftime("%Y%m%d-%H%M%S") # 当次日志文件夹名称
+        self.logPath = os.path.join(os.getcwd(), "Backtest_Log", self.logFolderName)         # 回测日志自定义路径
 
         self.dataStartDate = None       # 回测数据开始日期，datetime对象
         self.dataEndDate = None         # 回测数据结束日期，datetime对象
@@ -104,6 +104,7 @@ class BacktestingEngine(object):
         self.tickDict = defaultdict(lambda: None)
         self.barDict = defaultdict(lambda: None)
         self.dt = None      # 最新的时间
+        self.annualDays = 240  # 年化的基数
         
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
@@ -192,7 +193,8 @@ class BacktestingEngine(object):
 
     def setLog(self, active = False, path = None):
         """设置是否出交割单和日志"""
-        self.logPath = path
+        if path:
+            self.logPath = os.path.join(path, self.logFolderName)
         self.logActive = active
 
     #------------------------------------------------
@@ -298,7 +300,7 @@ class BacktestingEngine(object):
                     self.output("我们的数据库没有 %s 这个品种"%symbol)
                     self.output("这些品种在我们的数据库里: %s"%self.dbClient[self.dbName].collection_names())
         except:
-            self.output('失去MongoDB的连接，我们尝试使用本地缓存数据，请注意数据量')
+            self.output('WARNING, 请注意数据量')
             import traceback
             traceback.print_exc()
 
@@ -307,7 +309,7 @@ class BacktestingEngine(object):
             self.output(u'载入完成，数据量：%s' %(len(dataList)))
             return dataList
         else:
-            self.output(u'！！ 数据量为 0 ！！')
+            self.output(u'WARNING: 该选取时间段数据量为 0 ！')
             return []
         
     #----------------------------------------------------------------------
@@ -346,7 +348,7 @@ class BacktestingEngine(object):
         # 分批加载回测数据.数据范围:[self.dataStartDate,self.dataEndDate+1)
         begin = start = self.dataStartDate
         stop = self.dataEndDate
-        # stop = self.dataEndDate+timedelta(1)
+        # stop = self.dataEndDate+timedelta(1) # 按日回测需要+1天
         self.output(u'开始回放回测数据,回测范围:[%s,%s)'%(begin.strftime("%Y%m%d %H:%M"),stop.strftime("%Y%m%d %H:%M")))
         while start<stop:
             end = min(start + timedelta(dataDays), stop)
@@ -368,16 +370,10 @@ class BacktestingEngine(object):
         # 日志输出模块
         if self.logActive:
             dataframe = pd.DataFrame(self.logList)
-
-            if self.logPath:
-                save_path = os.path.join(self.logPath, self.logFolderName)
-            else:
-                save_path = os.path.join(os.getcwd(), self.logFolderName)
-
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path)
-            filename = os.path.join(save_path, u"日志.csv" )
-            dataframe.to_csv(filename,index=False,sep=',')  
+            if not os.path.isdir(self.logPath):
+                os.makedirs(self.logPath)
+            filename = os.path.join(self.logPath, u"trading_log.csv" )
+            dataframe.to_csv(filename,index=False,sep=',',encoding="utf_8_sig")  
             self.output(u'策略日志已生成') 
         
     #----------------------------------------------------------------------
@@ -467,7 +463,6 @@ class BacktestingEngine(object):
                     trade.vtOrderID = order.orderID
                     trade.direction = order.direction
                     trade.offset = order.offset
-                    # trade.levelRate = order.levelRate
 
                     # 以买入为例：
                     # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
@@ -492,10 +487,10 @@ class BacktestingEngine(object):
 
                     elif buyCross and trade.offset == OFFSET_NONE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        # self.strategy.posDict[symbol] += order.totalVolume
+                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
                     elif sellCross and trade.offset == OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        # self.strategy.posDict[symbol] -= order.totalVolume
+                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
                     
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
@@ -551,7 +546,6 @@ class BacktestingEngine(object):
                     trade.vtSymbol = so.vtSymbol
                     trade.tradeID = tradeID
                     trade.vtTradeID = tradeID
-                    # trade.levelRate = levelRate
 
                     if buyCross and so.offset == OFFSET_OPEN: # 买开
                         self.strategy.posDict[symbol+"_LONG"] += so.volume
@@ -612,7 +606,6 @@ class BacktestingEngine(object):
     def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发单"""
         self.limitOrderCount += 1
-        self.levelRate = 0
         orderID = str(self.limitOrderCount)
         order = VtOrderData()
         order.vtSymbol = vtSymbol
@@ -647,20 +640,6 @@ class BacktestingEngine(object):
             order.price = self.roundToPriceTick(price) * 1000
         elif priceType == PRICETYPE_MARKETPRICE and order.direction == DIRECTION_SHORT:
             order.price = self.roundToPriceTick(price) / 1000
-
-        # if levelRate:
-        #     if order.offset == OFFSET_OPEN and (self.balance < (self.size /levelRate * order.totalVolume)):
-        #         order.status = STATUS_REJECTED
-        #         order.rejectedInfo = "INSUFFICIENT FUND"
-        #     elif order.offset == OFFSET_OPEN and (self.balance > (self.size /levelRate * order.totalVolume)):
-        #         self.balance -= self.size /levelRate * order.totalVolume
-        
-        #     if order.offset == OFFSET_CLOSE and order.direction == DIRECTION_SHORT and strategy.eveningDict[vtSymbol+"_LONG"]<order.totalVolume:
-        #         order.status = STATUS_REJECTED
-        #         order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
-        #     elif order.offset == OFFSET_CLOSE and order.direction == DIRECTION_LONG and strategy.eveningDict[vtSymbol+"_SHORT"]<order.totalVolume:
-        #         order.status = STATUS_REJECTED
-        #         order.rejectedInfo = "INSUFFICIENT EVENING POSITION"
 
         # 保存到限价单字典中
         self.workingLimitOrderDict[orderID] = order
@@ -840,7 +819,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, 
                                                exitTrade.price, exitTrade.tradeDatetime,
-                                               -closedVolume, self.rate, self.slippage, self.size,self.levelRate)
+                                               -closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
                         
@@ -885,7 +864,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, 
                                                exitTrade.price, exitTrade.tradeDatetime,
-                                               closedVolume, self.rate, self.slippage, self.size,self.levelRate)
+                                               closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
                         deliverSheet.append(result.__dict__)
                         
@@ -924,7 +903,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.tradeDatetime, endPrice, self.dt,
-                                       trade.volume, self.rate, self.slippage, self.size,self.levelRate)
+                                       trade.volume, self.rate, self.slippage, self.size)
 
                 resultList.append(result)
                 deliverSheet.append(result.__dict__)
@@ -938,7 +917,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.tradeDatetime, endPrice, self.dt,
-                                       -trade.volume, self.rate, self.slippage, self.size, self.levelRate)
+                                       -trade.volume, self.rate, self.slippage, self.size)
                 resultList.append(result)
                 deliverSheet.append(result.__dict__)
 
@@ -950,14 +929,9 @@ class BacktestingEngine(object):
         # 交割单输出模块
         if self.logActive:
             resultDF = pd.DataFrame(deliverSheet)
-            if self.logPath:
-                save_path = os.path.join(self.logPath, self.logFolderName)
-            else:
-                save_path = os.path.join(os.getcwd(), self.logFolderName)
-
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path)
-            filename = os.path.join(save_path, u"交割单.csv" )
+            if not os.path.isdir(self.logPath):
+                os.makedirs(self.logPath)
+            filename = os.path.join(self.logPath, u"交割单.csv" )
             resultDF.to_csv(filename,index=False,sep=',')  
             self.output(u'交割单已生成') 
 
@@ -1101,17 +1075,12 @@ class BacktestingEngine(object):
         # 输出回测统计图
         if self.logActive:
             dataframe = pd.DataFrame(self.logList)
-
-            if self.logPath:
-                save_path = os.path.join(self.logPath, self.logFolderName)
-            else:
-                save_path = os.path.join(os.getcwd(), self.logFolderName)
-
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path)
-            filename = os.path.join(save_path, u"回测统计图.png" )
+            if not os.path.isdir(self.logPath):
+                os.makedirs(self.logPath)
+            filename = os.path.join(self.logPath, u"回测统计图.png" )
             plt.savefig(filename)
             self.output(u'策略回测统计图已保存') 
+
         plt.show()
     
     #----------------------------------------------------------------------
@@ -1247,7 +1216,7 @@ class BacktestingEngine(object):
                 dailyResult.previousClose = previousClose
                 previousClose = dailyResult.closePrice
 
-                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage, self.levelRate )
+                dailyResult.calculatePnl(openPosition, self.size, self.rate, self.slippage)
                 openPosition = dailyResult.closePosition
 
             # 生成DataFrame
@@ -1404,21 +1373,12 @@ class BacktestingEngine(object):
         pKDE.set_title('Daily Pnl Distribution')
         df['netPnl'].hist(bins=50)
         
-        
-        
-        
         # 输出回测绩效图
         if self.logActive:
             dataframe = pd.DataFrame(self.logList)
-
-            if self.logPath:
-                save_path = os.path.join(self.logPath, self.logFolderName)
-            else:
-                save_path = os.path.join(os.getcwd(), self.logFolderName)
-
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path)
-            filename = os.path.join(save_path, u"回测绩效图.png" )
+            if not os.path.isdir(self.logPath):
+                os.makedirs(self.logPath)
+            filename = os.path.join(self.logPath, u"回测绩效图.png" )
             plt.savefig(filename)
             self.output(u'策略回测绩效图已保存') 
 
@@ -1431,7 +1391,7 @@ class TradingResult(object):
 
     #----------------------------------------------------------------------
     def __init__(self, entryPrice, entryDt, exitPrice, 
-                 exitDt, volume, rate, slippage, size, levelRate = 0):
+                 exitDt, volume, rate, slippage, size):
         """Constructor"""
         self.entryPrice = entryPrice    # 开仓价格
         self.exitPrice = exitPrice      # 平仓价格
@@ -1441,22 +1401,12 @@ class TradingResult(object):
         
         self.volume = volume            # 交易数量（+/-代表方向）
 
-        if levelRate:
-            self.turnover = size * abs(volume) * 2    # 成交额 = 面值 * 数量 * 2
-        else:
-            self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
-
+        self.turnover = (self.entryPrice+self.exitPrice)*size*abs(volume)   # 成交金额
 
         self.commission = self.turnover*rate                                # 手续费成本   
         self.slippage = slippage*2*size*abs(volume)                       # 滑点成本
 
-
-        if levelRate:
-            self.pnl = ((self.exitPrice - self.entryPrice) / self.entryPrice * volume * size
-                    - self.commission - self.slippage)
-            
-        else:
-            self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
+        self.pnl = ((self.exitPrice - self.entryPrice) * volume * size 
                     - self.commission - self.slippage)                      # 净盈亏
         
 
@@ -1493,7 +1443,7 @@ class DailyResult(object):
         self.tradeList.append(trade)
 
     #----------------------------------------------------------------------
-    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0, levelRate = 0):
+    def calculatePnl(self, openPosition=0, size=1, rate=0, slippage=0):
         """
         计算盈亏
         size: 合约乘数
@@ -1502,9 +1452,6 @@ class DailyResult(object):
         """
         # 持仓部分
         self.openPosition = openPosition
-        # if self.levelRate:
-        #     self.positionPnl = self.openPosition * ((self.closePrice - self.previousClose)/self.previousClose) * size
-        # else:
         self.positionPnl = self.openPosition * (self.closePrice - self.previousClose) * size
         self.closePosition = self.openPosition
         
@@ -1516,11 +1463,7 @@ class DailyResult(object):
                 posChange = trade.volume
             else:
                 posChange = -trade.volume
-            
-            # if self.levelRate:
-            #     self.tradingPnl += posChange * ((self.closePrice - trade.price)/trade.price) * size
-            #     self.turnover += trade.volume * size / self.levelRate
-            # else: 
+
             self.tradingPnl += posChange * (self.closePrice - trade.price) * size
             self.turnover += trade.price * trade.volume * size
             self.closePosition += posChange
@@ -1700,7 +1643,6 @@ def get_date_list(start=None, end=None):
     return data
 
 def gen_hours(b_date, days, hours):
-    # day = timedelta(days=1)
     hour = timedelta(hours = 1)
     for i in range(days*24+hours):
         yield b_date + hour*i
