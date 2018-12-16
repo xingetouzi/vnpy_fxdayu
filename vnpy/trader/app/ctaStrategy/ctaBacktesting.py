@@ -13,7 +13,6 @@ import multiprocessing
 import copy
 import sys
 import os
-import pymongo
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -274,41 +273,47 @@ class BacktestingEngine(object):
 
         # 如果没有完全从本地文件加载完数据,则从mongodb下载数据，并缓存到本地
         if no_data_days > 0:
-            self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
-            for symbol in symbolList:
-                if len(symbols_no_data[symbol]) > 0:  # 需要从数据库取数据
-                    if symbol in self.dbClient[self.dbName].collection_names():
-                        collection = self.dbClient[self.dbName][symbol]
-                        Cursor = collection.find({"date": {"$in": symbols_no_data[symbol]}})  # 按日回测检索
-                        data_df = pd.DataFrame(list(Cursor))
-                        if data_df.size > 0:
-                            del data_df["_id"]
-                            # 筛选出需要的时间段
-                            dataList += [self.parseData(dataClass, item) for item in
-                                         data_df[(data_df.datetime >= start) & (data_df.datetime < end)].to_dict(
-                                             "record")]
-                            # 缓存到本地文件
+            try:
+                import pymongo
+                self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
+                for symbol in symbolList:
+                    if len(symbols_no_data[symbol]) > 0:  # 需要从数据库取数据
+                        if symbol in self.dbClient[self.dbName].collection_names():
+                            collection = self.dbClient[self.dbName][symbol]
+                            Cursor = collection.find({"date": {"$in": symbols_no_data[symbol]}})  # 按日回测检索
+                            data_df = pd.DataFrame(list(Cursor))
                             if data_df.size > 0:
-                                save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":", "_"))
-                                if not os.path.isdir(save_path):
-                                    os.makedirs(save_path)
-                                date_today = datetime.now().strftime("%Y%m%d")
-                                for date in symbols_no_data[symbol]:
-                                    if date != date_today:  # 当日数据不缓存到本地，防止本地缓存出现数据不全的情况
-                                        file_data = data_df[data_df["date"] == date]
-                                        if file_data.size > 0:
-                                            file_path = os.path.join(save_path, "%s.h5" % (date,))
-                                            file_data.to_hdf(file_path, key="d")
-                    else:
-                        self.output("我们的数据库没有 %s 这个品种" % symbol)
-                        self.output("这些品种在我们的数据库里: %s" % self.dbClient[self.dbName].collection_names())
+                                del data_df["_id"]
+                                # 筛选出需要的时间段
+                                dataList += [self.parseData(dataClass, item) for item in
+                                             data_df[(data_df.datetime >= start) & (data_df.datetime < end)].to_dict(
+                                                 "record")]
+                                # 缓存到本地文件
+                                if data_df.size > 0:
+                                    save_path = os.path.join(self.cachePath, self.mode, symbol.replace(":", "_"))
+                                    if not os.path.isdir(save_path):
+                                        os.makedirs(save_path)
+                                    date_today = datetime.now().strftime("%Y%m%d")
+                                    for date in symbols_no_data[symbol]:
+                                        if date != date_today:  # 当日数据不缓存到本地，防止本地缓存出现数据不全的情况
+                                            file_data = data_df[data_df["date"] == date]
+                                            if file_data.size > 0:
+                                                file_path = os.path.join(save_path, "%s.h5" % (date,))
+                                                file_data.to_hdf(file_path, key="d")
+                        else:
+                            self.output("我们的数据库没有 %s 这个品种" % symbol)
+                            self.output("这些品种在我们的数据库里: %s" % self.dbClient[self.dbName].collection_names())
+            except:
+                self.output('MongoDB无法连接,当前仅使用本地缓存数据，请注意数据量。')
+                import traceback
+                traceback.print_exc()
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: x.datetime)
-            self.output(u'数据载入完成。时间段:[%s,%s);数据量:%s' % (start,end,len(dataList)))
+            self.output(u'数据载入完成。时间段:[%s,%s);数据量:%s' % (start, end, len(dataList)))
             return dataList
         else:
-            self.output(u'WARNING: 该时间段数据量为0!时间段:[%s,%s)'%(start,end))
+            self.output(u'WARNING: 该时间段数据量为0!时间段:[%s,%s)' % (start, end))
             return []
 
     # ----------------------------------------------------------------------
@@ -334,7 +339,7 @@ class BacktestingEngine(object):
         # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
         if self.strategyStartDate != self.dataStartDate:
             self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
-            self.output(u'初始化预加载数据成功。数据长度:%s'%(len(self.initData)))
+            self.output(u'初始化预加载数据成功。数据长度:%s' % (len(self.initData)))
         self.strategy.inited = True
         self.strategy.onInit()
         self.output(u'策略初始化完成')
