@@ -21,8 +21,12 @@ from vnpy.rpc import RpcClient, RpcServer, RemoteException
 # 如果安装了seaborn则设置为白色风格
 try:
     import seaborn as sns
-
     sns.set_style('whitegrid')
+except ImportError:
+    pass
+
+try:
+    import pymongo
 except ImportError:
     pass
 
@@ -274,7 +278,6 @@ class BacktestingEngine(object):
         # 如果没有完全从本地文件加载完数据,则从mongodb下载数据，并缓存到本地
         if no_data_days > 0:
             try:
-                import pymongo
                 self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
                 for symbol in symbolList:
                     if len(symbols_no_data[symbol]) > 0:  # 需要从数据库取数据
