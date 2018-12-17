@@ -114,15 +114,12 @@ class BacktestingEngine(object):
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
 
-<<<<<<< HEAD
         # 缓存平仓成交单时，不可以平掉的订单
         self.mappingEntryExitLong = OrderedDict()
         self.mappingEntryExitShort = OrderedDict()
         self.shortEvenableDict = {}
         self.longEvenableDict = {}
 
-=======
->>>>>>> 26a421b0a1cb276fea3c65a900042e176d2c032f
     # ------------------------------------------------
     # 通用功能
     # ------------------------------------------------
