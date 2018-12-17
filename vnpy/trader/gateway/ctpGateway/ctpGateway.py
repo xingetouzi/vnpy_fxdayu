@@ -433,7 +433,7 @@ class CtpMdApi(MdApi):
         self.tradingDt = None               # 交易日datetime对象
         self.tradingDate = EMPTY_STRING     # 交易日期字符串
         self.tickTime = None                # 最新行情time对象
-        self.lastTick = None
+        self.lastTickDict = {}
 
     #----------------------------------------------------------------------
     def onFrontConnected(self):
@@ -585,12 +585,15 @@ class CtpMdApi(MdApi):
         # 处理tick成交量
         tick.volumeChange = 1
         if self.lastTick:
-            tick.lastVolume = tick.volume - self.lastTick.volume
+            tick.lastVolume = tick.volume - self.lastTickDict[str(tick.symbol)].volume
         else:
+            tick.lastVolume = 0
+            
+        if tick.lastVolume = 0:
             tick.volumeChange = 0
         
         self.gateway.onTick(tick)
-        self.lastTick =tick
+        self.lastTickDict[str(tick.symbol)] = tick
     #----------------------------------------------------------------------
     def onRspSubForQuoteRsp(self, data, error, n, last):
         """订阅期权询价"""
