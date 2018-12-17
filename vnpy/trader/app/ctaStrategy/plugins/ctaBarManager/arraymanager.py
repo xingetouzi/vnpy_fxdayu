@@ -45,7 +45,6 @@ def merge_array_mamangers(ams, cls=ArrayManager, size=None):
         assert am.freq == freq, "不同频率的ArrayManager无法直接合成"
     new_size = sum([min(am.count, am.size) for am in ams])
     size = size or new_size
-    print(size)
     new_am = cls(size=size, freq=freq)
     new_array = np.concatenate([am.array[am.head:] for am in ams])
     l = len(new_array)

@@ -19,8 +19,9 @@ class BarUtilsMixin(object):
         bar.high = max(bar.high, tick.lastPrice)
         bar.low = min(bar.low, tick.lastPrice)
         bar.close = tick.lastPrice
-        bar.volume += tick.volume
         bar.openInterest += tick.openInterest
+        if tick.volumeChange:
+            bar.volume += tick.lastVolume
         return bar
 
     def align_bar(self, bar, freq):
@@ -52,7 +53,7 @@ class BarUtilsMixin(object):
         bar.high = tick.lastPrice
         bar.low = tick.lastPrice
         bar.close = tick.lastPrice
-        bar.volume = tick.volume
+        bar.volume = tick.lastVolume if tick.volumeChange else 0
         bar.openInterest = tick.openInterest
         bar.datetime = tick.datetime
         bar.date = tick.date
