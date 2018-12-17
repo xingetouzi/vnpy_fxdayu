@@ -583,9 +583,12 @@ class CtpMdApi(MdApi):
             self.tickTime = newTime         # 更新上一个tick时间
 
         # 处理tick成交量
+        tick.volumeChange = 1
         if self.lastTick:
             tick.lastVolume = tick.volume - self.lastTick.volume
-        tick.volumeChange = 1
+        else:
+            tick.volumeChange = 0
+        
         self.gateway.onTick(tick)
         self.lastTick =tick
     #----------------------------------------------------------------------
