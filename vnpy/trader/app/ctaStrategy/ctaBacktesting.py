@@ -13,7 +13,6 @@ import multiprocessing
 import copy
 import sys
 import os
-# import pymongo
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,8 +21,12 @@ from vnpy.rpc import RpcClient, RpcServer, RemoteException
 # 如果安装了seaborn则设置为白色风格
 try:
     import seaborn as sns
-
     sns.set_style('whitegrid')
+except ImportError:
+    pass
+
+try:
+    import pymongo
 except ImportError:
     pass
 
@@ -111,12 +114,15 @@ class BacktestingEngine(object):
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
 
+<<<<<<< HEAD
         # 缓存平仓成交单时，不可以平掉的订单
         self.mappingEntryExitLong = OrderedDict()
         self.mappingEntryExitShort = OrderedDict()
         self.shortEvenableDict = {}
         self.longEvenableDict = {}
 
+=======
+>>>>>>> 26a421b0a1cb276fea3c65a900042e176d2c032f
     # ------------------------------------------------
     # 通用功能
     # ------------------------------------------------
@@ -281,7 +287,6 @@ class BacktestingEngine(object):
         # 如果没有完全从本地文件加载完数据,则从mongodb下载数据，并缓存到本地
         if no_data_days > 0:
             try:
-                import pymongo
                 self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
                 for symbol in symbolList:
                     if len(symbols_no_data[symbol]) > 0:  # 需要从数据库取数据
@@ -289,7 +294,6 @@ class BacktestingEngine(object):
                             collection = self.dbClient[self.dbName][symbol]
                             Cursor = collection.find({"date": {"$in": symbols_no_data[symbol]}})  # 按日回测检索
                             data_df = pd.DataFrame(list(Cursor))
-
                             if data_df.size > 0:
                                 del data_df["_id"]
                                 # 筛选出需要的时间段
@@ -504,15 +508,15 @@ class BacktestingEngine(object):
                     # 3. 则在实际中的成交价会是100而不是105，因为委托发出时市场的最优价格是100
                     if buyCross and trade.offset == OFFSET_OPEN:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
-                        self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[symbol + "_LONG"] += order.totalVolume
                     elif buyCross and trade.offset == OFFSET_CLOSE:
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
                     elif sellCross and trade.offset == OFFSET_OPEN:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[symbol+"_SHORT"] += order.totalVolume
-                        self.strategy.eveningDict[symbol+"_SHORT"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] += order.totalVolume
+                        self.strategy.eveningDict[symbol + "_SHORT"] += order.totalVolume
                     elif sellCross and trade.offset == OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
@@ -666,7 +670,7 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_SELL:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
-            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol+'_LONG']:
+            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_LONG']:
                 raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_LONG'] -= order.totalVolume
@@ -676,7 +680,7 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE
-            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol+'_SHORT']:
+            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_SHORT']:
                 raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_SHORT'] -= order.totalVolume
@@ -706,10 +710,10 @@ class BacktestingEngine(object):
 
             if order.direction == DIRECTION_LONG:
                 if order.offset == OFFSET_OPEN:
-                    self.strategy.eveningDict[order.vtSymbol+'_SHORT'] += order.totalVolume
+                    self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
             else:
                 if order.offset != OFFSET_OPEN:
-                    self.strategy.eveningDict[order.vtSymbol+'_LONG'] += order.totalVolume
+                    self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
             
             self.strategy.onOrder(order)
 
@@ -1724,26 +1728,27 @@ def get_time_list(start=None, end=None):
         data.append(d)
     return data
 
-# class PatchedBacktestingEngine(BacktestingEngine):
-#     def __init__(self):
-#         super(PatchedBacktestingEngine, self).__init__()
-#         self._cancelledLimitOrderDict = OrderedDict()
 
-#     def cancelOrder(self, vtOrderID):
-#         if vtOrderID in self.workingLimitOrderDict and vtOrderID not in self._cancelledLimitOrderDict:
-#             order = self.workingLimitOrderDict[vtOrderID]
-#             self._cancelledLimitOrderDict[vtOrderID] = order
+class PatchedBacktestingEngine(BacktestingEngine):
+    def __init__(self):
+        super(PatchedBacktestingEngine, self).__init__()
+        self._cancelledLimitOrderDict = OrderedDict()
 
-#     def crossLimitOrder(self, bar):
-#         # do cancel all cancelled orders
-#         for vtOrderID, order in self._cancelledLimitOrderDict.items():
-#             order.status = STATUS_CANCELLED
-#             order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
-#             order.cancelDatetime = self.dt
-#             self.strategy.onOrder(order)
-#             del self.workingLimitOrderDict[vtOrderID]
-#         self._cancelledLimitOrderDict.clear()
-#         super(PatchedBacktestingEngine, self).crossLimitOrder(bar)
+    def cancelOrder(self, vtOrderID):
+        if vtOrderID in self.workingLimitOrderDict and vtOrderID not in self._cancelledLimitOrderDict:
+            order = self.workingLimitOrderDict[vtOrderID]
+            self._cancelledLimitOrderDict[vtOrderID] = order
+
+    def crossLimitOrder(self, bar):
+        # do cancel all cancelled orders
+        for vtOrderID, order in self._cancelledLimitOrderDict.items():
+            order.status = STATUS_CANCELLED
+            order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+            order.cancelDatetime = self.dt
+            self.strategy.onOrder(order)
+            del self.workingLimitOrderDict[vtOrderID]
+        self._cancelledLimitOrderDict.clear()
+        super(PatchedBacktestingEngine, self).crossLimitOrder(bar)
 
 
-# BacktestingEngine = PatchedBacktestingEngine
+BacktestingEngine = PatchedBacktestingEngine
