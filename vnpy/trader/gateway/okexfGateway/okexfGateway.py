@@ -23,6 +23,7 @@ from requests import ConnectionError
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
+from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .text import ERRORCODE
 
@@ -416,28 +417,45 @@ class OkexfRestApi(RestClient):
             self.addRequest('GET', path, params=req2,
                             callback=self.onQueryOrder)
 
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbol=None, orders=None):
+        """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
 
-
-    def queryCancelAll(self, symbol):
+        Parameters
+        ----------
+        symbol : str, optional
+            用逗号隔开的多个合约代码,表示只撤销这些合约的挂单(默认为None,表示撤销所有合约的所有挂单)
+        orders : str, optional
+            用逗号隔开的多个vtOrderID.
+            若为None,先从交易所先查询所有未完成订单作为待撤销订单列表进行撤单;
+            若不为None,则对给出的对应订单中和symbol参数相匹配的订单作为待撤销订单列表进行撤单。
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含本次所有撤销的订单ID的列表
         """
-        先查询指定品种的所有未完成订单，而后根据订单号撤单
-        :return:
-        """
-        for key, value in contractMap.items():
-            if value == symbol:
-                symbol = key
-        # 未完成(包含未成交和部分成交)
-        req = {
-            #'instrument_id': symbol,
-            'status': 6
-        }
-        path = '/api/futures/v3/orders/%s' % symbol
-        self.addRequest('GET', path, params=req, callback=self.cancelAll)
+        if symbol:
+            symbols = symbol.split(",")
+        else:
+            symbols = self.gateway.contracts
+        for symbol_ in symbols:
+            for key, value in contractMap.items():
+                if value == symbol_:
+                    symbol_ = key
+            # 未完成(包含未成交和部分成交)
+            req = {
+                'instrument_id': symbol_,
+                'status': 6
+            }
+            path = '/api/futures/v3/orders/%s' % symbol_
+            self.addRequest('GET', path, params=req, extra=orders, callback=self.queryCancelAll)
 
-    def cancelAll(self, data, request):
+    def queryCancelAll(self, data, request):
         if data['result'] and data['order_info']:
             orderids = [str(order['order_id']) for order in data['order_info'] if
                         order['status'] == '0' or order['status'] == '1']
+            if request.extra:
+                orderids = list(set(orderids).intersection(set(request.extra.split(","))))
             for i in range(len(orderids) // 20 + 1):
                 orderid = orderids[i * 20:(i + 1) * 20]
 
@@ -455,10 +473,20 @@ class OkexfRestApi(RestClient):
         else:
             pass
 
-    def queryCloseAll(self, symbol):
-        """
-        查询指定品种的所有持仓，根据结果平仓
-        :return:
+    def closeAll(self, symbol, direction=None):
+        """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
+
+        Parameters
+        ----------
+        symbol : str
+            所要平仓的合约代码
+        direction : str, optional
+            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
+
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含平仓操作发送的所有订单ID的列表
         """
         for key, value in contractMap.items():
             if value == symbol:
@@ -467,37 +495,49 @@ class OkexfRestApi(RestClient):
             'instrument_id': symbol,
         }
         path = '/api/futures/v3/%s/position/' % symbol
-        self.addRequest('GET', path, params=req, callback=self.closeAll)
+        self.addRequest('GET', path, params=req, extra=direction, callback=self.queryCloseAll)
 
-    def closeAll(self, data, request):
+    def queryCloseAll(self, data, request):
         if data['result'] and data['holding']:
             for holding in data['holding']:
-                if int(holding['long_avail_qty']) > 0:
+                req_long = {
+                    'instrument_id': holding['instrument_id'],
+                    'type': '3',
+                    'price': holding['long_avg_cost'],
+                    'size': str(holding['long_avail_qty']),
+                    'match_price': '1',
+                    'leverage': self.leverage,
+                }
+                req_short = {
+                    'instrument_id': holding['instrument_id'],
+                    'type': '4',
+                    'price': holding['short_avg_cost'],
+                    'size': str(holding['short_avail_qty']),
+                    'match_price': '1',
+                    'leverage': self.leverage,
+                }
+                if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
                     # 多仓可平
-                    req = {
-                        'instrument_id': holding['instrument_id'],
-                        'type': '3',
-                        'price': holding['long_avg_cost'],
-                        'size': str(holding['long_avail_qty']),
-                        'match_price': '1',
-                        'leverage': self.leverage,
-                    }
                     self.addRequest('POST', '/api/futures/v3/order',
                                     callback=self.onCloseAll,
-                                    data=req)
-                if int(holding['short_avail_qty']) > 0:
+                                    data=req_long)
+                elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
                     # 空仓可平
-                    req1 = {
-                        'instrument_id': holding['instrument_id'],
-                        'type': '4',
-                        'price': holding['short_avg_cost'],
-                        'size': str(holding['short_avail_qty']),
-                        'match_price': '1',
-                        'leverage': self.leverage,
-                    }
+
                     self.addRequest('POST', '/api/futures/v3/order',
                                     callback=self.onCloseAll,
-                                    data=req1)
+                                    data=req_short)
+                elif request.extra is None:
+                    if int(holding['long_avail_qty']) > 0:
+                        # 多仓可平
+                        self.addRequest('POST', '/api/futures/v3/order',
+                                        callback=self.onCloseAll,
+                                        data=req_long)
+                    if int(holding['short_avail_qty']) > 0:
+                        # 空仓可平
+                        self.addRequest('POST', '/api/futures/v3/order',
+                                        callback=self.onCloseAll,
+                                        data=req_short)
 
     def onCloseAll(self, data, request):
         print("全部平仓结果", data)
