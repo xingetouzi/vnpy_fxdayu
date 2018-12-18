@@ -974,9 +974,11 @@ class CtpTdApi(TdApi):
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
         # if data['YdPosition'] and not data['TodayPosition']:
         if data['Position'] and data['TodayPosition']:
-            pos.ydPosition = int(data['YdPosition'])
+            ydPosition = int(data['YdPosition'])
         elif data['YdPosition'] and not data['TodayPosition']:
-            pos.ydPosition = int(data['Position'])
+            ydPosition = int(data['Position'])
+        else:
+            ydPosition = 0
 
         # 计算成本
         size = self.symbolSizeDict[pos.symbol]
@@ -985,6 +987,7 @@ class CtpTdApi(TdApi):
         # 汇总总仓
         pos.position += data['Position']
         pos.positionProfit += data['PositionProfit']
+        pos.ydPosition += ydPosition
 
         # 计算持仓均价
         if pos.position and pos.symbol in self.symbolSizeDict:
@@ -1398,7 +1401,11 @@ class CtpTdApi(TdApi):
         trade.direction = directionMapReverse.get(data['Direction'], '')
 
         # 开平
-        trade.offset = offsetMapReverse.get(data['OffsetFlag'], '')
+        offset = offsetMapReverse.get(data['OffsetFlag'], '')
+        if offset in [OFFSET_CLOSEYESTERDAY,OFFSET_CLOSETODAY]:
+            trade.offset = OFFSET_CLOSE
+        else:
+            trade.offset = offset
 
         # 价格、报单量等数值
         trade.price = data['Price']
