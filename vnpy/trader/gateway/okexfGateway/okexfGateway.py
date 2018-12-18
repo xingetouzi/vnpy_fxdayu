@@ -418,7 +418,7 @@ class OkexfRestApi(RestClient):
                             callback=self.onQueryOrder)
 
     # ----------------------------------------------------------------------
-    def cancelAll(self, symbol=None, orders=None):
+    def cancelAll(self, symbols=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
 
         Parameters
@@ -434,23 +434,23 @@ class OkexfRestApi(RestClient):
         vtOrderIDs: list of str
         包含本次所有撤销的订单ID的列表
         """
-        if symbol:
-            symbols = symbol.split(",")
+        if symbols:
+            symbols = symbols.split(",")
         else:
             symbols = self.gateway.contracts
-        for symbol_ in symbols:
+        for symbol in symbols:
             for key, value in contractMap.items():
-                if value == symbol_:
-                    symbol_ = key
+                if value == symbol:
+                    symbol = key
             # 未完成(包含未成交和部分成交)
             req = {
-                'instrument_id': symbol_,
+                'instrument_id': symbol,
                 'status': 6
             }
-            path = '/api/futures/v3/orders/%s' % symbol_
-            self.addRequest('GET', path, params=req, extra=orders, callback=self.queryCancelAll)
+            path = '/api/futures/v3/orders/%s' % symbol
+            self.addRequest('GET', path, params=req, extra=orders, callback=self.onQueryCancelAll)
 
-    def queryCancelAll(self, data, request):
+    def onQueryCancelAll(self, data, request):
         if data['result'] and data['order_info']:
             orderids = [str(order['order_id']) for order in data['order_info'] if
                         order['status'] == '0' or order['status'] == '1']
@@ -473,13 +473,13 @@ class OkexfRestApi(RestClient):
         else:
             pass
 
-    def closeAll(self, symbol, direction=None):
+    def closeAll(self, symbols, direction=None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
 
         Parameters
         ----------
-        symbol : str
-            所要平仓的合约代码
+        symbols : str
+            所要平仓的合约代码,多个合约代码用逗号分隔开。
         direction : str, optional
             所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
 
@@ -488,16 +488,18 @@ class OkexfRestApi(RestClient):
         vtOrderIDs: list of str
         包含平仓操作发送的所有订单ID的列表
         """
-        for key, value in contractMap.items():
-            if value == symbol:
-                symbol = key
-        req = {
-            'instrument_id': symbol,
-        }
-        path = '/api/futures/v3/%s/position/' % symbol
-        self.addRequest('GET', path, params=req, extra=direction, callback=self.queryCloseAll)
+        symbols = symbols.split(",")
+        for symbol in symbols:
+            for key, value in contractMap.items():
+                if value == symbol:
+                    symbol = key
+            req = {
+                'instrument_id': symbol,
+            }
+            path = '/api/futures/v3/%s/position/' % symbol
+            self.addRequest('GET', path, params=req, extra=direction, callback=self.onQueryCloseAll)
 
-    def queryCloseAll(self, data, request):
+    def onQueryCloseAll(self, data, request):
         if data['result'] and data['holding']:
             for holding in data['holding']:
                 req_long = {
@@ -542,7 +544,7 @@ class OkexfRestApi(RestClient):
     def onCloseAll(self, data, request):
         print("全部平仓结果", data)
         if data['result']:
-            self.writeLog(u'平仓成功')
+            self.writeLog(u'平仓成功%s' % data['order_id'])
         else:
             pass
 
