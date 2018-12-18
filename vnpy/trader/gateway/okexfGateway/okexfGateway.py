@@ -187,6 +187,42 @@ class OkexfGateway(VtGateway):
         pass
 
     def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
+        self.loadHistoryBarV1(self,vtSymbol,type_,size=None,since=None,end=None):
+
+    def loadHistoryBarV1(self,vtSymbol,type_,size=None,since=None,end=None):
+        
+        KlinePeriodMap = {}
+        KlinePeriodMap['1min'] = '1min'
+        KlinePeriodMap['5min'] = '5min'
+        KlinePeriodMap['15min'] = '15min'
+        KlinePeriodMap['30min'] = '30min'
+        KlinePeriodMap['60min'] = '1hour'
+        KlinePeriodMap['1day'] = 'day'
+        KlinePeriodMap['1week'] = 'week'
+        KlinePeriodMap['4hour'] = '4hour'
+
+        url = "https://www.okex.com/api/v1/future_kline.do" 
+        type_ = KlinePeriodMap[type_]
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
+        contractType = symbol[4:]
+        symbol = vtSymbol[:3]+"_usd"
+        params = {"symbol":symbol,
+                    "contract_type":contractType,
+                    "type":type_}
+        if size:
+            params["size"] = size
+        if since:
+            params["since"] = since
+
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
+        text = eval(r.text)
+
+        volume_symbol = vtSymbol[:3]
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%volume_symbol])
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x / 1000))
+        return df
+
+    def loadHistoryBarV3(self,vtSymbol,type_,size=None,since=None,end=None):
         for key,value in contractMap.items():
             if value == vtSymbol.split(VN_SEPARATOR)[0]:
                 instrument_id = key
@@ -224,8 +260,8 @@ class OkexfGateway(VtGateway):
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
         text = eval(r.text)
 
-        symbol = instrument_id[:3]
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%symbol])
+        volume_symbol = vtSymbol[:3]
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%volume_symbol])
         df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x / 1000))
         # df["datetime"] = df["datetime"].map(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
         # delta = timedelta(hours=8)
@@ -233,8 +269,6 @@ class OkexfGateway(VtGateway):
         df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
 
         return df#.to_csv('a.csv')
-        
-
 
 ########################################################################
 class OkexfRestApi(RestClient):
