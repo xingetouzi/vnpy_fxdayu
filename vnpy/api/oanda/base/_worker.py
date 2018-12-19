@@ -1,12 +1,13 @@
 import logging
 import types
 
-from vnpy.trader.utils import Logger
+from vnpy.trader.utils import LoggerMixin
 
 from ..ioloop import BackroundEventLoopProxy
 
-class AsyncApiWorker(Logger):
+class AsyncApiWorker(LoggerMixin):
     def __init__(self, api):
+        super(AsyncApiWorker, self).__init__()
         self._api = api
         self._ioloop = api.ioloop
         self._proxy = BackroundEventLoopProxy(self._ioloop)

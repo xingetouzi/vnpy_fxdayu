@@ -229,9 +229,6 @@ class VnOandaApi(OandaApi):
         log.logContent = content
         self.gateway.onLog(log)
 
-    def log(self, msg, level=logging.INFO):
-        self.writeLog("%s" % msg)
-
     def on_login_success(self):
         self.writeLog("oanda api 登录成功")
 
