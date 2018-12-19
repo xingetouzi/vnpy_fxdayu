@@ -1683,22 +1683,24 @@ class PatchedBacktestingEngine(BacktestingEngine):
             order = self.workingLimitOrderDict[vtOrderID]
             self._cancelledLimitOrderDict[vtOrderID] = order
 
-    def crossLimitOrder(self, bar):
+    def processCancelledOrders(self):
         # do cancel all cancelled orders
         for vtOrderID, order in self._cancelledLimitOrderDict.items():
             order.status = STATUS_CANCELLED
             order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
             order.cancelDatetime = self.dt
-            self.strategy.onOrder(order)
-            del self.workingLimitOrderDict[vtOrderID]
-
             if order.offset == OFFSET_CLOSE:
                 if order.direction == DIRECTION_LONG:
                     self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
             else:
                 if order.direction == DIRECTION_SHORT:
                     self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+            del self.workingLimitOrderDict[vtOrderID]
+            self.strategy.onOrder(order)
         self._cancelledLimitOrderDict.clear()
-        super(PatchedBacktestingEngine, self).crossLimitOrder(bar)
+
+    def updateDailyClose(self, symbol, dt, price):
+        self.processCancelledOrders()
+        super(PatchedBacktestingEngine, self).updateDailyClose(symbol, dt, price)
 
 BacktestingEngine = PatchedBacktestingEngine
