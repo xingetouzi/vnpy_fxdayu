@@ -1692,8 +1692,7 @@ class PatchedBacktestingEngine(BacktestingEngine):
             if order.offset == OFFSET_CLOSE:
                 if order.direction == DIRECTION_LONG:
                     self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
-            else:
-                if order.direction == DIRECTION_SHORT:
+                elif order.direction == DIRECTION_SHORT:
                     self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
             del self.workingLimitOrderDict[vtOrderID]
             self.strategy.onOrder(order)
