@@ -1236,7 +1236,7 @@ class BacktestingEngine(object):
             return None, {}
 
         df['balance'] = df['netPnl'].cumsum() + self.capital
-        df['return'] = (np.log(df['balance']) - np.log(df['balance'].shift(1))).fillna(0)
+        df['return'] = df["totalPnl"] / self.capital
         df['highlevel'] = df['balance'].rolling(min_periods=1, window=len(df), center=False).max()
         df['drawdown'] = df['balance'] - df['highlevel']
         df['ddPercent'] = df['drawdown'] / df['highlevel'] * 100
