@@ -114,12 +114,6 @@ class BacktestingEngine(object):
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
 
-        # 缓存平仓成交单时，不可以平掉的订单
-        self.mappingEntryExitLong = OrderedDict()
-        self.mappingEntryExitShort = OrderedDict()
-        self.shortEvenableDict = {}
-        self.longEvenableDict = {}
-
     # ------------------------------------------------
     # 通用功能
     # ------------------------------------------------
@@ -386,7 +380,7 @@ class BacktestingEngine(object):
             dataframe.to_csv(filename, index=False, sep=',', encoding="utf_8_sig")
             self.output(u'策略日志已生成')
 
-            # ----------------------------------------------------------------------
+    # ----------------------------------------------------------------------
 
     def newBar(self, bar):
         """新的K线"""
@@ -446,35 +440,6 @@ class BacktestingEngine(object):
                 if not order.status:
                     order.status = STATUS_NOTTRADED
                     self.strategy.onOrder(order)
-                
-                if order.offset == OFFSET_CLOSE:
-                    residualVolume = order.totalVolume
-                    if order.direction == DIRECTION_LONG:
-                        for evenableID, evenableOrder in self.shortEvenableDict.items():
-                            print(evenableID)
-                            residualVolume -= evenableOrder.volume
-                            for k,v in self.mappingEntryExitShort.items():
-                                if not v:
-                                    self.mappingEntryExitShort[evenableID] = orderID
-                                    break
-                            if residualVolume == 0:
-                                break
-                            elif residualVolume <0:
-                                evenableOrder.volume = abs(residualVolume)
-                                self.shortEvenableDict[evenableID] = evenableOrder
-
-                    else:
-                        for evenableID, evenableOrder in self.longEvenableDict.items():
-                            residualVolume -= evenableOrder.volume
-                            for k,v in self.mappingEntryExitLong.items():
-                                if not v:
-                                    self.mappingEntryExitLong[evenableID] = orderID
-                                    break
-                            if residualVolume == 0:
-                                break
-                            elif residualVolume <0:
-                                evenableOrder.volume = abs(residualVolume)
-                                self.longEvenableDict[evenableID] = evenableOrder
 
                 # 判断是否会成交
                 buyCross = (order.direction == DIRECTION_LONG and
@@ -543,14 +508,6 @@ class BacktestingEngine(object):
                     # 从字典中删除该限价单
                     if orderID in self.workingLimitOrderDict:
                         del self.workingLimitOrderDict[orderID]
-
-                    if trade.offset == OFFSET_OPEN:
-                        if trade.direction == DIRECTION_LONG:
-                            self.mappingEntryExitLong[orderID] = None
-                            self.longEvenableDict[orderID]=trade
-                        else:
-                            self.mappingEntryExitShort[orderID] = None
-                            self.shortEvenableDict[orderID]=trade
 
     # ----------------------------------------------------------------------
     def crossStopOrder(self, data):
@@ -705,26 +662,16 @@ class BacktestingEngine(object):
             order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
             order.cancelDatetime = self.dt
 
-            if order.direction == DIRECTION_LONG:
-                if order.offset == OFFSET_OPEN:
+            if order.offset == OFFSET_CLOSE:
+                if order.direction == DIRECTION_LONG:
                     self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
             else:
-                if order.offset != OFFSET_OPEN:
+                if order.direction == DIRECTION_SHORT:
                     self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
             
             self.strategy.onOrder(order)
 
             del self.workingLimitOrderDict[vtOrderID]
-
-            if order.offset == OFFSET_CLOSE:
-                if order.direction == DIRECTION_LONG:
-                    for k,v in self.mappingEntryExitShort.items():
-                        if v == vtOrderID:
-                            self.mappingEntryExitShort[k] = None
-                if order.direction == DIRECTION_SHORT:
-                    for k,v in self.mappingEntryExitLong.items():
-                        if v == vtOrderID:
-                            self.mappingEntryExitLong[k] = None
 
     # ----------------------------------------------------------------------
     def sendStopOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
@@ -1744,8 +1691,14 @@ class PatchedBacktestingEngine(BacktestingEngine):
             order.cancelDatetime = self.dt
             self.strategy.onOrder(order)
             del self.workingLimitOrderDict[vtOrderID]
+
+            if order.offset == OFFSET_CLOSE:
+                if order.direction == DIRECTION_LONG:
+                    self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+            else:
+                if order.direction == DIRECTION_SHORT:
+                    self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
         self._cancelledLimitOrderDict.clear()
         super(PatchedBacktestingEngine, self).crossLimitOrder(bar)
-
 
 BacktestingEngine = PatchedBacktestingEngine
