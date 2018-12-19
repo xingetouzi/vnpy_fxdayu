@@ -1,15 +1,16 @@
 import types
 import logging
 
-from vnpy.trader.utils import Logger
+from vnpy.trader.utils import LoggerMixin
 
 from ..ctaEngine import CtaEngine
 from ..ctaTemplate import CtaTemplate
 from ..ctaBase import ENGINETYPE_BACKTESTING
 
-class CtaEngineWithPlugins(CtaEngine, Logger):
+class CtaEngineWithPlugins(CtaEngine, LoggerMixin):
     def __init__(self, mainEngine, eventEngine):
         super(CtaEngineWithPlugins, self).__init__(mainEngine, eventEngine)
+        LoggerMixin.__init__(self)
         self._plugin = {}
         self._preTickEventHandlers = []
         self._postTickEventHandlers = []
@@ -31,9 +32,9 @@ class CtaEngineWithPlugins(CtaEngine, Logger):
             self._plugin[name] = plugin
             plugin.register(self)
             plugin.name = name
-            self.info("Register ctaEngine plugin named %s: %s." % (name, plugin))
+            self.info("Register ctaEngine plugin named %s: %s.", name, plugin)
         else:
-            self.warning("Plugin with name %s has already been registered." % name)
+            self.warn("Plugin with name %s has already been registered.", name)
 
     def getPlugin(self, key):
         if isinstance(key, str):
@@ -46,12 +47,12 @@ class CtaEngineWithPlugins(CtaEngine, Logger):
 
     def disablePlugin(self, key):
         plugin = self.getPlugin(key)
-        self.info("Disable ctaEngine plugin: %s" % plugin.name)
+        self.info("Disable ctaEngine plugin: %s", plugin.name)
         plugin.disable()
 
     def enablePlugin(self, key):
         plugin = self.getPlugin(key)
-        self.info("Enable ctaEngine plugin: %s" % plugin.name)
+        self.info("Enable ctaEngine plugin: %s", plugin.name)
         plugin.enable()
 
     def _sortedHanlders(self, handlers):

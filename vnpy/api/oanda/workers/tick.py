@@ -1,3 +1,4 @@
+# encoding: utf-8
 import asyncio
 import concurrent
 import json
@@ -21,13 +22,13 @@ class TickSubscriber(AsyncApiWorker):
     def unsubscribe(self, account_id):
         if account_id in self._tasks:
             task = self._tasks.pop(account_id)
-            self.debug("停止账户[%s]Price信道的订阅" % (account_id,))
+            self.debug("停止账户[%s]Price信道的订阅", account_id)
             self.cancel_task(task)
 
     def _subscribe(self, account_id, instruments):
         if account_id in self._tasks:
             self.unsubscribe(account_id)
-        self.debug("开始账户[%s]Price信道的订阅" % (account_id,))
+        self.debug("开始账户[%s]Price信道的订阅", account_id)
         self.create_task(self._subscriber(account_id, instruments))
     
     async def _subscriber(self, account_id, instruments=None):
@@ -35,7 +36,7 @@ class TickSubscriber(AsyncApiWorker):
         retry_count = 0
         while instruments is None:
             try:
-                self.debug("未指定订阅合约，主动请求账户[%s]的合约数据" % account_id)
+                self.debug("未指定订阅合约，主动请求账户[%s]的合约数据", account_id)
                 fut = self.api.qry_instruments(account_id=account_id, block=False, push=False)
                 async_fut = asyncio.wrap_future(fut)
                 rep = await async_fut
@@ -56,7 +57,7 @@ class TickSubscriber(AsyncApiWorker):
                     if not connected:
                         retry_count = 0
                         connected = True
-                        self.debug("账户[%s]Price信道订阅成功,订阅品种数为:%s" % (account_id, len(instruments)))
+                        self.debug("账户[%s]Price信道订阅成功,订阅品种数为:%s", account_id, len(instruments))
                     if not data:
                         continue
                     valid = self._on_tick(data.strip(MSG_SEP), account_id)
@@ -73,11 +74,11 @@ class TickSubscriber(AsyncApiWorker):
             try:
                 retry_count += 1
                 retry = 1 << (min(retry_count, 4) - 1)
-                self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连" % (account_id, retry, retry_count))
+                self.debug("账户[%s]Price信道断开,%s秒后进行第%s次重连", account_id, retry, retry_count)
                 await asyncio.sleep(retry)
             except asyncio.CancelledError:
                 break
-        self.debug("账户[%s]Price信道的订阅已被取消" % account_id)
+        self.debug("账户[%s]Price信道的订阅已被取消", account_id)
 
     def _on_tick(self, raw, account_id):
         data = json.loads(raw)
@@ -121,12 +122,12 @@ class HeartbeatTickSubscriber(TickSubscriber):
 
     def _set_lasthb(self, account_id):
         if account_id not in self._lasthbs:
-            self.debug("开始账户[%s]Price信道的心跳监控" % account_id)
+            self.debug("开始账户[%s]Price信道的心跳监控", account_id)
         self._lasthbs[account_id] = time.time()
 
     def _del_lasthb(self, account_id):
         if account_id in self._lasthbs:
-            self.debug("停止账户[%s]Price信道的心跳监控" % account_id)
+            self.debug("停止账户[%s]Price信道的心跳监控", account_id)
         self._lasthbs.pop(account_id)
 
     async def _monitor_sub(self, account_id, wait=None):
@@ -146,7 +147,7 @@ class HeartbeatTickSubscriber(TickSubscriber):
                     if time.time() - lasthb >= PRICE_STREAM_HEARTBEAT_TIMEOUT:
                         to_reconnect.append(account_id)
                 for account_id in to_reconnect:
-                    self.warning("账户[%s]Price信道订阅中断，尝试重新订阅..." % account_id)
+                    self.warn("账户[%s]Price信道订阅中断，尝试重新订阅...", account_id)
                     await self._unmonitor_sub(account_id)
                     self.unsubscribe(account_id)
                     self.subscribe(account_id, self._instruments)
