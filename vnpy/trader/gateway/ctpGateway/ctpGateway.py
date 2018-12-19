@@ -1411,7 +1411,7 @@ class CtpTdApi(TdApi):
         trade.price = data['Price']
         trade.volume = data['Volume']
         trade.tradeTime = data['TradeTime']
-        trade.tradeDatetime =datetime.strptime(' '.join([data['TradingDay'], trade.tradeTime]), '%Y%m%d %H:%M:%S')
+        trade.tradeDatetime =datetime.strptime(' '.join([data['TradeDate'], trade.tradeTime]), '%Y%m%d %H:%M:%S')
 
         # 推送
         self.gateway.onTrade(trade)
