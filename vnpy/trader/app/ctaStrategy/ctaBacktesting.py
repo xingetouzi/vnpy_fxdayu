@@ -1674,6 +1674,22 @@ def get_time_list(start=None, end=None):
 
 
 class PatchedBacktestingEngine(BacktestingEngine):
+    """
+    新增以下假设和说明:
+    1.实盘中订单状态事件到onOrder的推送必须在当前事件处理完之后，原来的撤单逻辑不满足该条件，
+    和实盘不匹配。一套逻辑不能通用于实盘和回测。
+    2.对一般的分钟频率，实盘中可以认为撤单是瞬间完成，不需要时间。
+    一般可能就是一个restful请求，(x * 10^2 ms) << 1min
+    撤单之间按照撤单指令发出的先后排队处理，撤单与撤单之间的间隔也可忽略。
+    3.对于订单的撮合，尤其是限价订单的撮合，由于价格变动需要时间，一般不在同一时刻完成。
+    结合第二个假设，大部分情况下，一旦确定了撮合顺序之后，如果在撮合成交触发的onTrade或onOrder中进行撤单，
+    则若此单还未被撮合，应该将其视为被取消而非继续参与撮合。(更精细一点，可以认为两次相邻撮合之间价格若未变动则视为互不影响，在此暂不考虑)
+    4.可以更精细的分开市价单和限价单的撮合逻辑，在此暂时先不考虑。(相当与以当前Bar的close单独做一次撮合)
+    5.剩下的问题是如何尽可能模拟实盘的订单撮合顺序。这个问题只能通过增加数据的粒度来解决，
+    方案有插值、随机、或是直接上tick回测。(在此只按挂单顺序撮合)
+    6.以上这些规则设置旨在模拟分钟级别策略运行的大部分情况，如果实在追求精准，请进行tick回测。
+    """
+
     def __init__(self):
         super(PatchedBacktestingEngine, self).__init__()
         self._cancelledLimitOrderDict = OrderedDict()
@@ -1685,21 +1701,126 @@ class PatchedBacktestingEngine(BacktestingEngine):
 
     def processCancelledOrders(self):
         # do cancel all cancelled orders
-        for vtOrderID, order in self._cancelledLimitOrderDict.items():
-            order.status = STATUS_CANCELLED
-            order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
-            order.cancelDatetime = self.dt
-            if order.offset == OFFSET_CLOSE:
-                if order.direction == DIRECTION_LONG:
-                    self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
-                elif order.direction == DIRECTION_SHORT:
-                    self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
-            del self.workingLimitOrderDict[vtOrderID]
-            self.strategy.onOrder(order)
-        self._cancelledLimitOrderDict.clear()
+        while self._cancelledLimitOrderDict:
+            # 期间如果有继续撤单，立刻进行下一轮撤单处理。
+            # 可撤单是有限的，不会死循环
+            keys = list(self._cancelledLimitOrderDict.keys())
+            for vtOrderID in keys:
+                order = self._cancelledLimitOrderDict[vtOrderID]
+                order.status = STATUS_CANCELLED
+                order.cancelTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                order.cancelDatetime = self.dt
+                if order.offset == OFFSET_CLOSE:
+                    if order.direction == DIRECTION_LONG:
+                        self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+                    elif order.direction == DIRECTION_SHORT:
+                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+                del self.workingLimitOrderDict[vtOrderID]
+                del self._cancelledLimitOrderDict[vtOrderID]
+                self.strategy.onOrder(order)          
+
+    def crossLimitOrder(self, data):
+        # 先确定会撮合成交的价格
+        if self.mode == self.BAR_MODE:
+            buyCrossPrice = data.low  # 若买入方向限价单价格高于该价格，则会成交
+            sellCrossPrice = data.high  # 若卖出方向限价单价格低于该价格，则会成交
+            buyBestCrossPrice = data.open  # 在当前时间点前发出的买入委托可能的最优成交价
+            sellBestCrossPrice = data.open  # 在当前时间点前发出的卖出委托可能的最优成交价
+        else:
+            buyCrossPrice = data.askPrice1
+            sellCrossPrice = data.bidPrice1
+            buyBestCrossPrice = data.askPrice1
+            sellBestCrossPrice = data.bidPrice1
+        
+        symbol = data.vtSymbol
+
+        # 遍历限价单字典中的所有限价单
+        for orderID in list(self.workingLimitOrderDict):
+            order = self.workingLimitOrderDict.get(orderID, None)
+            if not order: # 已被撤销
+                continue
+            if order.vtSymbol == symbol:
+                # 推送委托进入队列（未成交）的状态更新
+                if not order.status:
+                    order.status = STATUS_NOTTRADED
+                    self.strategy.onOrder(order)
+
+                # 判断是否会成交
+                buyCross = (order.direction == DIRECTION_LONG and
+                            order.price >= buyCrossPrice and
+                            buyCrossPrice > 0)  # 国内的tick行情在涨停时askPrice1为0，此时买无法成交
+
+                sellCross = (order.direction == DIRECTION_SHORT and
+                             order.price <= sellCrossPrice and
+                             sellCrossPrice > 0)  # 国内的tick行情在跌停时bidPrice1为0，此时卖无法成交
+
+                # 如果发生了成交
+                if buyCross or sellCross:
+                    # 推送成交数据
+                    self.tradeCount += 1  # 成交编号自增1
+                    tradeID = str(self.tradeCount)
+                    trade = VtTradeData()
+                    trade.vtSymbol = order.vtSymbol
+                    trade.tradeID = tradeID
+                    trade.vtTradeID = tradeID
+                    trade.orderID = order.orderID
+                    trade.vtOrderID = order.orderID
+                    trade.direction = order.direction
+                    trade.offset = order.offset
+
+                    # 以买入为例：
+                    # 1. 假设当根K线的OHLC分别为：100, 125, 90, 110
+                    # 2. 假设在上一根K线结束(也是当前K线开始)的时刻，策略发出的委托为限价105
+                    # 3. 则在实际中的成交价会是100而不是105，因为委托发出时市场的最优价格是100
+                    if buyCross and trade.offset == OFFSET_OPEN:
+                        trade.price = min(order.price, buyBestCrossPrice)
+                        self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[symbol + "_LONG"] += order.totalVolume
+                    elif buyCross and trade.offset == OFFSET_CLOSE:
+                        trade.price = min(order.price, buyBestCrossPrice)
+                        self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
+                    elif sellCross and trade.offset == OFFSET_OPEN:
+                        trade.price = max(order.price, sellBestCrossPrice)
+                        self.strategy.posDict[symbol + "_SHORT"] += order.totalVolume
+                        self.strategy.eveningDict[symbol + "_SHORT"] += order.totalVolume
+                    elif sellCross and trade.offset == OFFSET_CLOSE:
+                        trade.price = max(order.price, sellBestCrossPrice)
+                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
+
+                    # 现货仓位
+                    elif buyCross and trade.offset == OFFSET_NONE:
+                        trade.price = min(order.price, buyBestCrossPrice)
+                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
+                    elif sellCross and trade.offset == OFFSET_NONE:
+                        trade.price = max(order.price, sellBestCrossPrice)
+                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.eveningDict[symbol+"_LONG"] -= order.totalVolume
+
+                    trade.volume = order.totalVolume
+                    trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
+                    trade.tradeDatetime = self.dt
+                    
+                    # 提早到推送成交和订单状态前
+                    # 从字典中删除该限价单
+                    if orderID in self.workingLimitOrderDict:
+                        del self.workingLimitOrderDict[orderID]
+
+                    self.strategy.onTrade(trade)
+
+                    self.tradeDict[tradeID] = trade
+
+                    # 推送委托数据
+                    order.tradedVolume = order.totalVolume
+                    order.status = STATUS_ALLTRADED
+                    self.strategy.onOrder(order)
+                    self.processCancelledOrders()
+                    
 
     def updateDailyClose(self, symbol, dt, price):
-        self.processCancelledOrders()
+        # 为啥放在这个函数里，只是因为执行顺序刚好匹配而已，和这个函数干了啥没关系。
+        # 又不想改原来的newBar，改完子类也要动，只能这样trick，才能维护的了代码的样子。
+        self.processCancelledOrders() 
         super(PatchedBacktestingEngine, self).updateDailyClose(symbol, dt, price)
 
 BacktestingEngine = PatchedBacktestingEngine
