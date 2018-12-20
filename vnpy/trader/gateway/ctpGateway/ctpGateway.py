@@ -18,6 +18,9 @@ from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES, VN_SEPARATOR
 from jaqs.data import DataView,RemoteDataService
 from .language import text
+import re
+import pymongo
+from vnpy.trader.vtGlobal import globalSetting
 
 
 # 以下为一些VT类型和CTP类型的映射字典
@@ -293,7 +296,7 @@ class CtpGateway(VtGateway):
             data_df = pd.DataFrame(list(Cursor))
             data_df.sort_values(by=['datetime'], inplace=True)
         else:
-            self.writeLog('History Data of %s not found in DB'%query_symbol)
+            self.CtpMdApi.writeLog('History Data of %s not found in DB'%query_symbol)
             data_df = pd.DataFrame([])
             
         return data_df
