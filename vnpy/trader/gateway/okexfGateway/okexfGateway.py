@@ -187,10 +187,9 @@ class OkexfGateway(VtGateway):
         pass
 
     def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
-        return self.loadHistoryBarV1(self,vtSymbol,type_,size=None,since=None,end=None)
+        return self.loadHistoryBarV1(vtSymbol,type_,size,since,end)
 
     def loadHistoryBarV1(self,vtSymbol,type_,size=None,since=None,end=None):
-        
         KlinePeriodMap = {}
         KlinePeriodMap['1min'] = '1min'
         KlinePeriodMap['5min'] = '5min'
