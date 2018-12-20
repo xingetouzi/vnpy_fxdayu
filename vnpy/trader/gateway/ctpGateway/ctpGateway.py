@@ -270,71 +270,93 @@ class CtpGateway(VtGateway):
         yield time
 
     def loadHistoryBar(self, vtSymbol, type_, size=None, since=None):
-        if type_ not in ['1min','5min','15min']:
-            log = VtLogData()
-            log.gatewayName = self.gatewayName
-            log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
-            self.onLog(log)
-            return
-        typeMap = {}
-        typeMap['1min'] = '1M'
-        typeMap['5min'] = '5M'
-        typeMap['15min'] = '15M'
-        freq_map = {
-            "1min": "1M",
-            "5min": "5M",
-            "15min": "15M"
-        }
-
-        freq_delta = {
-            "1M": timedelta(minutes=1),
-            "5M": timedelta(minutes=5),
-            "15M": timedelta(minutes=15),
-        }
-
+        # if type_ not in ['1min','5min','15min']:
+        #     log = VtLogData()
+        #     log.gatewayName = self.gatewayName
+        #     log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
+        #     self.onLog(log)
+        #     return
         symbol = vtSymbol.split(':')[0]
-        exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
+        maincontract = re.split(r'(\d)', symbol)[0]
+        query_symbol = '_'.join([maincontract,type_])
 
-        if exchangeMap[EXCHANGE_SHFE] in exchange:
-            exchange = 'SHF'
-        elif exchangeMap[EXCHANGE_CFFEX] in exchange:
-            exchange = 'CFE'
-        elif exchangeMap[EXCHANGE_CZCE] in exchange:
-            exchange = 'CZC'
-        symbol = symbol + '.' + exchange
-        freq = typeMap[type_]
-        delta = freq_delta[freq]
-        if since:
-            start = int(since)
-        else:
-            start = None
-        end = self.current_datetime or datetime.now()
-        end = end.year*10000+end.month*100+end.day
-        days = self._select_trade_days(start, end)
-        results = {}
-        
-        if start is None:
-            days = reversed(days)
-        
-        length = 0
-        for date in days:
-            bar, msg = self.ds.bar(symbol, trade_date=date, freq=freq)
-            if msg != "0,":
-                raise Exception(msg)
-            bar["datetime"] = list(map(self.make_dt, bar.date, bar.time))
-            bar["datetime"] -= delta
-            results[date] = bar[self.BARCOLUMN]
-            length += len(bar)
-            if size and (length >= size):
-                break
-        
-        data = pd.concat([results[date] for date in sorted(results.keys())], ignore_index=True)
-        if size:
+        self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
+        if query_symbol in self.dbClient['VnTrader_1Min_Db_latest'].collection_names():
+            collection = self.dbClient['VnTrader_1Min_Db_latest'][query_symbol]
+
             if since:
-                data = data.iloc[:size]
-            else:
-                data = data.iloc[-size:]
-        return data        
+                since = datetime.strptime(str(since),"%Y%m%d")
+                Cursor = collection.find({"datetime": {"$gt":since}}) 
+            if size:
+                Cursor = collection.find({}).sort([("datetime",-1)]).limit(size)
+
+            data_df = pd.DataFrame(list(Cursor))
+            data_df.sort_values(by=['datetime'], inplace=True)
+        else:
+            self.writeLog('History Data of %s not found in DB'%query_symbol)
+            data_df = pd.DataFrame([])
+            
+        return data_df
+
+
+        # typeMap = {}
+        # typeMap['1min'] = '1M'
+        # typeMap['5min'] = '5M'
+        # typeMap['15min'] = '15M'
+        # freq_map = {
+        #     "1min": "1M",
+        #     "5min": "5M",
+        #     "15min": "15M"
+        # }
+
+        # freq_delta = {
+        #     "1M": timedelta(minutes=1),
+        #     "5M": timedelta(minutes=5),
+        #     "15M": timedelta(minutes=15),
+        # }
+        # symbol = vtSymbol.split(':')[0]
+        # exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
+
+        # if exchangeMap[EXCHANGE_SHFE] in exchange:
+        #     exchange = 'SHF'
+        # elif exchangeMap[EXCHANGE_CFFEX] in exchange:
+        #     exchange = 'CFE'
+        # elif exchangeMap[EXCHANGE_CZCE] in exchange:
+        #     exchange = 'CZC'
+        # symbol = symbol + '.' + exchange
+        # freq = typeMap[type_]
+        # delta = freq_delta[freq]
+        # if since:
+        #     start = int(since)
+        # else:
+        #     start = None
+        # end = self.current_datetime or datetime.now()
+        # end = end.year*10000+end.month*100+end.day
+        # days = self._select_trade_days(start, end)
+        # results = {}
+        
+        # if start is None:
+        #     days = reversed(days)
+        
+        # length = 0
+        # for date in days:
+        #     bar, msg = self.ds.bar(symbol, trade_date=date, freq=freq)
+        #     if msg != "0,":
+        #         raise Exception(msg)
+        #     bar["datetime"] = list(map(self.make_dt, bar.date, bar.time))
+        #     bar["datetime"] -= delta
+        #     results[date] = bar[self.BARCOLUMN]
+        #     length += len(bar)
+        #     if size and (length >= size):
+        #         break
+        
+        # data = pd.concat([results[date] for date in sorted(results.keys())], ignore_index=True)
+        # if size:
+        #     if since:
+        #         data = data.iloc[:size]
+        #     else:
+        #         data = data.iloc[-size:]
+        # return data        
 
     # NOTE: Depreciated
     # def _loadHistoryBar_old(self, vtSymbol, type_, size= None, since = None):
