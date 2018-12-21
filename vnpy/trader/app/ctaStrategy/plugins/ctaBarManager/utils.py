@@ -12,14 +12,14 @@ class BarUtilsMixin(object):
         bar1.low = min(bar1.low, bar2.low)
         bar1.close = bar2.close
         bar1.volume += bar2.volume
-        bar1.openInterest += bar2.openInterest
+        bar1.openInterest = bar2.openInterest
         return bar1
 
     def merge_bar_with_tick(self, bar, tick):
         bar.high = max(bar.high, tick.lastPrice)
         bar.low = min(bar.low, tick.lastPrice)
         bar.close = tick.lastPrice
-        bar.openInterest += tick.openInterest
+        bar.openInterest = tick.openInterest
         if tick.volumeChange:
             bar.volume += tick.lastVolume
         return bar
