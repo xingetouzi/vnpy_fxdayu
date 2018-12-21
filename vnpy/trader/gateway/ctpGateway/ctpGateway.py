@@ -76,6 +76,7 @@ statusMap[STATUS_ALLTRADED] = defineDict["THOST_FTDC_OST_AllTraded"]
 statusMap[STATUS_PARTTRADED] = defineDict["THOST_FTDC_OST_PartTradedQueueing"]
 statusMap[STATUS_NOTTRADED] = defineDict["THOST_FTDC_OST_NoTradeQueueing"]
 statusMap[STATUS_CANCELLED] = defineDict["THOST_FTDC_OST_Canceled"]
+statusMap[STATUS_SUBMITTED] = defineDict["THOST_FTDC_OAS_Submitted"]
 statusMapReverse = {v:k for k,v in list(statusMap.items())}
 
 # 全局字典, key:symbol, value:exchange
@@ -128,8 +129,6 @@ class CtpGateway(VtGateway):
             brokerID = str(setting['brokerID'])
             tdAddress = str(setting['tdAddress'])
             mdAddress = str(setting['mdAddress'])
-            jaqsUser = str(setting['jaqs_username'])
-            jaqsPass = str(setting['jaqs_password'])
 
             # 如果json文件提供了验证码
             if 'authCode' in setting:
@@ -150,20 +149,6 @@ class CtpGateway(VtGateway):
         # 创建行情和交易接口对象
         self.mdApi.connect(userID, password, brokerID, mdAddress)
         self.tdApi.connect(userID, password, brokerID, tdAddress,authCode, userProductInfo)
-
-        # 连接jaqs
-        if jaqsUser and jaqsPass:
-            data_config = {
-                        "remote.data.address": "tcp://data.quantos.org:8910",
-                        "remote.data.username": jaqsUser,
-                        "remote.data.password": jaqsPass
-                        }
-            self.ds = RemoteDataService()
-            self.ds.init_from_config(data_config)
-            self.trade_days = self.ds.query_trade_dates(19910101, 20291231)
-        # log.logContent = u'jaqs连接成功'
-        # self.onLog(log)
-
 
         # 初始化并启动查询
         setQryEnabled = setting.get('setQryEnabled', False)
@@ -255,23 +240,6 @@ class CtpGateway(VtGateway):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
 
-    def _select_trade_days(self, start, end):
-        s = self.trade_days.searchsorted(start) if start else 0
-        e = self.trade_days.searchsorted(end, "right")
-        return self.trade_days[s:e]
-
-    def make_dt(self, date, time):
-        day, month, year = list(self.split_time(date))
-        second, minute, hour = list(self.split_time(time))
-        return datetime(year, month, day, hour, minute, second)
-    
-    @staticmethod
-    def split_time(time):
-        for i in range(2):
-            yield time % 100
-            time = int(time/100)
-        yield time
-
     def loadHistoryBar(self, vtSymbol, type_, size=None, since=None):
         # if type_ not in ['1min','5min','15min']:
         #     log = VtLogData()
@@ -296,136 +264,17 @@ class CtpGateway(VtGateway):
             data_df = pd.DataFrame(list(Cursor))
             data_df.sort_values(by=['datetime'], inplace=True)
         else:
-            self.CtpMdApi.writeLog('History Data of %s not found in DB'%query_symbol)
+            self.tdApi.writeLog('History Data of %s not found in DB'%query_symbol)
             data_df = pd.DataFrame([])
             
         return data_df
-
-
-        # typeMap = {}
-        # typeMap['1min'] = '1M'
-        # typeMap['5min'] = '5M'
-        # typeMap['15min'] = '15M'
-        # freq_map = {
-        #     "1min": "1M",
-        #     "5min": "5M",
-        #     "15min": "15M"
-        # }
-
-        # freq_delta = {
-        #     "1M": timedelta(minutes=1),
-        #     "5M": timedelta(minutes=5),
-        #     "15M": timedelta(minutes=15),
-        # }
-        # symbol = vtSymbol.split(':')[0]
-        # exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
-
-        # if exchangeMap[EXCHANGE_SHFE] in exchange:
-        #     exchange = 'SHF'
-        # elif exchangeMap[EXCHANGE_CFFEX] in exchange:
-        #     exchange = 'CFE'
-        # elif exchangeMap[EXCHANGE_CZCE] in exchange:
-        #     exchange = 'CZC'
-        # symbol = symbol + '.' + exchange
-        # freq = typeMap[type_]
-        # delta = freq_delta[freq]
-        # if since:
-        #     start = int(since)
-        # else:
-        #     start = None
-        # end = self.current_datetime or datetime.now()
-        # end = end.year*10000+end.month*100+end.day
-        # days = self._select_trade_days(start, end)
-        # results = {}
-        
-        # if start is None:
-        #     days = reversed(days)
-        
-        # length = 0
-        # for date in days:
-        #     bar, msg = self.ds.bar(symbol, trade_date=date, freq=freq)
-        #     if msg != "0,":
-        #         raise Exception(msg)
-        #     bar["datetime"] = list(map(self.make_dt, bar.date, bar.time))
-        #     bar["datetime"] -= delta
-        #     results[date] = bar[self.BARCOLUMN]
-        #     length += len(bar)
-        #     if size and (length >= size):
-        #         break
-        
-        # data = pd.concat([results[date] for date in sorted(results.keys())], ignore_index=True)
-        # if size:
-        #     if since:
-        #         data = data.iloc[:size]
-        #     else:
-        #         data = data.iloc[-size:]
-        # return data        
-
-    # NOTE: Depreciated
-    # def _loadHistoryBar_old(self, vtSymbol, type_, size= None, since = None):
-    #     if size and not since:
-    #         log = VtLogData()
-    #         log.gatewayName = self.gatewayName
-    #         log.logContent = u'CTP初始化数据请使用since参数，size无效'
-    #         self.onLog(log)
-    #         return
-
-    #     if type_ not in ['1min','5min','15min']:
-    #         log = VtLogData()
-    #         log.gatewayName = self.gatewayName
-    #         log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
-    #         self.onLog(log)
-    #         return
-    #     typeMap = {}
-    #     typeMap['1min'] = '1M'
-    #     typeMap['5min'] = '5M'
-    #     typeMap['15min'] = '15M'
-    #     freq_map = {
-    #         "1min": "1M",
-    #         "5min": "5M",
-    #         "15min": "15M"
-    #     }
-
-    #     freq_delta = {
-    #         "1M": timedelta(minutes=1),
-    #         "5M": timedelta(minutes=5),
-    #         "15M": timedelta(minutes=15),
-    #     }
-
-    #     symbol = vtSymbol.split(':')[0]
-    #     exchange = symbolExchangeDict.get(symbol, EXCHANGE_UNKNOWN)
-
-    #     if exchangeMap[EXCHANGE_SHFE] in exchange:
-    #         exchange = 'SHF'
-    #     elif exchangeMap[EXCHANGE_CFFEX] in exchange:
-    #         exchange = 'CFE'
-    #     elif exchangeMap[EXCHANGE_CZCE] in exchange:
-    #         exchange = 'CZC'
-
-    #     symbol = symbol + '.' + exchange
-
-    #     if self.ds:
-    #         result= pd.DataFrame(columns=['datetime','open','close','high','low','volume'])
-    #         start_time = since#.strftime('%Y%m%d')
-    #         end_time = datetime.now().strftime('%Y%m%d')
-    #         tradeDays=self.ds.query_trade_dates(start_time,end_time)
-
-    #         for trade_date in tradeDays:
-    #             minutebar,msg=self.ds.bar(symbol=symbol,start_time=190000,end_time=185959,trade_date=trade_date, freq=typeMap[type_],fields="")
-    #             minutebar['datetime'] = minutebar['date'].map(lambda x: str(x)) +' '+ minutebar['time'].map(lambda x: str(x).zfill(6))
-    #             minutebar['datetime'] = minutebar['datetime'].map(lambda x : datetime.strptime(x,"%Y%m%d %H%M%S"))
-            
-    #             minute=minutebar[['datetime','open','close','high','low','volume']]
-    #             result=result.append(minute)
-
-    #         result["datetime"] = result["datetime"] - freq_delta[typeMap[type_]]
-    #         return result
 
     def qryAllOrders(self, vtSymbol, order_id, status= None):
         pass
 
     def initPosition(self,vtSymbol):
         self.qryPosition()
+        self.qryAccount()
 
     def qryInstrument(self):
         self.tdApi.restQryInstrument()
@@ -1065,6 +914,7 @@ class CtpTdApi(TdApi):
                            data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
                            data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
                            data['Commission'])
+        self.gateway.onAccount(account)
 
     #----------------------------------------------------------------------
     def onRspQryInvestor(self, data, error, n, last):
@@ -1351,13 +1201,13 @@ class CtpTdApi(TdApi):
         'OrderLocalID': '         207', 'ParticipantID': '9999', 'OrderType': '\x00', 'SuspendTime': '', 'SessionID': 248121201, 'VolumeTotal': 0, 'OrderSubmitStatus': '3', 'VolumeCondition': '1', 
         'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'IF1811', 'OrderStatus': '0', 'InstallID': 1} 
 
-        2018-11-14 16:28:07,534  INFO: CTP_24   报单回报{'BusinessUnit': '', 'RelativeOrderSysID': '', 'UserID': '119247', 'ContingentCondition': '1', 'TraderID': '9999caf', 
-        'IsAutoSuspend': 0, 'BrokerID': '9999', 'UpdateTime': '', 'OrderPriceType': '2', 'SequenceNo': 949, 'ActiveTraderID': '9999caf', 'ActiveTime': '', 'FrontID': 1, 'RequestID': 0, 
-        'InsertDate': '20181112', 'InstrumentID': 'j1901', 'ZCETotalTradedVolume': 0, 'ForceCloseReason': '0', 'ClearingPartID': '', 'TradingDay': '20181113', 'CancelTime': '', 'OrderSource': '\x00', 
-        'ActiveUserID': '', 'MinVolume': 1, 'LimitPrice': 2302.0, 'BrokerOrderSeq': 1692, 'NotifySequence': 1, 'UserForceClose': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': 'DCE', 'ClientID': '9999119227', 
-        'OrderRef': '6', 'Direction': '0', 'TimeCondition': '3', 'InsertTime': '18:13:49', 'UserProductInfo': '', 'InvestorID': '119247', 'OrderSysID': '        1596', 'GTDDate': '', 'StatusMsg': '全部成交', 
-        'BranchID': '', 'CombHedgeFlag': '1', 'StopPrice': 0.0, 'CombOffsetFlag': '1', 'VolumeTraded': 1, 'OrderLocalID': '         506', 'ParticipantID': '9999', 'OrderType': '\x00', 'SuspendTime': '', 
-        'SessionID': -624024875, 'VolumeTotal': 0, 'OrderSubmitStatus': '3', 'VolumeCondition': '1', 'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'j1901', 'OrderStatus': '0', 'InstallID': 1}
+        {'BusinessUnit': '', 'RelativeOrderSysID': '', 'UserID': '119247', 'ContingentCondition': '1', 'TraderID': '9999caf', 'IsAutoSuspend': 0, 'BrokerID': '9999', 'UpdateTime': '', 'OrderPriceType': '2', 
+        'SequenceNo': 949, 'ActiveTraderID': '9999caf', 'ActiveTime': '', 'FrontID': 1, 'RequestID': 0, 'InsertDate': '20181112', 'InstrumentID': 'j1901', 'ZCETotalTradedVolume': 0, 'ForceCloseReason': '0', 
+        'ClearingPartID': '', 'TradingDay': '20181113', 'CancelTime': '', 'OrderSource': '\x00', 'ActiveUserID': '', 'MinVolume': 1, 'LimitPrice': 2302.0, 'BrokerOrderSeq': 1692, 'NotifySequence': 1, 
+        'UserForceClose': 0, 'VolumeTotalOriginal': 1, 'ExchangeID': 'DCE', 'ClientID': '9999119227', 'OrderRef': '6', 'Direction': '0', 'TimeCondition': '3', 'InsertTime': '18:13:49', 'UserProductInfo': '', 
+        'InvestorID': '119247', 'OrderSysID': '        1596', 'GTDDate': '', 'StatusMsg': '全部成交', 'BranchID': '', 'CombHedgeFlag': '1', 'StopPrice': 0.0, 'CombOffsetFlag': '1', 'VolumeTraded': 1, 
+        'OrderLocalID': '         506', 'ParticipantID': '9999', 'OrderType': '\x00', 'SuspendTime': '', 'SessionID': -624024875, 'VolumeTotal': 0, 'OrderSubmitStatus': '3', 'VolumeCondition': '1', 
+        'SettlementID': 1, 'IsSwapOrder': 0, 'ExchangeInstID': 'j1901', 'OrderStatus': '0', 'InstallID': 1}
 
         """
         # 更新最大报单编号
