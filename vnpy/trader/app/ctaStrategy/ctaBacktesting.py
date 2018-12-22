@@ -625,7 +625,9 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
             if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_LONG']:
-                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
+                self.output("direction:卖平;volume:%s;eveningDict=%s"%(order.totalVolume, self.strategy.eveningDict))
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_LONG'] -= order.totalVolume
         elif orderType == CTAORDER_SHORT:
@@ -635,7 +637,9 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE
             if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_SHORT']:
-                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
+                self.output("direction:买平;volume:%s;eveningDict=%s" % (order.totalVolume, self.strategy.eveningDict))
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_SHORT'] -= order.totalVolume
 
