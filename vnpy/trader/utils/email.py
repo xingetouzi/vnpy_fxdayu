@@ -10,7 +10,7 @@ def mail(my_context,strategy):
     p.start()
     p.join()
 
-def sendmail(my_context,strategy)
+def sendmail(my_context,strategy):
     mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
     mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
     if "" in [mailaccount,mailpass,mailserver,mailport]:
