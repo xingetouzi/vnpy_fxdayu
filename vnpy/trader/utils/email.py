@@ -6,10 +6,9 @@ from vnpy.trader.vtGlobal import globalSetting
 import multiprocessing
 
 def mail(my_context,strategy):
-    pool = multiprocessing.Pool(3)
-    pool.apply_async(sendmail, (my_context,strategy))
-    pool.close()
-    pool.join()
+    p = multiprocessing.Process(target = sendmail, args = (my_context,strategy))
+    p.start()
+    p.join()
 
 def sendmail(my_context,strategy)
     mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
