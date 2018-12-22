@@ -479,29 +479,23 @@ class CtaEngine(object):
     #----------------------------------
     def processPositionEvent(self, event):           # nearly abandon
         """处理持仓推送"""
-        
         pos = event.dict_['data']
 
-        symbol = pos.vtSymbol
         for strategy in self.strategyDict.values():
             if strategy.inited and pos.vtSymbol in strategy.symbolList:
                 if pos.direction == DIRECTION_LONG:
                     posName = pos.vtSymbol + "_LONG"
-                    if 'posDict' in strategy.syncList:
-                        strategy.posDict[str(posName)] = pos.position
-                        if 'CTP' in posName:
-                            self.ydPositionDict[str(posName)] = pos.ydPosition
-                    if 'eveningDict' in strategy.syncList:
-                        strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                    strategy.posDict[str(posName)] = pos.position
+                    strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                    if 'CTP' in posName:
+                        self.ydPositionDict[str(posName)] = pos.ydPosition
 
                 elif pos.direction == DIRECTION_SHORT:
                     posName2 = pos.vtSymbol + "_SHORT"
-                    if 'posDict' in strategy.syncList:
-                        strategy.posDict[str(posName2)] = pos.position
-                        if 'CTP' in posName2:
-                            self.ydPositionDict[str(posName2)] = pos.ydPosition
-                    if 'eveningDict' in strategy.syncList:
-                        strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                    strategy.posDict[str(posName2)] = pos.position
+                    strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                    if 'CTP' in posName2:
+                        self.ydPositionDict[str(posName2)] = pos.ydPosition                        
 
                     # 保存策略持仓到数据库
                     self.saveSyncData(strategy)  

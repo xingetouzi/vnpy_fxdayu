@@ -497,7 +497,7 @@ class BacktestingEngine(object):
                     elif sellCross and trade.offset == OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol + "_LONG"] -= order.totalVolume
-                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
 
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
@@ -635,7 +635,8 @@ class BacktestingEngine(object):
                 self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
                 self.output("direction:卖平;volume:%s;eveningDict=%s"%(order.totalVolume, self.strategy.eveningDict))
             else:
-                self.strategy.eveningDict[order.vtSymbol+'_LONG'] -= order.totalVolume
+                self.strategy.eveningDict[order.vtSymbol + '_LONG'] -= order.totalVolume
+                self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.posDict[symbol + '_LONG'], 4)
         elif orderType == CTAORDER_SHORT:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_OPEN
@@ -647,7 +648,8 @@ class BacktestingEngine(object):
                 self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
                 self.output("direction:买平;volume:%s;eveningDict=%s" % (order.totalVolume, self.strategy.eveningDict))
             else:
-                self.strategy.eveningDict[order.vtSymbol+'_SHORT'] -= order.totalVolume
+                self.strategy.eveningDict[order.vtSymbol + '_SHORT'] -= order.totalVolume
+                self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(self.strategy.posDict[symbol + '_SHORT'], 4)
 
         if priceType == PRICETYPE_LIMITPRICE:
             order.price = self.roundToPriceTick(price)
@@ -675,9 +677,11 @@ class BacktestingEngine(object):
             if order.offset == OFFSET_CLOSE:
                 if order.direction == DIRECTION_LONG:
                     self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+                    self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(self.strategy.posDict[symbol + '_SHORT'], 4)
             else:
                 if order.direction == DIRECTION_SHORT:
                     self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+                    self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.posDict[symbol + '_LONG'], 4)
             
             self.strategy.onOrder(order)
 
