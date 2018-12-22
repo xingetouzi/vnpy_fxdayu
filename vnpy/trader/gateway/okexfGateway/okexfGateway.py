@@ -636,7 +636,7 @@ class OkexfRestApi(RestClient):
         self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -644,10 +644,10 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：连接错误
         """
-        print(exceptionType,exceptionValue,"onsendordererror")
+        self.writeLog("%s onsendordererror, %s"%(exceptionType,exceptionValue))
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = "onSendOrderError: OKEX server issue"#str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -711,8 +711,8 @@ class OkexfRestApi(RestClient):
         print("onfailed",request)
         e = VtErrorData()
         e.gatewayName = self.gatewayName
-        e.errorID = httpStatusCode
-        e.errorMsg = request.response.text
+        e.errorID = str(httpStatusCode)
+        e.errorMsg = str(httpStatusCode) #request.response.text
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------

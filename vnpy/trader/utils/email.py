@@ -35,7 +35,7 @@ def mail(my_context,strategy):
             msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
         msg['Subject'] = '策略信息播报'
 
-        server=smtplib.SMTP_SSL(mailserver, mailport)
+        server=smtplib.SMTP_SSL(mailserver, mailport, timeout = 2)
         server.login(mailaccount, mailpass)
         if cc_receiver:
             server.sendmail(mailaccount,[to_receiver,cc_receiver],msg.as_string())

@@ -472,26 +472,32 @@ class BacktestingEngine(object):
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
+                        self.strategy.eveningDict[symbol + "_LONG"] = round(self.strategy.eveningDict[symbol + "_LONG"], 4)
                     elif buyCross and trade.offset == OFFSET_CLOSE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
                     elif sellCross and trade.offset == OFFSET_OPEN:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol + "_SHORT"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_SHORT"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
+                        self.strategy.eveningDict[symbol + "_SHORT"] = round(self.strategy.eveningDict[symbol + "_SHORT"], 4)
                     elif sellCross and trade.offset == OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
 
                     # 现货仓位
                     elif buyCross and trade.offset == OFFSET_NONE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
-                        self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
                     elif sellCross and trade.offset == OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
-                        self.strategy.eveningDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
 
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
