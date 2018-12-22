@@ -3,8 +3,15 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 from datetime import datetime
 from vnpy.trader.vtGlobal import globalSetting
+import multiprocessing
 
 def mail(my_context,strategy):
+    pool = multiprocessing.Pool(3)
+    pool.apply_async(sendmail, (my_context,strategy))
+    pool.close()
+    pool.join()
+
+def sendmail(my_context,strategy)
     mailaccount, mailpass = globalSetting['mailAccount'], globalSetting['mailPass']
     mailserver, mailport = globalSetting['mailServer'], globalSetting['mailPort']
     if "" in [mailaccount,mailpass,mailserver,mailport]:
@@ -35,7 +42,7 @@ def mail(my_context,strategy):
             msg['Cc']=cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
         msg['Subject'] = '策略信息播报'
 
-        server=smtplib.SMTP_SSL(mailserver, mailport, timeout = 2)
+        server=smtplib.SMTP_SSL(mailserver, mailport, timeout = 10)
         server.login(mailaccount, mailpass)
         if cc_receiver:
             server.sendmail(mailaccount,[to_receiver,cc_receiver],msg.as_string())

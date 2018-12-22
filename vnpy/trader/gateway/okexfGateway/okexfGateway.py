@@ -538,7 +538,7 @@ class OkexfRestApi(RestClient):
             'margin_mode': 'crossed'}]]}"""
         
         for holding in data['holding']:
-            print(holding,"p")
+            # print(holding,"p")
             for d in holding:
                 longPosition = VtPositionData()
                 longPosition.gatewayName = self.gatewayName
@@ -997,7 +997,7 @@ class OkexfWebsocketApi(WebsocketClient):
             'system_type': 0, 'price': 2.8, 'create_date_str': '2018-11-28 17:36:00', 
             'create_date': 1543397760669, 'status': 0}}  """
         data = d['data']
-        print(data)
+        # print(data)
         order = self.orderDict.get(str(data['orderid']), None)
         if not order:
             currency = data['contract_name'][:3]
