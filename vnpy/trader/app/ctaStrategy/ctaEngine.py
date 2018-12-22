@@ -43,8 +43,6 @@ class CtaEngine(object):
     settingFileName = 'CTA_setting.json'
     settingfilePath = getJsonPath(settingFileName, __file__)
 
-    STATUS_FINISHED = set([STATUS_REJECTED, STATUS_CANCELLED, STATUS_ALLTRADED])
-
     #----------------------------------------------------------------------
     def __init__(self, mainEngine, eventEngine):
         """Constructor"""
@@ -441,7 +439,7 @@ class CtaEngine(object):
                 
 
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
-            if order.status in self.STATUS_FINISHED:
+            if order.status in STATUS_FINISHED:
                 s = self.strategyOrderDict[strategy.name]
                 if vtOrderID in s:
                     s.remove(vtOrderID)
@@ -507,19 +505,18 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                accountName = account.accountID
-                if 'accountDict' in strategy.syncList:
-                    if str(accountName) not in strategy.accountDict.keys():
-                        strategy.accountDict.update({str(accountName):account.available})
-                    else:
-                        strategy.accountDict[str(accountName)] = account.available
+                for sym in strategy.symbolList:
+                    if account.gatewayName in sym:
+                        strategy.accountDict[str(account.accountID)] = account.available
 
     def processErrorEvent(self,event):
         error = event.dict_['data']
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
+                for sym in strategy.symbolList:
+                    if error.gatewayName in sym:
+                        self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
 
     #--------------------------------------------------
     def registerEvent(self):
