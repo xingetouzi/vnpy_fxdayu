@@ -122,6 +122,16 @@ class OkexfGateway(VtGateway):
         """撤单"""
         self.restApi.cancelOrder(cancelOrderReq)
 
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """发单"""
+        return self.restApi.cancelAll(symbols=symbols, orders=orders)
+
+    # ----------------------------------------------------------------------
+    def closeAll(self, symbols, direction=None):
+        """撤单"""
+        return self.restApi.closeAll(symbols, direction=direction)
+
     #----------------------------------------------------------------------
     def close(self):
         """关闭"""
@@ -272,6 +282,34 @@ class OkexfRestApi(RestClient):
         msg = timestamp + request.method + path + request.data
         signature = generateSignature(msg, self.apiSecret)
         
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+
+    # ----------------------------------------------------------------------
+    def sign2(self, request):
+        """okex的签名方案, 针对全平和全撤接口"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3] + 'Z')  # str(time.time())
+
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+
+        if request.data:
+            request.data = json.dumps(request.data)
+            msg = timestamp + request.method + path + request.data
+        else:
+            msg = timestamp + request.method + path
+        signature = generateSignature(msg, self.apiSecret)
+
         # 添加表头
         request.headers = {
             'OK-ACCESS-KEY': self.apiKey,
@@ -434,6 +472,7 @@ class OkexfRestApi(RestClient):
         vtOrderIDs: list of str
         包含本次所有撤销的订单ID的列表
         """
+        vtOrderIDs = []
         if symbols:
             symbols = symbols.split(",")
         else:
@@ -448,30 +487,40 @@ class OkexfRestApi(RestClient):
                 'status': 6
             }
             path = '/api/futures/v3/orders/%s' % symbol
-            self.addRequest('GET', path, params=req, extra=orders, callback=self.onQueryCancelAll)
-
-    def onQueryCancelAll(self, data, request):
-        if data['result'] and data['order_info']:
-            orderids = [str(order['order_id']) for order in data['order_info'] if
-                        order['status'] == '0' or order['status'] == '1']
-            if request.extra:
-                orderids = list(set(orderids).intersection(set(request.extra.split(","))))
-            for i in range(len(orderids) // 20 + 1):
-                orderid = orderids[i * 20:(i + 1) * 20]
-
-                req = {
-                    'instrument_id': request.params['instrument_id'],
-                    'order_ids': orderid
-                }
-                path = '/api/futures/v3/cancel_batch_orders/%s' % request.params['instrument_id']
-                self.addRequest('POST', path, data=req, callback=self.onCancelAll)
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+            request = self.sign2(request)
+            request.extra = orders
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['order_info']:
+                data = self.onCancelAll(data, request)
+                if data['result']:
+                    vtOrderIDs += data['order_ids']
+                    self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
+        print("全部撤单结果", vtOrderIDs)
+        return vtOrderIDs
 
     def onCancelAll(self, data, request):
-        print("全部撤单结果", data)
-        if data['result']:
-            self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
-        else:
-            pass
+        orderids = [str(order['order_id']) for order in data['order_info'] if
+                    order['status'] == '0' or order['status'] == '1']
+        if request.extra:
+            orderids = list(set(orderids).intersection(set(request.extra.split(","))))
+        for i in range(len(orderids) // 20 + 1):
+            orderid = orderids[i * 20:(i + 1) * 20]
+
+            req = {
+                'instrument_id': request.params['instrument_id'],
+                'order_ids': orderid
+            }
+            path = '/api/futures/v3/cancel_batch_orders/%s' % request.params['instrument_id']
+            # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+
+            request = self.sign(request)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            return response.json()
 
     def closeAll(self, symbols, direction=None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
@@ -488,6 +537,7 @@ class OkexfRestApi(RestClient):
         vtOrderIDs: list of str
         包含平仓操作发送的所有订单ID的列表
         """
+        vtOrderIDs = []
         symbols = symbols.split(",")
         for symbol in symbols:
             for key, value in contractMap.items():
@@ -497,56 +547,67 @@ class OkexfRestApi(RestClient):
                 'instrument_id': symbol,
             }
             path = '/api/futures/v3/%s/position/' % symbol
-            self.addRequest('GET', path, params=req, extra=direction, callback=self.onQueryCloseAll)
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
 
-    def onQueryCloseAll(self, data, request):
-        if data['result'] and data['holding']:
-            for holding in data['holding']:
-                req_long = {
-                    'instrument_id': holding['instrument_id'],
-                    'type': '3',
-                    'price': holding['long_avg_cost'],
-                    'size': str(holding['long_avail_qty']),
-                    'match_price': '1',
-                    'leverage': self.leverage,
-                }
-                req_short = {
-                    'instrument_id': holding['instrument_id'],
-                    'type': '4',
-                    'price': holding['short_avg_cost'],
-                    'size': str(holding['short_avail_qty']),
-                    'match_price': '1',
-                    'leverage': self.leverage,
-                }
-                if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
-                    # 多仓可平
-                    self.addRequest('POST', '/api/futures/v3/order',
-                                    callback=self.onCloseAll,
-                                    data=req_long)
-                elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
-                    # 空仓可平
-
-                    self.addRequest('POST', '/api/futures/v3/order',
-                                    callback=self.onCloseAll,
-                                    data=req_short)
-                elif request.extra is None:
-                    if int(holding['long_avail_qty']) > 0:
-                        # 多仓可平
-                        self.addRequest('POST', '/api/futures/v3/order',
-                                        callback=self.onCloseAll,
-                                        data=req_long)
-                    if int(holding['short_avail_qty']) > 0:
-                        # 空仓可平
-                        self.addRequest('POST', '/api/futures/v3/order',
-                                        callback=self.onCloseAll,
-                                        data=req_short)
+            request = self.sign2(request)
+            request.extra = direction
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['holding']:
+                data = self.onCloseAll(data, request)
+                for i in data:
+                    if i['result']:
+                        vtOrderIDs.append(i['order_id'])
+                        self.writeLog(u'平仓成功%s' % i)
+        print("全部平仓结果", vtOrderIDs)
+        return vtOrderIDs
 
     def onCloseAll(self, data, request):
-        print("全部平仓结果", data)
-        if data['result']:
-            self.writeLog(u'平仓成功%s' % data['order_id'])
-        else:
-            pass
+        l = []
+
+        def _response(request, l):
+            request = self.sign(request)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            l.append(response.json())
+            return l
+        for holding in data['holding']:
+            path = '/api/futures/v3/order'
+            req_long = {
+                'instrument_id': holding['instrument_id'],
+                'type': '3',
+                'price': holding['long_avg_cost'],
+                'size': str(holding['long_avail_qty']),
+                'match_price': '1',
+                'leverage': self.leverage,
+            }
+            req_short = {
+                'instrument_id': holding['instrument_id'],
+                'type': '4',
+                'price': holding['short_avg_cost'],
+                'size': str(holding['short_avail_qty']),
+                'match_price': '1',
+                'leverage': self.leverage,
+            }
+            if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
+                # 多仓可平
+                request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+                l = _response(request, l)
+            elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
+                # 空仓可平
+                request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+                l = _response(request, l)
+            elif request.extra is None:
+                if int(holding['long_avail_qty']) > 0:
+                    # 多仓可平
+                    request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+                    l = _response(request, l)
+                if int(holding['short_avail_qty']) > 0:
+                    # 空仓可平
+                    request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+                    l = _response(request, l)
+        return l
 
     #----------------------------------------------------------------------
     def onQueryContract(self, data, request):
