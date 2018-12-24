@@ -147,4 +147,13 @@ class BarTimer(object):
         return self._f_is_new_bar(bar_dt, dt)  
 
 if __name__ == "__main__":
-    bar
+    from datetime import datetime, time
+
+    date = datetime.now().date()
+    dt = datetime.combine(date, time(hour=11, minute=23, second=11))
+    bt_1h = BarTimer("1h")
+    bt_5s = BarTimer("5s")
+    bt_5m = BarTimer("5m")
+    print(bt_1h.get_current_dt(dt))
+    print(bt_5s.get_current_dt(dt))
+    print(bt_5m.get_current_dt(dt))
