@@ -610,7 +610,7 @@ class BacktestingEngine(object):
         orderID = str(self.limitOrderCount)
         order = VtOrderData()
         order.vtSymbol = vtSymbol
-        order.totalVolume = volume
+        order.totalVolume = round(volume, 5)
         order.orderID = orderID
         order.vtOrderID = orderID
         order.orderTime = self.dt.strftime('%Y%m%d %H:%M:%S')
@@ -625,7 +625,10 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
             if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_LONG']:
-                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
+                self.output("direction:卖平;volume:%s;eveningDict=%s"%(order.totalVolume, self.strategy.eveningDict))
+                self.strategy.eveningDict[order.vtSymbol + '_LONG'] -= order.totalVolume
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_LONG'] -= order.totalVolume
         elif orderType == CTAORDER_SHORT:
@@ -635,7 +638,10 @@ class BacktestingEngine(object):
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE
             if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_SHORT']:
-                raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
+                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
+                self.output("direction:买平;volume:%s;eveningDict=%s" % (order.totalVolume, self.strategy.eveningDict))
+                self.strategy.eveningDict[order.vtSymbol + '_SHORT'] -= order.totalVolume
             else:
                 self.strategy.eveningDict[order.vtSymbol+'_SHORT'] -= order.totalVolume
 
@@ -665,8 +671,7 @@ class BacktestingEngine(object):
             if order.offset == OFFSET_CLOSE:
                 if order.direction == DIRECTION_LONG:
                     self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
-            else:
-                if order.direction == DIRECTION_SHORT:
+                elif order.direction == DIRECTION_SHORT:
                     self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
             
             self.strategy.onOrder(order)
@@ -1236,7 +1241,7 @@ class BacktestingEngine(object):
             return None, {}
 
         df['balance'] = df['netPnl'].cumsum() + self.capital
-        df['return'] = df["totalPnl"] / self.capital
+        df['return'] = df["netPnl"] / self.capital
         df['highlevel'] = df['balance'].rolling(min_periods=1, window=len(df), center=False).max()
         df['drawdown'] = df['balance'] - df['highlevel']
         df['ddPercent'] = df['drawdown'] / df['highlevel'] * 100
