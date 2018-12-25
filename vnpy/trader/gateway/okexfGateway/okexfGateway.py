@@ -538,7 +538,7 @@ class OkexfRestApi(RestClient):
             'margin_mode': 'crossed'}]]}"""
         
         for holding in data['holding']:
-            print(holding,"p")
+            # print(holding,"p")
             for d in holding:
                 longPosition = VtPositionData()
                 longPosition.gatewayName = self.gatewayName
@@ -636,7 +636,7 @@ class OkexfRestApi(RestClient):
         self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -644,10 +644,10 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：连接错误
         """
-        print(exceptionType,exceptionValue,"onsendordererror")
+        self.writeLog("%s onsendordererror, %s"%(exceptionType,exceptionValue))
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = eval(request.response.text)['code'] + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = "onSendOrderError: OKEX server issue"#str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
     
     #----------------------------------------------------------------------
@@ -711,8 +711,8 @@ class OkexfRestApi(RestClient):
         print("onfailed",request)
         e = VtErrorData()
         e.gatewayName = self.gatewayName
-        e.errorID = httpStatusCode
-        e.errorMsg = request.response.text
+        e.errorID = str(httpStatusCode)
+        e.errorMsg = str(httpStatusCode) #request.response.text
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -997,7 +997,7 @@ class OkexfWebsocketApi(WebsocketClient):
             'system_type': 0, 'price': 2.8, 'create_date_str': '2018-11-28 17:36:00', 
             'create_date': 1543397760669, 'status': 0}}  """
         data = d['data']
-        print(data)
+        # print(data)
         order = self.orderDict.get(str(data['orderid']), None)
         if not order:
             currency = data['contract_name'][:3]
