@@ -8,3 +8,4 @@ flask-socketio
 aiohttp
 requests
 watchdog
+jaqs

@@ -5,5 +5,12 @@
     "userID": "",
     "password": "",
     "setQryEnabled": false,
-    "setQryFreq": 60
+    "setQryFreq": 60,
+    "mongodbHost":"",
+    "mongodbPort":"",
+    "mongodbUser":"",
+    "mongodbPass":"",
+    "mongodbName":"",
+    "jaqsUser":"",
+    "jaqsPass":""
 }
