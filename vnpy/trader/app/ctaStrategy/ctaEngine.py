@@ -508,6 +508,7 @@ class CtaEngine(object):
                 for sym in strategy.symbolList:
                     if account.gatewayName in sym:
                         strategy.accountDict[str(account.accountID)] = account.available
+                        break
 
     def processErrorEvent(self,event):
         error = event.dict_['data']
@@ -517,6 +518,7 @@ class CtaEngine(object):
                 for sym in strategy.symbolList:
                     if error.gatewayName in sym:
                         self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
+                        return
 
     #--------------------------------------------------
     def registerEvent(self):
