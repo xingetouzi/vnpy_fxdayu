@@ -7,5 +7,5 @@ flask-restful
 flask-socketio
 aiohttp
 requests
-jaqs
 watchdog
+jaqs

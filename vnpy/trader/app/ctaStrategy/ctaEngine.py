@@ -43,8 +43,6 @@ class CtaEngine(object):
     settingFileName = 'CTA_setting.json'
     settingfilePath = getJsonPath(settingFileName, __file__)
 
-    STATUS_FINISHED = set([STATUS_REJECTED, STATUS_CANCELLED, STATUS_ALLTRADED])
-
     #----------------------------------------------------------------------
     def __init__(self, mainEngine, eventEngine):
         """Constructor"""
@@ -441,7 +439,7 @@ class CtaEngine(object):
                 
 
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
-            if order.status in self.STATUS_FINISHED:
+            if order.status in STATUS_FINISHED:
                 s = self.strategyOrderDict[strategy.name]
                 if vtOrderID in s:
                     s.remove(vtOrderID)
@@ -479,29 +477,23 @@ class CtaEngine(object):
     #----------------------------------
     def processPositionEvent(self, event):           # nearly abandon
         """处理持仓推送"""
-        
         pos = event.dict_['data']
 
-        symbol = pos.vtSymbol
         for strategy in self.strategyDict.values():
             if strategy.inited and pos.vtSymbol in strategy.symbolList:
                 if pos.direction == DIRECTION_LONG:
                     posName = pos.vtSymbol + "_LONG"
-                    if 'posDict' in strategy.syncList:
-                        strategy.posDict[str(posName)] = pos.position
-                        if 'CTP' in posName:
-                            self.ydPositionDict[str(posName)] = pos.ydPosition
-                    if 'eveningDict' in strategy.syncList:
-                        strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                    strategy.posDict[str(posName)] = pos.position
+                    strategy.eveningDict[str(posName)] = pos.position - pos.frozen
+                    if 'CTP' in posName:
+                        self.ydPositionDict[str(posName)] = pos.ydPosition
 
                 elif pos.direction == DIRECTION_SHORT:
                     posName2 = pos.vtSymbol + "_SHORT"
-                    if 'posDict' in strategy.syncList:
-                        strategy.posDict[str(posName2)] = pos.position
-                        if 'CTP' in posName2:
-                            self.ydPositionDict[str(posName2)] = pos.ydPosition
-                    if 'eveningDict' in strategy.syncList:
-                        strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                    strategy.posDict[str(posName2)] = pos.position
+                    strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
+                    if 'CTP' in posName2:
+                        self.ydPositionDict[str(posName2)] = pos.ydPosition                        
 
                     # 保存策略持仓到数据库
                     self.saveSyncData(strategy)  
@@ -513,19 +505,20 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                accountName = account.accountID
-                if 'accountDict' in strategy.syncList:
-                    if str(accountName) not in strategy.accountDict.keys():
-                        strategy.accountDict.update({str(accountName):account.available})
-                    else:
-                        strategy.accountDict[str(accountName)] = account.available
+                for sym in strategy.symbolList:
+                    if account.gatewayName in sym:
+                        strategy.accountDict[str(account.accountID)] = account.available
+                        break
 
     def processErrorEvent(self,event):
         error = event.dict_['data']
 
         for strategy in self.strategyDict.values():
             if strategy.inited:
-                self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
+                for sym in strategy.symbolList:
+                    if error.gatewayName in sym:
+                        self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
+                        return
 
     #--------------------------------------------------
     def registerEvent(self):
