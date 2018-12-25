@@ -108,10 +108,7 @@ class CtpGateway(VtGateway):
         self.trade_days = None
         self.current_datetime = None
 
-        self.dbHost = None
-        self.dbPort = None
-        self.dbUser = None
-        self.dbPass = None
+        self.dbURI = None
         self.dbName = None
 
         self.jaqsUser = None
@@ -166,16 +163,13 @@ class CtpGateway(VtGateway):
         setQryFreq = setting.get('setQryFreq', 60)
         self.initQuery(setQryFreq)
 
-        self.dbHost = setting.get('mongodbHost',None)
-        self.dbPort = setting.get('mongodbPort',None)
-        self.dbUser = setting.get('mongodbUser',None)
-        self.dbPass = setting.get('mongodbPass',None)
-        self.dbName = setting.get('mongodbName',None)
+        self.dbURI = setting.get('mongoDbURI',None)
+        self.dbName = setting.get('mongoDbName',None)
 
         self.jaqsUser = setting.get('jaqsUser',None)
         self.jaqsPass = setting.get('jaqsPass',None)
 
-        if not self.dbHost and self.jaqsUser:
+        if not self.dbURI and self.jaqsUser:
             from jaqs.data import DataView,RemoteDataService
             data_config = {
                         "remote.data.address": "tcp://data.quantos.org:8910",
@@ -293,16 +287,14 @@ class CtpGateway(VtGateway):
         #     log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
         #     self.onLog(log)
         #     return
-        if self.dbHost and not self.jaqsUser：
+        if self.dbURI and not self.jaqsUser：
             symbol = vtSymbol.split(':')[0]
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = '_'.join([maincontract,type_])
 
-            self.dbClient = pymongo.MongoClient(self.dbHost,self.dbPort)
-            if self.dbUser and self.dbPass:
-                auth = self.dbClient.admin.authenticate(self.dbUser,self.dbPass)
-                if not auth:
-                    return self.tdApi.writeLog('MongoDB authentication failed')
+            self.dbClient = pymongo.MongoClient(self.dbURI)
+            if self.dbName not in self.dbClient.list_database_names():
+                return self.tdApi.writeLog('MongoDB not found')
                     
             if query_symbol in self.dbClient[self.dbName].collection_names():
                 collection = self.dbClient[self.dbName][query_symbol]
@@ -321,7 +313,7 @@ class CtpGateway(VtGateway):
                 
             return data_df
 
-        elif self.jaqsUser and not self.dbHost:
+        elif self.jaqsUser and not self.dbURI:
             if type_ not in ['1min','5min','15min']:
                 log = VtLogData()
                 log.gatewayName = self.gatewayName
@@ -388,7 +380,7 @@ class CtpGateway(VtGateway):
                     data = data.iloc[-size:]
             return data   
 
-        elif not (self.jaqsUser and self.dbHost):
+        elif not (self.jaqsUser and self.dbURI):
             self.tdApi.writeLog('Please fill History Data source in CTP_setting.json')
 
     def qryAllOrders(self, vtSymbol, order_id, status= None):
