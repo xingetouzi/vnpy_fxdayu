@@ -32,6 +32,7 @@ STATUS_REJECTED = 'rejected'
 STATUS_UNKNOWN = 'unknown'
 STATUS_CANCELINPROGRESS = 'processing cancel order'
 STATUS_CANCELLING = 'cancelling'
+STATUS_FINISHED = [STATUS_ALLTRADED, STATUS_CANCELLED,STATUS_REJECTED]
 
 # 合约类型常量
 PRODUCT_EQUITY = 'equity'
@@ -109,3 +110,6 @@ GATEWAYTYPE_FUTURES = 'futures'                 # 期货、期权、贵金属
 GATEWAYTYPE_INTERNATIONAL = 'international'     # 外盘
 GATEWAYTYPE_BTC = 'btc'                         # 比特币
 GATEWAYTYPE_DATA = 'data'                       # 数据（非交易）
+
+# 品种和gateway的分隔符
+VN_SEPARATOR = ':'
