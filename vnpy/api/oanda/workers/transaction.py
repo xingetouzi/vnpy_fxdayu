@@ -137,7 +137,7 @@ class TransactionsStreamWorker(AsyncApiWorker):
                     if time.time() - lasthb >= TRANSACTION_STREAM_HEARTBEAT_TIMEOUT:
                         to_reconnect.append(account_id)
                 for account_id in to_reconnect:
-                    self.warning("账户[%s]Transaction信道订阅中断，尝试重新订阅..." % account_id)
+                    self.warn("账户[%s]Transaction信道订阅中断，尝试重新订阅..." % account_id)
                     self.unsubscribe(account_id)
                     self.subscribe(account_id)
                     self.on_reconnect(account_id)

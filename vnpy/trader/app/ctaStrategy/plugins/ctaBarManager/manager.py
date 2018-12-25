@@ -249,6 +249,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
                 self._set_gen_since(freq, since)
             if bt.is_new_bar(since, dt):
                 bar = self.new_bar_from_tick(tick, freq)
+                self.override_bar_with_datetime(bar, dt)
                 self._begin_gen_bar(freq, bar)
         return finished_bar
 
