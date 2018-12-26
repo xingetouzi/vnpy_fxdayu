@@ -168,7 +168,7 @@ class RestClient(object):
                     self._queue.task_done()
             except Empty:
                 pass
-            else:
+            except:
                 et, ev, tb = sys.exc_info()
                 self.onError(et, ev, tb, None)
     
