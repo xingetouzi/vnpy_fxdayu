@@ -287,7 +287,7 @@ class CtpGateway(VtGateway):
         #     log.logContent = u'CTP初始化数据只接受1分钟,5分钟，15分钟bar'
         #     self.onLog(log)
         #     return
-        if self.dbURI and not self.jaqsUser：
+        if self.dbURI and not self.jaqsUser:
             symbol = vtSymbol.split(':')[0]
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = '_'.join([maincontract,type_])
@@ -960,13 +960,12 @@ class CtpTdApi(TdApi):
             pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
 
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
-        # if data['YdPosition'] and not data['TodayPosition']:
-        if data['Position'] and data['TodayPosition']:
-            ydPosition = int(data['YdPosition'])
-        elif data['YdPosition'] and not data['TodayPosition']:
-            ydPosition = int(data['Position'])
+        if exchange == EXCHANGE_SHFE:
+            if data['YdPosition'] and not data['TodayPosition']:
+                pos.ydPosition = data['Position']
+        # 否则基于总持仓和今持仓来计算昨仓数据
         else:
-            ydPosition = 0
+            pos.ydPosition = data['Position'] - data['TodayPosition']
 
         # 计算成本
         size = self.symbolSizeDict[pos.symbol]
@@ -975,7 +974,6 @@ class CtpTdApi(TdApi):
         # 汇总总仓
         pos.position += data['Position']
         pos.positionProfit += data['PositionProfit']
-        pos.ydPosition += ydPosition
 
         # 计算持仓均价
         if pos.position and pos.symbol in self.symbolSizeDict:
