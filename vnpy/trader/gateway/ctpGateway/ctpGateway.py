@@ -960,6 +960,7 @@ class CtpTdApi(TdApi):
             pos.vtPositionName = VN_SEPARATOR.join([pos.symbol, pos.direction])
 
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
+        pos.ydPosition = 0
         if exchange == EXCHANGE_SHFE:
             if data['YdPosition'] and not data['TodayPosition']:
                 pos.ydPosition = data['Position']
