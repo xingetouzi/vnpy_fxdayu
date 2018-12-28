@@ -54,7 +54,7 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     def _do_push_falcon(self, data):
         ctaPlugin = self.ctaEngine.getPlugin(CtaMerticPlugin)
         metric = "version"
-        ctaPlugin.addMetric(data["version"], metric)
+        ctaPlugin.addMetric(data["version"], metric, strategy=data["name"])
                     
     def _do_push_etcd(self, k, v):
         name = k
