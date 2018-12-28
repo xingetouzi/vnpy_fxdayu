@@ -6,6 +6,7 @@ from threading import Thread
 
 import requests
 
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin
 from ..ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins
 from vnpy.trader.vtFunction import getJsonPath
 from vnpy.trader.utils import LoggerMixin
@@ -51,34 +52,9 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
             self.push_etcd(strategy.name, json.dumps(d))
 
     def _do_push_falcon(self, data):
-        push_data = [{
-            "endpoint": "VNPY_STRATEGY_" + data["name"],
-            "metric": "version",
-            "timestamp": int(time.time()),
-            "step": 30,
-            "value": data["version"],
-            "counterType": "GAUGE",
-            "tags": '',
-        }]
-        name = data["name"]
-        self.info(u"推送策略%s的配置版本号到open-falcon", name)
-        retry = 0
-        wait = 1
-        while True:
-            try:
-                r = requests.post(self._falcon_url, data=json.dumps(push_data))
-                r.raise_for_status()
-                self.info(u"成功推送策略%s的配置版本号, 返回: %s", name, r.content)
-                break
-            except Exception as e:
-                if retry > self.MAX_RETRY:
-                    self.error(u"推送配置版本号出错，停止推送，请检查问题: %s", e)
-                    break
-                else:
-                    self.info(u"推送配置版本号出错,%ss后重试: %s", wait, e)
-                    time.sleep(wait)
-                    retry += 1
-                    wait = wait << 1
+        ctaPlugin = self.ctaEngine.getPlugin(CtaMerticPlugin)
+        metric = "version"
+        ctaPlugin.addMetric(data["version"], metric)
                     
     def _do_push_etcd(self, k, v):
         name = k
