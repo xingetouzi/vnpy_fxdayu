@@ -199,10 +199,13 @@ class OandaOrder(OandaVnpyConvertableData):
         order.gatewayName = gateway.gatewayName
         order.status = OandaOrderState(self.state).to_vnpy()
         if self.cancellingTransactionID:
-            order.cancelTime = self.cancelledTime
-        order.orderTime = self.createTime
-        order.direction = DIRECTION_LONG if self.units > 0 else DIRECTION_SHORT
-        order.totalVolume = abs(self.units)
+            order.cancelDatetime = parse(self.cancelledTime)
+            order.cancelTime = order.cancelDatetime.strftime("%H:%M:%S")
+        order.orderDatetime = parse(self.createTime)
+        order.orderTime = order.orderDatetime.strftime("%H:%M:%S")
+        order.totalVolume = str2num(self.units)
+        order.direction = DIRECTION_LONG if order.totalVolume > 0 else DIRECTION_SHORT
+        order.totalVolume = abs(order.totalVolume)
         order.symbol = self.instrument
         order.offset = OandaOrderPositionFill(self.positionFill).to_vnpy()
         return order
@@ -407,8 +410,9 @@ class OandaCandlesTick(OandaData):
     def to_vnpy_bar(self):
         bar = VtBarData()
         bar.datetime, bar.date, bar.time = parse_datetime_str(self.time)
-        bar.open = self.data.o
-        bar.close = self.data.c
-        bar.high = self.data.h
-        bar.low = self.data.l
+        data = self.data
+        bar.open = data.o
+        bar.close = data.c
+        bar.high = data.h
+        bar.low = data.l
         return bar

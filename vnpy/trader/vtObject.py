@@ -40,9 +40,11 @@ class VtTickData(VtBaseData):
         self.time = EMPTY_STRING                # 时间 11:20:56.5
         self.date = EMPTY_STRING                # 日期 20151009
         self.datetime = None                    # python的datetime时间对象
+
         self.type = EMPTY_STRING                # 主动买或主动卖
         self.volumeChange = EMPTY_INT           # 标记tick的更新源
         self.localTime = None                   # 本地时间，datetime 格式
+        self.lastTradedTime = EMPTY_STRING      # 最新成交时间
 
         # 常规行情
         self.openPrice = EMPTY_FLOAT            # 今日开盘价
@@ -151,11 +153,11 @@ class VtTradeData(VtBaseData):
         self.offset = EMPTY_UNICODE             # 成交开平仓
         self.price = EMPTY_FLOAT                # 成交价格
         self.volume = EMPTY_FLOAT               # 成交数量
-        self.tradeTime = None                   # 成交时间
-        self.price_avg = EMPTY_FLOAT            # 成交均价
+        self.tradeTime = EMPTY_STRING           # 成交时间
         self.fee = EMPTY_FLOAT                  # 成交手续费
         self.status = EMPTY_UNICODE
         self.orderTime = EMPTY_STRING           # 成交单的委托时间
+        self.tradeDatetime = None               # 成交日期时间，python的datetime时间对象
 
 
 ########################################################################
@@ -185,14 +187,15 @@ class VtOrderData(VtBaseData):
         self.thisTradedVolume = EMPTY_FLOAT     # 本次成交数量
         self.status = EMPTY_UNICODE             # 报单状态
         self.priceType = EMPTY_UNICODE           
-        self.orderTime = None                   # 本地发单时间
+        self.orderTime = EMPTY_STRING           # 本地发单时间
         self.cancelTime = EMPTY_STRING          # 撤单时间
         self.exchangeOrderID = EMPTY_STRING     # 交易所返回的id
         self.byStrategy = EMPTY_STRING          # 发出该订单的策略
         self.deliverTime = None                 # 更新时间
         self.rejectedInfo = EMPTY_UNICODE       # 拒单理由
         self.fee = EMPTY_FLOAT                  # 挂单手续费
-        self.createDate = None                  # 订单记录的发单时间
+        self.orderDatetime = None               # 订单的发单日期时间，python的datetime时间对象
+        self.cancelDatetime = None              # 订单的撤单日期时间，python的datetime时间对象
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号

@@ -1,4 +1,4 @@
-# encoding: UTF-8
+﻿# encoding: UTF-8
 
 # 重载sys模块，设置默认字符串编码方式为utf8
 # try:

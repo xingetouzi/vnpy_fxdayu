@@ -3,12 +3,13 @@ from enum import Enum
 from copy import copy
 from functools import reduce
 
+from dateutil.parser import parse
+from vnpy.trader.vtObject import VtOrderData, VtTradeData, VtErrorData
+from vnpy.trader.vtConstant import *
+
 from .base import OandaData, OandaClientExtensions
 from ..utils import Singleton, str2num
 from ..const import OandaOrderPositionFill, OandaOrderType
-
-from vnpy.trader.vtObject import VtOrderData, VtTradeData, VtErrorData
-from vnpy.trader.vtConstant import *
 
 
 _direction_opp = {
@@ -77,7 +78,6 @@ class OandaOrderTransaction(OandaTransaction):
     def from_dict(cls, dct):
         obj = cls()
         obj.__dict__ = super(OandaOrderTransaction, cls).from_dict(dct).__dict__
-        obj.units = str2num(obj.units)
         obj.clientExtensions = obj.clientExtensions and OandaClientExtensions.from_dict(obj.clientExtensions)
         obj.tradeClientExtensions = obj.tradeClientExtensions and OandaClientExtensions.from_dict(obj.tradeClientExtensions)
         return obj
@@ -88,12 +88,14 @@ class OandaOrderTransaction(OandaTransaction):
         order.orderID = self.clientExtensions.id
         order.exchange = EXCHANGE_OANDA
         order.symbol = self.instrument
-        order.totalVolume = abs(self.units)
-        order.orderTime = self.time
+        order.totalVolume = str2num(self.units)
+        order.direction = DIRECTION_LONG if order.totalVolume >= 0 else DIRECTION_SHORT
+        order.totalVolume = abs(order.totalVolume)
+        order.orderDatetime = parse(self.time)
+        order.orderTime = order.orderDatetime.strftime("%H:%M:%S")
         order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.exchangeOrderID = self.id
         order.vtOrderID = VN_SEPARATOR.join([order.orderID, order.gatewayName])
-        order.direction = DIRECTION_LONG if self.units >= 0 else DIRECTION_SHORT
         order.offset = OandaOrderPositionFill(self.positionFill).to_vnpy()
         if self.PRICE_TYPE:
             order.priceType = OandaOrderType(self.PRICE_TYPE).to_vnpy()
@@ -118,7 +120,8 @@ class OandaMarketOrderTransaction(OandaOrderTransaction):
         orderID = gateway.getClientOrderID(self.id, self.clientExtensions)
         if orderID:
             order = self.to_vnpy_order(gateway)
-            order.price = self.priceBound or order.price
+            if self.priceBound:
+                order.price = str2num(self.priceBound)
             order.status = STATUS_NOTTRADED
             return {
                 VtOrderData: [order],
@@ -144,7 +147,8 @@ class OandaLimitOrderTransaction(OandaOrderTransaction):
         orderID = gateway.getClientOrderID(self.id, self.clientExtensions)
         if orderID:
             order = self.to_vnpy_order(gateway)
-            order.price = self.price or order.price
+            if self.price:
+                order.price = str2num(self.price)
             order.status = STATUS_NOTTRADED
             return {
                 VtOrderData: [order],
@@ -165,7 +169,8 @@ class OandaMarketOrderRejectTransaction(OandaMarketOrderTransaction):
         orderID = gateway.getClientOrderID(self.id, self.clientExtensions)
         if orderID:
             order = self.to_vnpy_order(gateway)
-            order.price = self.priceBound or order.price
+            if self.priceBound:
+                order.price = str2num(self.priceBound)
             order.status = STATUS_REJECTED
             order.rejectedInfo = self.rejectReason
             return {
@@ -191,7 +196,8 @@ class OandaLimitOrderRejectTransaction(OandaOrderTransaction):
         orderID = gateway.getClientOrderID(self.id, self.clientExtensions)
         if orderID:
             order = self.to_vnpy_order(gateway)
-            order.price = self.price or order.price
+            if self.price:
+                order.price = str2num(self.price)
             order.status = STATUS_REJECTED
             order.rejectedInfo = self.rejectReason
             return {
@@ -227,7 +233,6 @@ class OandaTradeOpen(OandaData):
         trade.vtTradeID = VN_SEPARATOR.join([trade.tradeID, gateway.gatewayName])
         trade.offset = OFFSET_OPEN
         trade.price = float(self.price)
-        trade.price_avg = trade.price
         trade.fee = float(self.halfSpreadCost) + float(self.guaranteedExecutionFee)
         return trade
 
@@ -258,7 +263,6 @@ class OandaTradeReduce(OandaData):
         trade.vtTradeID = VN_SEPARATOR.join([trade.tradeID, gateway.gatewayName])
         trade.offset = OFFSET_CLOSE
         trade.price = float(self.price)
-        trade.price_avg = trade.price
         trade.fee = float(self.halfSpreadCost) + float(self.guaranteedExecutionFee)
         return trade
 
@@ -316,7 +320,8 @@ class OandaOrderFillTransaction(OandaTransaction):
         base.orderID = clOrderID
         base.vtOrderID = VN_SEPARATOR.join([base.orderID, base.gatewayName])
         base.exchangeOrderID = self.orderID
-        base.tradeTime = self.time
+        base.tradeDatetime = parse(self.time)
+        base.tradeTime = base.tradeDatetime.strftime("%H:%M:%S")
         base_dct = {k: v for k, v in base.__dict__.items() if v}
         # trades
         trades = []
@@ -367,7 +372,10 @@ class OandaOrderCancelTransaction(OandaTransaction):
             # TODO: retrieve order info from exchange
             return None
         order = copy(oldOrderData)
-        order.cancelTime = self.time
+        order.cancelDatetime = parse(self.time)
+        order.cancelTime = order.cancelDatetime.strftime("%H:%M:%S")
+        if self.reason:
+            order.rejectedInfo = self.reason
         order.status = STATUS_CANCELLED
         return {
             VtOrderData: [order],

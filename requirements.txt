@@ -1,4 +1,4 @@
-pymongo 
+pymongo
 websocket-client==0.48.0
 qdarkstyle
 SortedContainers
@@ -7,4 +7,5 @@ flask-restful
 flask-socketio
 aiohttp
 requests
+watchdog
 jaqs

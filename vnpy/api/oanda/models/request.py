@@ -75,7 +75,7 @@ class OandaMarketOrderRequest(OandaOrderRequest):
     def from_vnpy(cls, req):
         obj = cls()
         obj.__dict__ = super(OandaMarketOrderRequest, cls).from_vnpy(req).__dict__
-        obj.priceBound = str(req.price) # NOTE: str for percision
+        obj.priceBound = str(req.price) if req.price else None # NOTE: str for percision
         return obj
 
 

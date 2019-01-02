@@ -519,7 +519,7 @@ class TradeMonitor(BasicMonitor):
         d['direction'] = {'chinese':vtText.DIRECTION, 'cellType':DirectionCell}
         d['offset'] = {'chinese':vtText.OFFSET, 'cellType':BasicCell}
         d['price'] = {'chinese':vtText.PRICE, 'cellType':NumCell}
-        d['price_avg'] = {'chinese':vtText.PRICE_AVG, 'cellType':NumCell}
+        # d['price_avg'] = {'chinese':vtText.PRICE_AVG, 'cellType':NumCell}
         d['volume'] = {'chinese':vtText.VOLUME, 'cellType':NumCell}
         d['tradeTime'] = {'chinese':vtText.TRADE_TIME, 'cellType':BasicCell}
         self.setHeaderDict(d)

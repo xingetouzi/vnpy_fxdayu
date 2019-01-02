@@ -92,6 +92,12 @@ class BitmexGateway(VtGateway):
         self.restApi.connect(apiKey, apiSecret, sessionCount)
         self.wsApi.connect(apiKey, apiSecret, symbols)
 
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
+
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
+
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
         """订阅行情"""
@@ -124,14 +130,14 @@ class BitmexGateway(VtGateway):
         self.wsApi.close()
     
     #----------------------------------------------------------------------
-    def initQuery(self):
+    def initQuery(self,  freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
             self.qryFunctionList = [self.queryAccount]
 
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = 1         # 查询触发点
+            self.qryTrigger = freq         # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
 
             self.startQuery()
@@ -501,7 +507,8 @@ class WebsocketApi(BitmexWebsocketApi):
         trade.direction = directionMapReverse[d['side']]
         trade.price = d['lastPx']
         trade.volume = d['lastQty']
-        trade.tradeTime = d['timestamp'][0:10].replace('-', '')
+        trade.tradeTime = d['timestamp'].replace('-','').replace('T',' ').replace('Z','')
+        trade.tradeDatetime = datetime.strptime(trade.tradeTime, '%Y%m%d %H:%M:%S.%f')
         
         self.gateway.onTrade(trade)
     
@@ -535,7 +542,8 @@ class WebsocketApi(BitmexWebsocketApi):
                 order.price = d['price']
                 
             order.totalVolume = d['orderQty']
-            order.orderTime = d['timestamp'][0:10].replace('-', '')
+            order.orderTime = d['timestamp'].replace('-','').replace('T',' ').replace('Z','')
+            order.orderDatetime = datetime.strptime(order.orderTime,"%Y%m%d %H:%M:%S.%f")
     
             self.orderDict[sysID] = order
         

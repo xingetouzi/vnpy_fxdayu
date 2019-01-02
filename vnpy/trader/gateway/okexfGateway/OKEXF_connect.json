@@ -1,0 +1,12 @@
+{
+    "apiKey": "",
+    "apiSecret": "",
+    "passphrase": "",
+    "leverage": 10,
+    "contracts":["eos_this_week","eos_quarter"],
+    "sessionCount": 3,
+    "setQryEnabled": false,
+    "setQryFreq": 60,
+    "trace": false,
+    "note":""
+}

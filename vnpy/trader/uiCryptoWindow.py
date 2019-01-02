@@ -97,8 +97,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if d['gatewayType'] == GATEWAYTYPE_DATA:
                 self.addConnectAction(sysMenu, d['gatewayName'], d['gatewayDisplayName'])
         
-        sysMenu.addSeparator()
-        sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, self.mainEngine.dbConnect, loadIconPath('database.ico')))
+        # TODO: add config option for choosing whether to use mongodb
+        # sysMenu.addSeparator()
+        # sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, self.mainEngine.dbConnect, loadIconPath('database.ico')))
         sysMenu.addSeparator()
         sysMenu.addAction(self.createAction(vtText.EXIT, self.close, loadIconPath('exit.ico')))
         
