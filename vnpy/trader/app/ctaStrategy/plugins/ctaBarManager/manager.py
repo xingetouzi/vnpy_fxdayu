@@ -47,6 +47,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
         self._gen_since = {} # generated bar since this time.
         self._gen_bars = {} # generated bars.
         self._push_bars = {} # cache bar to push.
+        self._hist_bars = {} # cache hist bars
         self._ready = set() # become true when hist_bars and gen_bars has been concatable.
         self._bar_timers = {} # record generator bar's timer.
         self.register("1m", None)
@@ -87,14 +88,22 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
         # TODO: fetch bar according to current hist_bars.
         l = 0
         try:
-            t_start = time.time()
-            size = self._size + 1
-            self.debug("开始获取%s的%sK线数据%s根", self._symbol, freq, size)
-            bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=size)
-            if bars:
-                l = len(bars)
-            cost = time.time() - t_start
-            self.debug("获取到%s的%sK线数据%s根，结束时间%s，耗时%s秒", self._symbol, freq, l, end_dt, cost)
+            if freq not in self._hist_bars:
+                t_start = time.time()
+                size = self._size + 1
+                self.debug("开始获取%s的%sK线数据%s根", self._symbol, freq, size)
+                bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=size)
+                l = len(bars) if bars else 0
+                cost = time.time() - t_start
+                self.debug("获取到%s的%sK线数据%s根，结束时间%s，耗时%s秒", self._symbol, freq, l, end_dt, cost)
+                # cache the history bar if it can concat with generated 1min bars.
+                if end_dt - timedelta(minutes=1) >= self._gen_since["1m"]:
+                    self._hist_bars[freq] = (bars, end_dt)
+                    self.debug("%s的%s历史K线已可以和1minK线拼接，进行缓存，之后不再请求%s的历史数据", self._symbol, freq, freq)
+            else:
+                # fetch hist bar from cache.
+                bars, end_dt = self._hist_bars[freq]
+                l = len(bars) if bars else 0
         except Exception as e:
             if self.is_backtesting():
                 raise e
@@ -165,7 +174,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
         unit_s = freq2seconds(freq)
         if hist_end_dt < self._gen_since["1m"]:
             return None
-        end_int = dt2int(bar.datetime + timedelta(seconds=freq2seconds(freq)) - timedelta(minutes=1))
+        end_int = dt2int(bar.datetime + timedelta(seconds=unit_s) - timedelta(minutes=1))
         if end_int > am.datetimeint[-1]:
             return None
         start_int = dt2int(hist_end_dt)
@@ -206,6 +215,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
         self._ready.add(freq)
         for bar in gen_bars:
             am.updateBar(bar)
+        self._hist_bars.pop(freq, None) # clear cached history bar
         # self._gen_bars[freq] = gen_bars
         self.info("品种%s的%sK线准备就绪,当前K线时间为%s", self._symbol, freq, am.datetimeint[-1])
         return self.is_ready(freq)
