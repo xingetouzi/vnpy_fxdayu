@@ -46,7 +46,8 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
                 "symbolList": strategy.symbolList,
                 "mailAdd": strategy.mailAdd,
                 "gatewayConfDict": gatewayConfDict,
-                "version": timestamp
+                "version": timestamp,
+                "ip": os.popen('curl -s ip.sb').read().strip()
             }
             self.push_falcon(d)
             self.push_etcd(strategy.name, json.dumps(d))
