@@ -58,11 +58,11 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
             self.warn("if you enable CtaStrategyInfoPlugin, CtaMerticPlugin will be enabled automatically")
             self.ctaEngine.enablePlugin(CtaMerticPlugin)
         count = 0
-        while self.is_enabled() and count <= self.MAX_RETRY:
+        while self.is_enabled() and count < self.MAX_RETRY:
             count += 1
             metric = "version"
             mp.addMetric(data["version"], metric, strategy=data["name"])
-            self.info(u"推送策略%s的版本信息到falcon,第%s次,共%s次", data["name"], self.MAX_RETRY)
+            self.info(u"推送策略%s的版本信息到falcon,第%s次,共%s次", data["name"], count, self.MAX_RETRY)
             time.sleep(2 * mp.interval) # wait ctaMetricPlugin push this metric out.
 
     def _do_push_etcd(self, k, v):
