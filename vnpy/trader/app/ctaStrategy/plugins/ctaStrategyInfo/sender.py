@@ -6,8 +6,8 @@ from threading import Thread
 
 import requests
 
-from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin
-from ..ctaPlugin import CtaEnginePlugin, CtaEngineWithPlugins
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin, CtaEngine as CtaEngineMetric
+from ..ctaPlugin import CtaEnginePlugin
 from vnpy.trader.vtFunction import getJsonPath
 from vnpy.trader.utils import LoggerMixin
 
@@ -53,10 +53,18 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
             self.push_etcd(strategy.name, json.dumps(d))
 
     def _do_push_falcon(self, data):
-        ctaPlugin = self.ctaEngine.getPlugin(CtaMerticPlugin)
-        metric = "version"
-        ctaPlugin.addMetric(data["version"], metric, strategy=data["name"])
-                    
+        mp = self.ctaEngine.getPlugin(CtaMerticPlugin)
+        if not mp.is_enabled():
+            self.warn("if you enable CtaStrategyInfoPlugin, CtaMerticPlugin will be enabled automatically")
+            self.ctaEngine.enablePlugin(CtaMerticPlugin)
+        count = 0
+        while self.is_enabled() and count <= self.MAX_RETRY:
+            count += 1
+            metric = "version"
+            mp.addMetric(data["version"], metric, strategy=data["name"])
+            self.info(u"推送策略%s的版本信息到falcon,第%s次,共%s次", data["name"], self.MAX_RETRY)
+            time.sleep(2 * mp.interval) # wait ctaMetricPlugin push this metric out.
+
     def _do_push_etcd(self, k, v):
         name = k
         k = base64.b64encode(k.encode('utf-8'))
@@ -92,14 +100,17 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
         thread.start()
 
 
-class CtaEngine(CtaEngineWithPlugins):
+class CtaEngine(CtaEngineMetric):
     def __init__(self, mainEngine, eventEngine):
         super(CtaEngine, self).__init__(mainEngine, eventEngine)
         self.addPlugin(CtaStrategyInfoPlugin())
         self.disablePlugin(CtaStrategyInfoPlugin)
+        # NOTE: config of strategy will not change if program didn't exit.
+        self.__info_pushed_strategy = set()
 
     def startStrategy(self, name):
         super(CtaEngine, self).startStrategy(name)
         plugin = self.getPlugin(CtaStrategyInfoPlugin)
-        if plugin.is_enabled():
+        if plugin.is_enabled() and name not in self.__info_pushed_strategy:
+            self.__info_pushed_strategy.add(name)
             plugin.sendStrategyConf(name)
