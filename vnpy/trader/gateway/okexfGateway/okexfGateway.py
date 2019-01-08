@@ -122,15 +122,15 @@ class OkexfGateway(VtGateway):
         """撤单"""
         self.restApi.cancelOrder(cancelOrderReq)
 
-#     # ----------------------------------------------------------------------
-#     def cancelAll(self, symbols=None, orders=None):
-#         """发单"""
-#         return self.restApi.cancelAll(symbols=symbols, orders=orders)
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """发单"""
+        return self.restApi.cancelAll(symbols=symbols, orders=orders)
 
-#     # ----------------------------------------------------------------------
-#     def closeAll(self, symbols, direction=None):
-#         """撤单"""
-#         return self.restApi.closeAll(symbols, direction=direction)
+    # ----------------------------------------------------------------------
+    def closeAll(self, symbols, direction=None):
+        """撤单"""
+        return self.restApi.closeAll(symbols, direction=direction)
 
     #----------------------------------------------------------------------
     def close(self):
