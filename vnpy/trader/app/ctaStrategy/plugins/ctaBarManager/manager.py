@@ -2,6 +2,7 @@ import bisect
 import logging
 import traceback
 import re
+import time
 from copy import copy
 from datetime import datetime, timedelta
 from enum import Enum
@@ -12,7 +13,7 @@ from weakref import proxy
 import numpy as np
 from dateutil.parser import parse
 from vnpy.trader.vtObject import VtBarData
-from vnpy.trader.utils import Logger
+from vnpy.trader.utils import LoggerMixin
 from vnpy.trader.vtConstant import VN_SEPARATOR
 from vnpy.trader.utils.datetime import *
 from vnpy.trader.utils.datetime import _freq_re_str
@@ -23,13 +24,15 @@ from ..ctaPlugin import CtaEnginePlugin
 from ...ctaBase import ENGINETYPE_BACKTESTING, ENGINETYPE_TRADING
 
 _on_bar_re = re.compile("^on%sBar$" % _freq_re_str)
-logger = Logger()
+logger = LoggerMixin()
 
 
-class SymbolBarManager(Logger, BarUtilsMixin):
+class SymbolBarManager(LoggerMixin, BarUtilsMixin):
     default_size = 100
 
     def __init__(self, parent, symbol, size=None):
+        LoggerMixin.__init__(self)
+        BarUtilsMixin.__init__(self)
         self._parent = proxy(parent)
         self._symbol = symbol
         self._callback = {}
@@ -44,6 +47,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         self._gen_since = {} # generated bar since this time.
         self._gen_bars = {} # generated bars.
         self._push_bars = {} # cache bar to push.
+        self._hist_bars = {} # cache hist bars
         self._ready = set() # become true when hist_bars and gen_bars has been concatable.
         self._bar_timers = {} # record generator bar's timer.
         self.register("1m", None)
@@ -82,21 +86,35 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         if self.is_ready(freq):
             return
         # TODO: fetch bar according to current hist_bars.
+        l = 0
         try:
-            bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=self._size+1)
+            if freq not in self._hist_bars:
+                t_start = time.time()
+                size = self._size + 1
+                self.debug("开始获取%s的%sK线数据%s根", self._symbol, freq, size)
+                bars, end_dt = self._parent.load_history_bar(self._symbol, freq, size=size)
+                l = len(bars) if bars else 0
+                cost = time.time() - t_start
+                self.debug("获取到%s的%sK线数据%s根，结束时间%s，耗时%s秒", self._symbol, freq, l, end_dt, cost)
+                # cache the history bar if it can concat with generated 1min bars.
+                if end_dt - timedelta(minutes=1) >= self._gen_since["1m"]:
+                    self._hist_bars[freq] = (bars, end_dt)
+                    self.debug("%s的%s历史K线已可以和1minK线拼接，进行缓存，之后不再请求%s的历史数据", self._symbol, freq, freq)
+            else:
+                # fetch hist bar from cache.
+                bars, end_dt = self._hist_bars[freq]
+                l = len(bars) if bars else 0
         except Exception as e:
             if self.is_backtesting():
                 raise e
             else:
-                self.warning("品种%s更新历史%sK线失败，跳过此次更新,失败原因:\n%s" % (self._symbol, freq, traceback.format_exc()))
+                self.warn("品种%s更新历史%sK线失败，跳过此次更新,失败原因:\n%s", self._symbol, freq, traceback.format_exc())
                 return
-        if not bars:
+        if l == 0:
             # NOTE: this means there is no coresponding hist bars fetchable in given freq.
             self.close_hist_bars(freq)
         else:
-            # FIXME: load_history_bar should clearify wheather uncompleted bar included.
-            if len(bars) > 1:
-                self.update_hist_bars(freq, bars, end_dt)
+            self.update_hist_bars(freq, bars, end_dt)
 
     def is_ready(self, freq):
         return freq in self._ready
@@ -108,7 +126,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         am = self.get_array_manager(freq)
         for bar in self._gen_bars.get(freq, []):
             am.updateBar(bar)
-        self.info("品种%s的无可用历史%sK线,更新关闭" % (self._symbol, freq))
+        self.info("品种%s的无可用历史%sK线,更新关闭", self._symbol, freq)
 
     def update_hist_bars(self, freq, bars, end_dt):
         # self.debug("-" * 100)
@@ -139,12 +157,13 @@ class SymbolBarManager(Logger, BarUtilsMixin):
             return
         for bar in new_bars:
             am.updateBar(bar)
-        self.info("品种%s的历史%sK线更新，范围为:[%s , %s]" % (
+        self.info(
+            "品种%s的历史%sK线更新，范围为:[%s , %s]",
             self._symbol,
             freq,
             am.datetimeint[am.head],
             am.datetimeint[-1],
-        ))
+        )
         self.check_ready(freq)
 
     def _merge_unfinished_bar(self, bar, end_dt, freq):
@@ -155,7 +174,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         unit_s = freq2seconds(freq)
         if hist_end_dt < self._gen_since["1m"]:
             return None
-        end_int = dt2int(bar.datetime + timedelta(seconds=freq2seconds(freq)) - timedelta(minutes=1))
+        end_int = dt2int(bar.datetime + timedelta(seconds=unit_s) - timedelta(minutes=1))
         if end_int > am.datetimeint[-1]:
             return None
         start_int = dt2int(hist_end_dt)
@@ -196,13 +215,14 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         self._ready.add(freq)
         for bar in gen_bars:
             am.updateBar(bar)
+        self._hist_bars.pop(freq, None) # clear cached history bar
         # self._gen_bars[freq] = gen_bars
-        self.info("品种%s的%sK线准备就绪,当前K线时间为%s" % (self._symbol, freq, am.datetimeint[-1]))
+        self.info("品种%s的%sK线准备就绪,当前K线时间为%s", self._symbol, freq, am.datetimeint[-1])
         return self.is_ready(freq)
 
     def push_bar(self, freq, bar):
         if not self.is_backtesting():
-            self.debug("推送品种%s的%sk线数据: %s" % (self._symbol, freq, bar.__dict__))
+            self.debug("推送品种%s的%sk线数据: %s", self._symbol, freq, bar.__dict__)
         funcs = self._callback.get(freq, [])
         for func in funcs:
             func(bar)
@@ -239,6 +259,7 @@ class SymbolBarManager(Logger, BarUtilsMixin):
                 self._set_gen_since(freq, since)
             if bt.is_new_bar(since, dt):
                 bar = self.new_bar_from_tick(tick, freq)
+                self.override_bar_with_datetime(bar, dt)
                 self._begin_gen_bar(freq, bar)
         return finished_bar
 
@@ -277,12 +298,12 @@ class SymbolBarManager(Logger, BarUtilsMixin):
         return finished_bar
 
     def _set_gen_since(self, freq, dt):
-        self.info("品种%s开始生成未完成的%sK线数据,时间起点为:%s" % (self._symbol, freq, dt2str(dt)))
+        self.info("品种%s开始生成未完成的%sK线数据,时间起点为:%s", self._symbol, freq, dt2str(dt))
         self._gen_since[freq] = dt
         self._gen_bars[freq] = []
 
     def _begin_gen_bar(self, freq, bar):
-        self.info("品种%s开始生成%sK线数据,时间起点为:%s" % (self._symbol, freq, dt2str(bar.datetime)))
+        self.info("品种%s开始生成%sK线数据,时间起点为:%s", self._symbol, freq, dt2str(bar.datetime))
         self._update_current_bar(freq, bar)
 
     def _update_current_bar(self, freq, bar):            
@@ -398,7 +419,7 @@ class BarManager(object):
     def __init__(self, engine, mode=None, size=None):
         self._engine = proxy(engine)
         self._mode = mode or self.MODE.ON_TICK
-        self._logger = Logger()
+        self._logger = LoggerMixin()
         self._size = size
         self.init()
 
@@ -423,7 +444,7 @@ class BarManager(object):
 
     def register(self, symbol, freq, func):
         self.add_symbol(symbol)
-        logger.debug("注册品种%s上的on_%s_bar函数%s" % (symbol, freq, func))
+        logger.debug("注册品种%s上的on_%s_bar函数%s", symbol, freq, func)
         self._managers[symbol].register(freq, func)
 
     def set_mode(self, value):
@@ -501,7 +522,7 @@ class BarManager(object):
 
     def on_tick(self, tick):
         if self.MODE(self.mode) != self.MODE.ON_TICK:
-            logger.warning("BarManager以on_bar模式工作，将忽略tick数据.")
+            logger.warn("BarManager以on_bar模式工作，将忽略tick数据.")
             return
         manager = self._managers.get(tick.vtSymbol, None)
         if manager:
@@ -509,7 +530,7 @@ class BarManager(object):
 
     def on_bar(self, bar):
         if self.MODE(self.mode) != self.MODE.ON_BAR:
-            logger.warning("BarManager以on_tick模式工作，将忽略bar数据.")
+            logger.warn("BarManager以on_tick模式工作，将忽略bar数据.")
             return
         manager = self._managers.get(bar.vtSymbol, None)
         if manager:
@@ -519,7 +540,7 @@ class BarManager(object):
         @wraps(func)
         def wrapper(obj, bar, *args, **kwargs):
             if not obj.trading:
-                logger.debug("当前策略未启动，跳过当前Bar,时间:%s" % bar.datetime)
+                logger.debug("当前策略未启动，跳过当前Bar,时间:%s", bar.datetime)
                 return
             return func(obj, bar, *args, **kwargs)
         return wrapper

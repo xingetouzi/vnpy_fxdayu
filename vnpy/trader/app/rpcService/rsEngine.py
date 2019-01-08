@@ -15,7 +15,7 @@ class RsEngine(object):
     settingFileName = 'RS_setting.json'
     settingFilePath = getJsonPath(settingFileName, __file__)    
     
-    name = 'RPC服务'
+    name = u'RPC服务'
 
     #----------------------------------------------------------------------
     def __init__(self, mainEngine, eventEngine):

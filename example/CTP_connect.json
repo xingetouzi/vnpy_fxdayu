@@ -4,8 +4,12 @@
     "tdAddress": "tcp://180.168.146.187:10001", 
     "userID": "",
     "password": "",
-    "jaqs_username":"",
-    "jaqs_password":"",
+    "authCode":"",
+    "userProductInfo":"",
     "setQryEnabled": false,
-    "setQryFreq": 60   
+    "setQryFreq": 60,
+    "mongoDbURI":"",
+    "mongoDbName":"",
+    "jaqsUser":"",
+    "jaqsPass":""
 }

@@ -3,12 +3,13 @@ from enum import Enum
 from copy import copy
 from functools import reduce
 
+from dateutil.parser import parse
+from vnpy.trader.vtObject import VtOrderData, VtTradeData, VtErrorData
+from vnpy.trader.vtConstant import *
+
 from .base import OandaData, OandaClientExtensions
 from ..utils import Singleton, str2num
 from ..const import OandaOrderPositionFill, OandaOrderType
-
-from vnpy.trader.vtObject import VtOrderData, VtTradeData, VtErrorData
-from vnpy.trader.vtConstant import *
 
 
 _direction_opp = {

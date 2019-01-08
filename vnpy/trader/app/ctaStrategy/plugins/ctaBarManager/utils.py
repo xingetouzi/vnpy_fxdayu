@@ -12,15 +12,16 @@ class BarUtilsMixin(object):
         bar1.low = min(bar1.low, bar2.low)
         bar1.close = bar2.close
         bar1.volume += bar2.volume
-        bar1.openInterest += bar2.openInterest
+        bar1.openInterest = bar2.openInterest
         return bar1
 
     def merge_bar_with_tick(self, bar, tick):
         bar.high = max(bar.high, tick.lastPrice)
         bar.low = min(bar.low, tick.lastPrice)
         bar.close = tick.lastPrice
-        bar.volume += tick.volume
-        bar.openInterest += tick.openInterest
+        bar.openInterest = tick.openInterest
+        if tick.volumeChange:
+            bar.volume += tick.lastVolume
         return bar
 
     def align_bar(self, bar, freq):
@@ -52,7 +53,7 @@ class BarUtilsMixin(object):
         bar.high = tick.lastPrice
         bar.low = tick.lastPrice
         bar.close = tick.lastPrice
-        bar.volume = tick.volume
+        bar.volume = tick.lastVolume if tick.volumeChange else 0
         bar.openInterest = tick.openInterest
         bar.datetime = tick.datetime
         bar.date = tick.date
@@ -77,6 +78,10 @@ class BarUtilsMixin(object):
 
 
 class BarTimer(object):
+    """对于常用的freq成立，必须保证上一级单位的换算系数被freq的乘数整除。
+    比如对于m，换算系数为1h=60m，12m，4m，5m，6m这种是可用的，但7m这种是不可用的。
+    """
+
     def __init__(self, freq, offset=0):
         self._freq = freq
         self._offset = timedelta(seconds=offset) if offset else None
@@ -86,16 +91,21 @@ class BarTimer(object):
         self._f_get_current_dt = None
 
     def _get_current_dt_s(self, dt):
-        return dt.replace(microsecond=0)
+        dt = dt.replace(microsecond=0)
+        return dt.replace(second=dt.second // self._freq_mul * self._freq_mul) 
 
     def _get_current_dt_m(self, dt):
-        return dt.replace(second=0, microsecond=0)
+        dt = dt.replace(second=0, microsecond=0)
+        return dt.replace(minute=dt.minute // self._freq_mul * self._freq_mul)
 
     def _get_current_dt_h(self, dt):
-        return dt.replace(minute=0, second=0, microsecond=0)
+        dt = dt.replace(minute=0, second=0, microsecond=0)
+        return dt.replace(hour=dt.hour // self._freq_mul * self._freq_mul)
 
     def _get_current_dt_d(self, dt):
-        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        # TODO: take weekends into consideration
+        dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        return dt.replace(day=dt.day // self._freq_mul * self._freq_mul)
 
     def _get_current_dt(self, dt):
         return self.align_datetime(dt, self._freq)
@@ -135,3 +145,15 @@ class BarTimer(object):
         if not self._f_is_new_bar:
             self._f_is_new_bar = getattr(self, "_is_new_bar_" + self._freq_unit, self._is_new_bar)
         return self._f_is_new_bar(bar_dt, dt)  
+
+if __name__ == "__main__":
+    from datetime import datetime, time
+
+    date = datetime.now().date()
+    dt = datetime.combine(date, time(hour=11, minute=23, second=11))
+    bt_1h = BarTimer("1h")
+    bt_5s = BarTimer("5s")
+    bt_5m = BarTimer("5m")
+    print(bt_1h.get_current_dt(dt))
+    print(bt_5s.get_current_dt(dt))
+    print(bt_5m.get_current_dt(dt))

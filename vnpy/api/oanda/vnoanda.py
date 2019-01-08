@@ -19,15 +19,16 @@ from vnpy.api.oanda.ioloop import BackroundEventLoopProxy
 from vnpy.api.oanda.base import FirstAccountFilter
 from vnpy.api.oanda.workers import FetchOnReconnectTransactionStreamWorker, HeartbeatTickSubscriber, SolidOrderWorker
 from vnpy.api.oanda.utils import fetch, fetch_stream
-from vnpy.trader.utils import Logger
+from vnpy.trader.utils import LoggerMixin
 
-class OandaApi(Logger):
+class OandaApi(LoggerMixin):
     """Oanda交易接口"""
     DEFAULT_ACCOUNT_FILTER = FirstAccountFilter
     REST_HOST = "https://api-fxtrade.oanda.com"
     STREAM_HOST = "https://stream-fxtrade.oanda.com"
 
     def __init__(self, ioloop=None, run_ioloop=True):
+        super(OandaApi, self).__init__()
         self._ioloop = ioloop or asyncio.new_event_loop()
         self._proxy = BackroundEventLoopProxy(self._ioloop)
         self._run_ioloop = run_ioloop

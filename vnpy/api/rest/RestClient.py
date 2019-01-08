@@ -158,20 +158,19 @@ class RestClient(object):
     
     #----------------------------------------------------------------------
     def _run(self):
-        try:
-            session = self._createSession()
-            while self._active:
+        session = self._createSession()
+        while self._active:
+            try:
+                request = self._queue.get(timeout=1)
                 try:
-                    request = self._queue.get(timeout=1)
-                    try:
-                        self._processRequest(request, session)
-                    finally:
-                        self._queue.task_done()
-                except Empty:
-                    pass
-        except:
-            et, ev, tb = sys.exc_info()
-            self.onError(et, ev, tb, None)
+                    self._processRequest(request, session)
+                finally:
+                    self._queue.task_done()
+            except Empty:
+                pass
+            except:
+                et, ev, tb = sys.exc_info()
+                self.onError(et, ev, tb, None)
     
     #----------------------------------------------------------------------
     def sign(self, request):  # type: (Request)->Request
