@@ -146,18 +146,3 @@ class VtGateway(object):
     def close(self):
         """关闭"""
         pass
-
-    def queryCancelAll(self):
-        pass
-
-    def queryColseAll(self):
-        pass
-    
-
-    
-    
-    
-
-    
-    
-    
