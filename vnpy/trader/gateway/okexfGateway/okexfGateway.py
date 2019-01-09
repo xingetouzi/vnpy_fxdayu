@@ -689,18 +689,18 @@ class OkexfRestApi(RestClient):
             self.gateway.onError(error)
 
             # could be risky,just testify
-            if str(data['error_code']) == '32004':
-                order = self.orderDict.get(str(data['order_id']),None)
-                if order:
-                    order.status = STATUS_CANCELLED
-                    self.gateway.onOrder(order)
-                    self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
-                    for key,value in list(self.localRemoteDict.items()):
-                        if value == str(data['order_id']):
-                            del self.localRemoteDict[key]
-                            del self.orderDict[key]
-                            if self.orderDict.get(str(data['order_id']),None):
-                                del self.orderDict[str(data['order_id'])]
+            # if str(data['error_code']) == '32004':
+            #     order = self.orderDict.get(str(data['order_id']),None)
+            #     if order:
+            #         order.status = STATUS_CANCELLED
+            #         self.gateway.onOrder(order)
+            #         self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
+            #         for key,value in list(self.localRemoteDict.items()):
+            #             if value == str(data['order_id']):
+            #                 del self.localRemoteDict[key]
+            #                 del self.orderDict[key]
+            #                 if self.orderDict.get(str(data['order_id']),None):
+            #                     del self.orderDict[str(data['order_id'])]
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
