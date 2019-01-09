@@ -436,7 +436,12 @@ class WebsocketApi(BitmexWebsocketApi):
     
     #----------------------------------------------------------------------
     def onTick(self, d):
-        """"""
+        """
+        {'timestamp': '2019-01-09T08:56:00.000Z', 'symbol': '.XBTBON', 'side': 'Buy', 'size': 0, 
+        'price': 0.0003, 'tickDirection': 'ZeroMinusTick', 'foreignNotional': None,
+        'trdMatchID': '00000000-0000-0000-0000-000000000000', 'grossValue': None, 'homeNotional': None} 
+        """
+        #print(d,'----')
         symbol = d['symbol']
 
         tick = self.tickDict.get(symbol, None)
@@ -444,6 +449,9 @@ class WebsocketApi(BitmexWebsocketApi):
             return
         
         tick.lastPrice = d['price']
+        tick.type = str.lower(d['side'])
+        tick.lastVolume = float(d['size'])
+        tick.volumeChange = 1
         
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
@@ -473,6 +481,7 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
+        tick.volumeChange = 0
         
         self.gateway.onTick(tick)
     
