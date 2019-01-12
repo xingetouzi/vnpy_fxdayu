@@ -327,6 +327,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         self.apiKey = ''
         self.apiSecret = ''
+        self.symbols = []
         
         self.callbackDict = {
             'trade': self.onTick,
@@ -348,6 +349,7 @@ class WebsocketApi(BitmexWebsocketApi):
         """"""
         self.apiKey = apiKey
         self.apiSecret = apiSecret
+        self.symbols = symbols
         
         for symbol in symbols:
             tick = VtTickData()
@@ -428,11 +430,12 @@ class WebsocketApi(BitmexWebsocketApi):
     #----------------------------------------------------------------------
     def subscribe(self):
         """"""
-        req = {
-            'op': 'subscribe',
-            'args': ['instrument', 'trade', 'orderBook10', 'execution', 'order', 'position', 'margin']
-        }
-        self.sendReq(req)
+        for symbol in self.symbols:
+            req = {
+                'op': 'subscribe',
+                'args': ['instrument:%s'%symbol, 'trade:%s'%symbol, 'orderBook10:%s'%symbol, 'execution', 'order', 'position', 'margin']
+            }
+            self.sendReq(req)
     
     #----------------------------------------------------------------------
     def onTick(self, d):
@@ -444,15 +447,18 @@ class WebsocketApi(BitmexWebsocketApi):
         #print(d,'----')
         symbol = d['symbol']
 
-        tick = self.tickDict.get(symbol, None)
-        if not tick:
-            return
-        
+        #tick = self.tickDict.get(symbol, None)
+        #if not tick:
+        #    return
+        tick = VtTickData()
+        tick.gatewayName = self.gatewayName
+        tick.symbol = symbol
+        tick.exchange = EXCHANGE_BITMEX
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
         tick.lastPrice = d['price']
         tick.type = str.lower(d['side'])
         tick.lastVolume = float(d['size'])
         tick.volumeChange = 1
-        
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
@@ -462,10 +468,16 @@ class WebsocketApi(BitmexWebsocketApi):
     #----------------------------------------------------------------------
     def onDepth(self, d):
         """"""
+        print(d,'----')
         symbol = d['symbol']
-        tick = self.tickDict.get(symbol, None)
-        if not tick:
-            return
+        #tick = self.tickDict.get(symbol, None)
+        #if not tick:
+        #    return
+        tick = VtTickData()
+        tick.gatewayName = self.gatewayName
+        tick.symbol = symbol
+        tick.exchange = EXCHANGE_BITMEX
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
         
         for n, buf in enumerate(d['bids'][:5]):
             price, volume = buf
