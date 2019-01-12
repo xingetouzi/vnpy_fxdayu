@@ -450,11 +450,7 @@ class WebsocketApi(BitmexWebsocketApi):
         #tick = self.tickDict.get(symbol, None)
         #if not tick:
         #    return
-        tick = VtTickData()
-        tick.gatewayName = self.gatewayName
-        tick.symbol = symbol
-        tick.exchange = EXCHANGE_BITMEX
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick = self.tickDict[symbol]
         tick.lastPrice = d['price']
         tick.type = str.lower(d['side'])
         tick.lastVolume = float(d['size'])
@@ -463,7 +459,8 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
-        self.gateway.onTick(tick)
+        if tick.askPrice1:
+            self.gateway.onTick(tick)
 
     #----------------------------------------------------------------------
     def onDepth(self, d):
@@ -473,11 +470,7 @@ class WebsocketApi(BitmexWebsocketApi):
         #tick = self.tickDict.get(symbol, None)
         #if not tick:
         #    return
-        tick = VtTickData()
-        tick.gatewayName = self.gatewayName
-        tick.symbol = symbol
-        tick.exchange = EXCHANGE_BITMEX
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick = self.tickDict[symbol]
         
         for n, buf in enumerate(d['bids'][:5]):
             price, volume = buf
@@ -494,8 +487,8 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         tick.volumeChange = 0
-        
-        self.gateway.onTick(tick)
+        if tick.lastPrice:
+            self.gateway.onTick(tick)
     
     #----------------------------------------------------------------------
     def onTrade(self, d):
