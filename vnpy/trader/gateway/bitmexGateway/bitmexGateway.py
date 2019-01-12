@@ -459,8 +459,10 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
+        tick.localTime = datetime.now()
         if tick.askPrice1:
-            self.gateway.onTick(tick)
+            newtick = copy(tick)
+            self.gateway.onTick(newtick)
 
     #----------------------------------------------------------------------
     def onDepth(self, d):
@@ -487,8 +489,10 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         tick.volumeChange = 0
+        tick.localTime = datetime.now()
         if tick.lastPrice:
-            self.gateway.onTick(tick)
+            newtick = copy(tick)
+            self.gateway.onTick(newtick)
     
     #----------------------------------------------------------------------
     def onTrade(self, d):
