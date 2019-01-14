@@ -10,3 +10,4 @@ aiohttp
 requests
 watchdog
 jaqs
+pycurl
