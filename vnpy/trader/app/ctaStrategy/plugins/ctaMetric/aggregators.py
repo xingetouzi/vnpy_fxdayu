@@ -29,14 +29,12 @@ class BaseStrategyAggregator(StrategySplitedAggregator):
     def addMetricStrategyStatus(self):
         for name, strategy in self.strategys.items():
             tags = "strategy={}".format(name)
-            # metric heartbeat
-            self.plugin.addMetric(int(time.time()), "strategy.heartbeat", tags, counter_type=OpenFalconMetricCounterType.COUNTER, strategy=name)
             # metric trading status
-            trading = strategy.trading
-            if trading:
-                self.plugin.addMetric(1, "strategy.trading", tags, strategy=name)
-            else:
-                self.plugin.addMetric(0, "strategy.trading", tags, strategy=name)
+            trading = int(bool(strategy.trading))
+            self.plugin.addMetric(trading, "strategy.trading", tags, strategy=name)
+            # metric heartbeat
+            # if heartbeat not change and not equal to zero, it means the strategy is stopped unexpectedly.
+            self.plugin.addMetric(int(time.time() * trading), "strategy.heartbeat", tags, counter_type=OpenFalconMetricCounterType.COUNTER, strategy=name)
 
     def addMetricStrategyGatewayStatus(self):
         connected = {}
