@@ -345,7 +345,7 @@ class BarReader(object):
         bar.low = float(low)
         bar.close = float(close)
         bar.volume = float(volume)
-        bar.datetime = datetime
+        bar.datetime = datetime.to_pydatetime() if isinstance(datetime, pd.Timestamp) else datetime
         bar.date = datetime.strftime(DATEFORMAT)
         bar.time = datetime.strftime(TIMEFORMAT)
         return bar

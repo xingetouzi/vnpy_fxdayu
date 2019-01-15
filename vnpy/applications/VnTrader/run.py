@@ -31,7 +31,7 @@ from vnpy.trader.app import (riskManager,
                             # spreadTrading,
                             # optionMaster,
                             # jaqsService,
-                            # rpcService
+                            rpcService
                             )
 
 
@@ -65,7 +65,7 @@ def main():
     # me.addApp(spreadTrading)
     # me.addApp(optionMaster)
     # me.addApp(jaqsService)
-    # me.addApp(rpcService)
+    me.addApp(rpcService)
 
 
     # 创建主窗口

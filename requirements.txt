@@ -3,9 +3,11 @@ websocket-client==0.48.0
 qdarkstyle
 SortedContainers
 python-snappy
+pandas>=0.21
 flask-restful
 flask-socketio
 aiohttp
 requests
 watchdog
 jaqs
+pycurl

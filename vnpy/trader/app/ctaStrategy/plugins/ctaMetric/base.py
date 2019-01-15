@@ -270,8 +270,20 @@ class CtaMerticPlugin(CtaEnginePlugin):
         self._orderDataFrame = None
 
     def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None):
+        # auto add strategy tag
+        if strategy:
+            tag_set = set(tags.split(",")) if tags else set()
+            need_add = True
+            for tag in tag_set:
+                if tag.startswith("strategy="):
+                    need_add = False
+                    break
+            if need_add:
+                tag_set.add("strategy=%s" % strategy)
+                tags = ",".join(list(tag_set))
         metric = self.metricFactory.new(value, metric, tags=tags, step=step, counter_type=counter_type)
         self._metricCaches.append(metric)
+        # add strategy endpoint
         if strategy:
             metric_with_strategy_endpoint = copy.copy(metric)
             metric_with_strategy_endpoint.endpoint = "VNPY_STRATEGY_" + strategy
@@ -309,19 +321,13 @@ class CtaEngine(CtaEngineWithPlugins):
 
     def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None):
         plugin = self.getPlugin(CtaMerticPlugin)
-        # auto add strategy tag
-        if strategy:
-            tag_set = set(tags.split(",")) if tags else set()
-            need_add = True
-            for tag in tag_set:
-                if tag.startswith("strategy="):
-                    need_add = False
-                    break
-            if need_add:
-                tag_set.add("strategy=%s" % strategy)
-                tags = ",".join(list(tag_set))
         plugin.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=strategy)
 
+    def stopStrategy(self, name):
+        super(CtaEngineWithPlugins, self).stopStrategy(name)
+        plugin = self.getPlugin(CtaMerticPlugin)
+        if plugin.is_enabled():
+            plugin.pushMetrics()
 
 class CtaTemplate(CtaTemplate):
     def addMetric(self, value, metric, tags=None, step=None, counter_type=None):

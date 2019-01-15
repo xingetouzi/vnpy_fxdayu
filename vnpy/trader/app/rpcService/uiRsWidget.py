@@ -17,9 +17,9 @@ class RsEngineManager(QtWidgets.QWidget):
     #----------------------------------------------------------------------
     def initUi(self):
         """初始化界面"""
-        self.setWindowTitle('RPC服务')
+        self.setWindowTitle(u'RPC服务')
         
-        label = QtWidgets.QLabel('该模块运行于服务端')
+        label = QtWidgets.QLabel(u'该模块运行于服务端')
         vbox = QtWidgets.QVBoxLayout()
         vbox.addWidget(label)
         self.setLayout(vbox)

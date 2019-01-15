@@ -13,6 +13,7 @@ import multiprocessing
 import copy
 import sys
 import os
+import warnings
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -275,8 +276,8 @@ class BacktestingEngine(object):
                     symbols_no_data[symbol].remove(file.replace(".h5", ""))
             no_data_days += len(symbols_no_data[symbol])
 
-        # 如果没有完全从本地文件加载完数据,则从mongodb下载数据，并缓存到本地
-        if no_data_days > 0:
+        # 如果没有完全从本地文件加载完数据,则尝试从指定的mongodb下载数据，并缓存到本地
+        if len(self.dbName) > 0 and no_data_days > 0:
             try:
                 self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
                 for symbol in symbolList:
@@ -630,26 +631,24 @@ class BacktestingEngine(object):
         elif orderType == CTAORDER_SELL:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_CLOSE
-            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_LONG']:
+            closable = self.strategy.eveningDict[order.vtSymbol + '_LONG']
+            if order.totalVolume > closable:
                 # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
-                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
-                self.output("direction:卖平;volume:%s;eveningDict=%s"%(order.totalVolume, self.strategy.eveningDict))
-                
-            self.strategy.eveningDict[order.vtSymbol + '_LONG'] -= order.totalVolume
-            self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.eveningDict[order.vtSymbol + '_LONG'], 4)
+                warnings.warn("当前平仓数量大于可平量，实盘下可能拒单, 请小心处理,下单信息为---direction:卖平;volume:%s;pos=%s"%(order.totalVolume, closable))                
+            closable -= order.totalVolume
+            self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(closable, 4)
         elif orderType == CTAORDER_SHORT:
             order.direction = DIRECTION_SHORT
             order.offset = OFFSET_OPEN
         elif orderType == CTAORDER_COVER:
             order.direction = DIRECTION_LONG
             order.offset = OFFSET_CLOSE
-            if order.totalVolume > self.strategy.eveningDict[order.vtSymbol + '_SHORT']:
+            closable = self.strategy.eveningDict[order.vtSymbol + '_SHORT']
+            if order.totalVolume > closable:
                 # raise Exception('***平仓数量大于可平量，请检查策略逻辑***')
-                self.output('Warning:当前平仓数量大于可平量，实盘下可能拒单, 请小心处理。')
-                self.output("direction:买平;volume:%s;eveningDict=%s" % (order.totalVolume, self.strategy.eveningDict))
-                
-            self.strategy.eveningDict[order.vtSymbol + '_SHORT'] -= order.totalVolume
-            self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(self.strategy.eveningDict[order.vtSymbol + '_SHORT'], 4)
+                warnings.warn("当前平仓数量大于可平量，实盘下可能拒单, 请小心处理,下单信息为---direction:买平;volume:%s;pos=%s"%(order.totalVolume, closable))
+            closable -= order.totalVolume
+            self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(closable, 4)
 
         if priceType == PRICETYPE_LIMITPRICE:
             order.price = self.roundToPriceTick(price)
