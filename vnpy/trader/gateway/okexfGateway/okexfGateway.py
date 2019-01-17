@@ -13,6 +13,7 @@ import traceback
 import base64
 import zlib
 from datetime import datetime, timedelta
+from collections import OrderedDict
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
@@ -83,6 +84,7 @@ class OkexfGateway(VtGateway):
         f.close()
         
         try:
+            debug = str(setting.get("debug", False))
             apiKey = str(setting['apiKey'])
             apiSecret = str(setting['apiSecret'])
             passphrase = str(setting['passphrase'])
@@ -105,6 +107,8 @@ class OkexfGateway(VtGateway):
 
         setQryFreq = setting.get('setQryFreq', 60)
         self.initQuery(setQryFreq)
+        if debug:
+            self.startDebugInfo()
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
@@ -174,6 +178,23 @@ class OkexfGateway(VtGateway):
         """启动连续查询"""
         self.eventEngine.register(EVENT_TIMER, self.query)
 
+    def startDebugInfo(self):
+        self.__debug_info_count = 0
+        self.eventEngine.register(EVENT_TIMER, self.logDebugInfo)
+        
+    def logDebugInfo(self):
+        self.__debug_info_count += 1
+        if self.__debug_info_count > self.qryTrigger:
+            status = self.restApi.getStatus()
+            s = ",".join(["%s=%s" % (k, v) for k, v in status.items()])
+            content = "RestClient's status: %s" % s
+            log = VtLogData()
+            log.gatewayName = self.gatewayName
+            log.logContent = content
+            log.logLevel = logging.DEBUG
+            self.onLog(log)
+            self.__debug_info_count = 0
+        
     #----------------------------------------------------------------------
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
@@ -299,6 +320,7 @@ class OkexfRestApi(RestClient):
         self.cancelDict = {}
         self.localRemoteDict = gateway.localRemoteDict
         self.orderDict = gateway.orderDict
+        self.cancelledOrders = OrderedDict()
     
     #----------------------------------------------------------------------
     def sign(self, request):
@@ -424,6 +446,9 @@ class OkexfRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
         #symbol = cancelOrderReq.symbol
+        # avoid repeated order cancelling.
+        if cancelOrderReq.orderID in self.cancelledOrders:
+            return
         orderID = cancelOrderReq.orderID
         remoteID = self.localRemoteDict.get(orderID, None)
         print("\ncancelorder\n",remoteID,orderID)
@@ -442,8 +467,29 @@ class OkexfRestApi(RestClient):
         }
         path = '/api/futures/v3/cancel_order/%s/%s' %(symbol, remoteID)
         self.addRequest('POST', path, 
-                        callback=self.onCancelOrder)#, 
-                        #data=req)
+                        callback=self.onCancelOrder, 
+                        onFailed=self.onCancelOrderFailed,
+                        onError=self.onCancelOrderError,
+                        extra=cancelOrderReq,
+                        )
+        self._addCancelledOrders(cancelOrderReq.orderID)
+
+    def _addCancelledOrders(self, orderID):
+        self.cancelledOrders[orderID] = datetime.now()
+        # avoid memory leak
+        if len(self.cancelledOrders) >= 10000:
+            keys = []
+            count = 0
+            for k in self.cancelledOrder.keys():
+                keys.append(k)
+                count += 1
+                if count >= 1000:
+                    break
+            for k in keys:
+                self.cancelledOrder.pop(k, None)
+    
+    def _removeCancelledOrders(sefl, orderID):
+        self.cancelledOrders.pop(orderID, None)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -876,6 +922,9 @@ class OkexfRestApi(RestClient):
                 error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
 
+            # only 32004 means this order has already been cancelled or totally executed.
+            if str(data['error_code']) != '32004':
+                self._removeCancelledOrders(request.extra.orderID)
             # could be risky,just testify
             # if str(data['error_code']) == '32004':
             #     order = self.orderDict.get(str(data['order_id']),None)
@@ -890,6 +939,14 @@ class OkexfRestApi(RestClient):
             #                 if self.orderDict.get(str(data['order_id']),None):
             #                     del self.orderDict[str(data['order_id'])]
     
+    def onCancelOrderFailed(self, httpStatusCode, request):
+        self._removeCancelledOrders(request.extra.orderID)
+        self.onFailed(httpStatusCode, request)
+
+    def onCancelOrderError(self, exceptionType, exceptionValue, tb, request):
+        self._removeCancelledOrders(request.extra.orderID)
+        self.onError(exceptionType, exceptionValue, tb, request)
+
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
         """
