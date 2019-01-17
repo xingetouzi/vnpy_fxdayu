@@ -182,7 +182,7 @@ class OkexfGateway(VtGateway):
         self.__debug_info_count = 0
         self.eventEngine.register(EVENT_TIMER, self.logDebugInfo)
         
-    def logDebugInfo(self):
+    def logDebugInfo(self, event):
         self.__debug_info_count += 1
         if self.__debug_info_count > self.qryTrigger:
             status = self.restApi.getStatus()
