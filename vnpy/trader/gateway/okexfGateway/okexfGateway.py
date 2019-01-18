@@ -184,7 +184,7 @@ class OkexfGateway(VtGateway):
         
     def logDebugInfo(self, event):
         self.__debug_info_count += 1
-        if self.__debug_info_count > self.qryTrigger:
+        if self.__debug_info_count > 60:
             status = self.restApi.getStatus()
             s = ",".join(["%s=%s" % (k, v) for k, v in status.items()])
             content = "RestClient's status: %s" % s
