@@ -480,13 +480,13 @@ class OkexfRestApi(RestClient):
         if len(self.cancelledOrders) >= 10000:
             keys = []
             count = 0
-            for k in self.cancelledOrder.keys():
+            for k in self.cancelledOrders.keys():
                 keys.append(k)
                 count += 1
                 if count >= 1000:
                     break
             for k in keys:
-                self.cancelledOrder.pop(k, None)
+                self.cancelledOrders.pop(k, None)
     
     def _removeCancelledOrders(sefl, orderID):
         self.cancelledOrders.pop(orderID, None)
