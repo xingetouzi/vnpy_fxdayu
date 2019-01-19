@@ -42,6 +42,12 @@ ERRORCODE['30035'] = u'该交易已关闭'
 ERRORCODE['30036'] = u'没有相应数据'
 ERRORCODE['30037'] = u'接口已下线或无法使用'
 ERRORCODE['30038'] = u'用户不存在'
+ERRORCODE['30039'] = u'请求无法识别'
+ERRORCODE['30040'] = u'Channel doesn\'t exist'
+ERRORCODE['30041'] = u'用户必须先登录'
+ERRORCODE['30042'] = u'用户已经先登录'
+ERRORCODE['30043'] = u'系统内部错误'
+
 
 # 交割合约错误码（32000-33000）
 ERRORCODE['32001'] = u'合约账户被冻结'
