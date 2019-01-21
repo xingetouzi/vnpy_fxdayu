@@ -49,6 +49,18 @@ class OpenFalconMetric(object):
     def to_json(self):
         return json.dumps(self.__dict__, cls=NumpyEncoder)
 
+    @classmethod
+    def from_dict(cls, dct):
+        obj = cls()
+        obj.endpoint = dct["endpoint"]
+        obj.metric = dct["metric"]
+        obj.timestamp = dct["timestamp"]
+        obj.step = dct["step"]
+        obj.value = dct["value"]
+        obj.counterType = dct["counterType"]
+        obj.tags = dct["tags"]
+        return obj
+
 
 class OpenFalconMetricFactory(object):
     PREFIX = "vnpy.cta"
@@ -254,8 +266,13 @@ class CtaMerticPlugin(CtaEnginePlugin):
                 func()
             except: # prevent stop eventengine's thread
                 self.ctaEngine.error(traceback.format_exc())
-        self._metricSender.pushMetrics(self._metricCaches)
-        # self.ctaEngine.writeCtaLog("推送%s个监控指标" % len(self._metricCaches)) 
+        st = time.time()
+        try:
+            self._metricSender.pushMetrics(self._metricCaches)
+        except:
+            self.ctaEngine.error(traceback.format_exc())
+        et = time.time()
+        self.ctaEngine.debug("推送%s个监控指标,耗时%s", len(self._metricCaches), et - st)
         self.clearCache()
 
     def clearCache(self):
