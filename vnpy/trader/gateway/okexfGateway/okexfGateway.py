@@ -488,7 +488,7 @@ class OkexfRestApi(RestClient):
             for k in keys:
                 self.cancelledOrders.pop(k, None)
     
-    def _removeCancelledOrders(sefl, orderID):
+    def _removeCancelledOrders(self, orderID):
         self.cancelledOrders.pop(orderID, None)
 
     #----------------------------------------------------------------------
