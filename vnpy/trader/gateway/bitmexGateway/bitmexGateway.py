@@ -339,6 +339,7 @@ class WebsocketApi(BitmexWebsocketApi):
             'instrument': self.onContract
         }
         
+        self.depthDict = {}
         self.tickDict = {}
         self.accountDict = {}
         self.orderDict = {}
@@ -358,6 +359,7 @@ class WebsocketApi(BitmexWebsocketApi):
             tick.exchange = EXCHANGE_BITMEX
             tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             self.tickDict[symbol] = tick
+            self.depthDict[symbol] = {"datetime": datetime(1, 1, 1), "count": 0}
             
         self.start()
     
@@ -386,7 +388,7 @@ class WebsocketApi(BitmexWebsocketApi):
             name = data['table']
             callback = self.callbackDict[name]
             
-            if isinstance(data['data'], list):
+            if isinstance(data['data'], list):    
                 for d in data['data']:
                     callback(d)
             else:
@@ -460,6 +462,7 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         tick.localTime = datetime.now()
+        tick.trdMatchID = d["trdMatchID"]
         if tick.askPrice1:
             newtick = copy(tick)
             self.gateway.onTick(newtick)
@@ -467,12 +470,12 @@ class WebsocketApi(BitmexWebsocketApi):
     #----------------------------------------------------------------------
     def onDepth(self, d):
         """"""
-        print(d,'----')
         symbol = d['symbol']
         #tick = self.tickDict.get(symbol, None)
         #if not tick:
         #    return
         tick = self.tickDict[symbol]
+        depthDict = self.depthDict[symbol]
         
         for n, buf in enumerate(d['bids'][:5]):
             price, volume = buf
@@ -490,6 +493,15 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         tick.volumeChange = 0
         tick.localTime = datetime.now()
+
+        if depthDict["datetime"] != tick.datetime:
+            depthDict["datetime"] = tick.datetime
+            tick.trdMatchID = "0"
+            depthDict["count"] = 0
+        else:
+            depthDict["count"] += 1
+            tick.trdMatchID = str(depthDict["count"])
+
         if tick.lastPrice:
             newtick = copy(tick)
             self.gateway.onTick(newtick)
