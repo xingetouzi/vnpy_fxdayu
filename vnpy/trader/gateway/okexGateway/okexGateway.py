@@ -1,161 +1,114 @@
 # encoding: UTF-8
-
 '''
-vnpy.api.okex的gateway接入
-Contributor：ipqhjjybj 大佳
 '''
 from __future__ import print_function
 
-import time
+import logging
 import os
 import json
-from datetime import datetime
-from time import sleep
-from copy import copy, deepcopy
-from threading import Condition
-from queue import Queue, Empty
-from threading import Thread
-from time import sleep
+import hmac
+import sys
+import time
+import traceback
+import base64
+import zlib
+from datetime import datetime, timedelta
+from copy import copy
+from urllib.parse import urlencode
+import pandas as pd
 
-from vnpy.api.okex import OkexSpotApi, OkexFuturesApi, OKEX_SPOT_HOST, OKEX_FUTURES_HOST
+import requests
+from requests import ConnectionError
 
+from vnpy.api.rest import RestClient, Request
+from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
-from vnpy.trader.vtFunction import getJsonPath
+from vnpy.trader.vtConstant import *
+from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from .text import ERRORCODE
 
-# 价格类型映射
-# 买卖类型： 限价单（buy/sell） 市价单（buy_market/sell_market）
-priceTypeMap = {}
-priceTypeMap['buy'] = (DIRECTION_LONG, PRICETYPE_LIMITPRICE)
-priceTypeMap['buy_market'] = (DIRECTION_LONG, PRICETYPE_MARKETPRICE)
-priceTypeMap['sell'] = (DIRECTION_SHORT, PRICETYPE_LIMITPRICE)
-priceTypeMap['sell_market'] = (DIRECTION_SHORT, PRICETYPE_MARKETPRICE)  ###原版现货下单映射
-priceTypeMapReverse = {v: k for k, v in priceTypeMap.items()} 
+REST_HOST = 'https://www.okex.com'
+WEBSOCKET_HOST_V3 = 'wss://real.okex.com:10442/ws/v3'
 
-futureOrderTypeMap = {}
-futureOrderTypeMap['1'] = (DIRECTION_LONG,OFFSET_OPEN)               ##买开
-futureOrderTypeMap['2'] = (DIRECTION_SHORT,OFFSET_OPEN)             ##卖开
-futureOrderTypeMap['3'] = (DIRECTION_SHORT,OFFSET_CLOSE)              #卖平  
-futureOrderTypeMap['4'] = (DIRECTION_LONG,OFFSET_CLOSE)               #买平
+# 委托状态类型映射
+statusMapReverse = {}
+statusMapReverse['0'] = STATUS_NOTTRADED    # futures
+statusMapReverse['1'] = STATUS_PARTTRADED
+statusMapReverse['2'] = STATUS_ALLTRADED
+statusMapReverse['-1'] = STATUS_CANCELLED
+statusMapReverse['-2'] = STATUS_REJECTED
 
-futureOrderTypeMapReverse = {v: k for k, v in futureOrderTypeMap.items()} 
+statusMapReverse['open'] = STATUS_NOTTRADED           # spot
+statusMapReverse['part_filled'] = STATUS_PARTTRADED
+statusMapReverse['filled'] = STATUS_ALLTRADED
+statusMapReverse['cancelled'] = STATUS_CANCELLED
+statusMapReverse['failure'] = STATUS_REJECTED
 
-# 委托状态印射
-statusMap = {}
-statusMap[-1] = STATUS_CANCELLED
-statusMap[0] = STATUS_NOTTRADED
-statusMap[1] = STATUS_PARTTRADED
-statusMap[2] = STATUS_ALLTRADED
-statusMap[4] = STATUS_CANCELINPROGRESS
-statusMap[5] = STATUS_CANCELLING
+# 方向和开平映射
+typeMap = {}
+typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = '1'
+typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = '2'
+typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = '4'  # cover
+typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = '3' # sell
+typeMapReverse = {v:k for k,v in typeMap.items()}
 
-# Restful 下单返回错误映射
-orderErrorMap = {}
-orderErrorMap['20001'] = u"用户不存在"
-orderErrorMap['20002'] = u"用户被冻结"
-orderErrorMap['20003'] = u"用户被爆仓冻结"
-orderErrorMap['20004'] = u"合约账户被冻结"
-orderErrorMap['20005'] = u"用户合约账户不存在"
-orderErrorMap['20006'] = u"必填参数为空"
-orderErrorMap['20007'] = u"参数错误"
-orderErrorMap['20008'] = u"合约账户余额为空"
-orderErrorMap['20009'] = u"虚拟合约状态错误"
-orderErrorMap['20010'] = u"合约风险率信息不存在"
-orderErrorMap['20011'] = u"10倍/20倍杠杆开BTC前保证金率低于90%/80%，10倍/20倍杠杆开LTC前保证金率低于80%/60%"
-orderErrorMap['20012'] = u"10倍/20倍杠杆开BTC后保证金率低于90%/80%，10倍/20倍杠杆开LTC后保证金率低于80%/60%"
-orderErrorMap['20013'] = u"暂无对手价"
-orderErrorMap['20014'] = u"系统错误"
-orderErrorMap['20015'] = u"订单信息不存在"
-orderErrorMap['20016'] = u"平仓数量是否大于同方向可用持仓数量"
-orderErrorMap['20017'] = u"非本人操作"
-orderErrorMap['20018'] = u"下单价格高于前一分钟的103%或低于97%"
-orderErrorMap['20019'] = u"该IP限制不能请求该资源"
-orderErrorMap['20020'] = u"密钥不存在"
-orderErrorMap['20021'] = u"指数信息不存在"
-orderErrorMap['20022'] = u"接口调用错误（全仓模式调用全仓接口，逐仓模式调用逐仓接口）"
-orderErrorMap['20023'] = u"逐仓用户"
-orderErrorMap['20024'] = u"sign签名不匹配"
-orderErrorMap['20025'] = u"杠杆比率错误"
-orderErrorMap['20026'] = u"API鉴权错误"
-orderErrorMap['20027'] = u"无交易记录"
-orderErrorMap['20028'] = u"合约不存在"
-orderErrorMap['20029'] = u"转出金额大于可转金额"
-orderErrorMap['20030'] = u"账户存在借款"
-orderErrorMap['20038'] = u"根据相关法律，您所在的国家或地区不能使用该功能。"
-orderErrorMap['20049'] = u"用户请求接口过于频繁"
-orderErrorMap['20061'] = u"合约相同方向只支持一个杠杆，若有10倍多单，就不能再下20倍多单"
-orderErrorMap['21020'] = u"合约交割中，无法下单"
-orderErrorMap['21021'] = u"合约清算中，无法下单"
-orderErrorMap['HTTP错误码403'] = u"用户请求过快，IP被屏蔽"
-orderErrorMap['Ping不通'] = u"用户请求过快，IP被屏蔽"
+# K线频率映射
+granularityMap = {}
+granularityMap['1min'] =60
+granularityMap['3min'] =180
+granularityMap['5min'] =300
+granularityMap['10min'] =600
+granularityMap['15min'] =900
+granularityMap['30min'] =1800
+granularityMap['60min'] =3600
+granularityMap['120min'] =7200
+granularityMap['240min'] =14400
+granularityMap['360min'] =21600
+granularityMap['720min'] =43200
+granularityMap['1day'] =86400
+granularityMap['1week'] =604800
 
-KlinePeriodMap = {}
-KlinePeriodMap['1min'] = '1min'
-KlinePeriodMap['5min'] = '5min'
-KlinePeriodMap['15min'] = '15min'
-KlinePeriodMap['30min'] = '30min'
-KlinePeriodMap['60min'] = '1hour'
-KlinePeriodMap['1day'] = 'day'
-KlinePeriodMap['1week'] = 'week'
-KlinePeriodMap['4hour'] = '4hour'
-
-
-okex_all_symbol_pairs = ['ref_usdt', 'soc_usdt', 'light_usdt', 'avt_usdt', 
-'of_usdt', 'brd_usdt', 'ast_usdt', 'int_usdt', 'zrx_usdt', 'ctr_usdt', 'dgd_usdt', 
-'aidoc_usdt', 'wtc_usdt', 'swftc_usdt', 'wrc_usdt', 'sub_usdt', 'dna_usdt', 'knc_usdt', 
-'kcash_usdt', 'mdt_usdt', 'theta_usdt', 'ppt_usdt', 'utk_usdt', 'qvt_usdt', 'salt_usdt', 
-'la_usdt', 'itc_usdt', 'fair_usdt', 'yee_usdt', '1st_usdt', 'fun_usdt', 'iost_usdt', 'mkr_usdt', 
-'tio_usdt', 'req_usdt', 'ubtc_usdt', 'icx_usdt', 'tct_usdt', 'san_usdt', 'lrc_usdt', 'icn_usdt', 
-'cvc_usdt', 'eth_usdt', 'poe_usdt', 'xlm_usdt', 'iota_usdt', 'eos_usdt', 'nuls_usdt', 'mot_usdt', 
-'neo_usdt', 'gnx_usdt', 'dgb_usdt', 'evx_usdt', 'ltc_usdt', 'mda_usdt', 'etc_usdt', 'dpy_usdt', 
-'tnb_usdt', 'nas_usdt', 'btc_usdt', 'smt_usdt', 'ssc_usdt', 'oax_usdt', 'yoyo_usdt', 'snc_usdt', 
-'sngls_usdt', 'bch_usdt', 'mana_usdt', 'mof_usdt', 'mco_usdt', 'vib_usdt', 'topc_usdt', 'pra_usdt', 
-'bnt_usdt', 'xmr_usdt', 'edo_usdt', 'snt_usdt', 'eng_usdt', 'stc_usdt', 'qtum_usdt', 'key_usdt', 
-'ins_usdt', 'rnt_usdt', 'bcd_usdt', 'amm_usdt', 'lend_usdt', 'btm_usdt', 'elf_usdt', 'xuc_usdt', 
-'cag_usdt', 'snm_usdt', 'act_usdt', 'dash_usdt', 'zec_usdt', 'storj_usdt', 'pay_usdt', 'vee_usdt', 
-'show_usdt', 'trx_usdt', 'atl_usdt', 'ark_usdt', 'ost_usdt', 'gnt_usdt', 'dat_usdt', 'rcn_usdt', 
-'qun_usdt', 'mth_usdt', 'rct_usdt', 'read_usdt', 'gas_usdt', 'btg_usdt', 'mtl_usdt', 'cmt_usdt', 
-'xrp_usdt', 'spf_usdt', 'aac_usdt', 'can_usdt', 'omg_usdt', 'hsr_usdt', 'link_usdt', 'dnt_usdt', 
-'true_usdt', 'ukg_usdt', 'xem_usdt', 'ngc_usdt', 'lev_usdt', 'rdn_usdt', 'ace_usdt', 'ipc_usdt', 
-'ugc_usdt', 'viu_usdt', 'mag_usdt', 'hot_usdt', 'pst_usdt','ref_btc', 'soc_btc', 'light_btc', 
-'avt_btc', 'of_btc', 'brd_btc', 'ast_btc', 'int_btc', 'zrx_btc', 'ctr_btc', 'dgd_btc', 'aidoc_btc', 
-'wtc_btc', 'swftc_btc', 'wrc_btc', 'sub_btc', 'dna_btc', 'knc_btc', 'kcash_btc', 'mdt_btc', 
-'theta_btc', 'ppt_btc', 'utk_btc', 'qvt_btc', 'salt_btc', 'la_btc', 'itc_btc', 'fair_btc', 
-'yee_btc', '1st_btc', 'fun_btc', 'iost_btc', 'mkr_btc', 'tio_btc', 'req_btc', 'ubtc_btc', 
-'icx_btc', 'tct_btc', 'san_btc', 'lrc_btc', 'icn_btc', 'cvc_btc', 'eth_btc', 'poe_btc', 'xlm_btc', 
-'iota_btc', 'eos_btc', 'nuls_btc', 'mot_btc', 'neo_btc', 'gnx_btc', 'dgb_btc', 'evx_btc', 
-'ltc_btc', 'mda_btc', 'etc_btc', 'dpy_btc', 'tnb_btc', 'nas_btc', 'btc_btc', 'smt_btc', 'ssc_btc', 
-'oax_btc', 'yoyo_btc', 'snc_btc', 'sngls_btc', 'bch_btc', 'mana_btc', 'mof_btc', 'mco_btc', 
-'vib_btc', 'topc_btc', 'pra_btc', 'bnt_btc', 'xmr_btc', 'edo_btc', 'snt_btc', 'eng_btc', 'stc_btc', 
-'qtum_btc', 'key_btc', 'ins_btc', 'rnt_btc', 'bcd_btc', 'amm_btc', 'lend_btc', 'btm_btc', 
-'elf_btc', 'xuc_btc', 'cag_btc', 'snm_btc', 'act_btc', 'dash_btc', 'zec_btc', 'storj_btc', 
-'pay_btc', 'vee_btc', 'show_btc', 'trx_btc', 'atl_btc', 'ark_btc', 'ost_btc', 'gnt_btc', 
-'dat_btc', 'rcn_btc', 'qun_btc', 'mth_btc', 'rct_btc', 'read_btc', 'gas_btc', 'btg_btc', 
-'mtl_btc', 'cmt_btc', 'xrp_btc', 'spf_btc', 'aac_btc', 'can_btc', 'omg_btc', 'hsr_btc', 
-'link_btc', 'dnt_btc', 'true_btc', 'ukg_btc', 'xem_btc', 'ngc_btc', 'lev_btc', 'rdn_btc', 
-'ace_btc', 'ipc_btc', 'ugc_btc', 'viu_btc', 'mag_btc', 'hot_btc', 'pst_btc']
-
+contractMap = {}
+#----------------------------------------------------------------------
+def generateSignature(msg, apiSecret):
+    """签名V3"""
+    mac = hmac.new(bytes(apiSecret, encoding='utf-8'), bytes(msg,encoding='utf-8'),digestmod='sha256')
+    d= mac.digest()
+    return base64.b64encode(d)
 
 ########################################################################
 class OkexGateway(VtGateway):
-    """OKEX交易接口"""
-    
+    """OKEX V3 接口"""
+
     #----------------------------------------------------------------------
-    def __init__(self, eventEngine, gatewayName='OKEX'):
+    def __init__(self, eventEngine, gatewayName=''):
         """Constructor"""
         super(OkexGateway, self).__init__(eventEngine, gatewayName)
         
-        self.spotApi = SpotApi(self)     
-        self.futuresApi = FuturesApi(self)
-        
-        self.qryEnabled = False
-        self.connected = False
+        self.qryEnabled = False     # 是否要启动循环查询
+        self.localRemoteDict = {}   # localID:remoteID
+        self.orderDict = {}         # remoteID:order
+
         self.fileName = self.gatewayName + '_connect.json'
-        self.filePath = getJsonPath(self.fileName, __file__)     
+        self.filePath = getJsonPath(self.fileName, __file__)
+        
+        self.restFuturesApi = OkexfRestApi(self)
+        self.wsFuturesApi = OkexfWebsocketApi(self)     
+        self.restSwapApi = OkexSwapRestApi(self)
+        self.wsSwapApi = OkexSwapWebsocketApi(self)
+        self.restSpotApi = OkexSpotRestApi(self)
+        self.wsSpotApi = OkexSpotWebsocketApi(self)
+        self.contracts = []
+        self.swap_contracts = []
+        self.currency_pairs = []
+
+        self.orderID = 10000
+        self.tradeID = 0
+        self.loginTime = 0
 
     #----------------------------------------------------------------------
     def connect(self):
         """连接"""
-        # 载入json文件
         try:
             f = open(self.filePath)
         except IOError:
@@ -164,26 +117,48 @@ class OkexGateway(VtGateway):
             log.logContent = u'读取连接配置出错，请检查'
             self.onLog(log)
             return
-        
+
         # 解析json文件
         setting = json.load(f)
+        f.close()
+        
         try:
             apiKey = str(setting['apiKey'])
-            secretKey = str(setting['secretKey'])
-            trace = setting['trace']
-            symbols = setting['symbols']
-            contracts = setting['contracts']
-
+            apiSecret = str(setting['apiSecret'])
+            passphrase = str(setting['passphrase'])
+            sessionCount = int(setting['sessionCount'])
+            subscrib_symbols = setting['contracts']
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
             log.logContent = u'连接配置缺少字段，请检查'
             self.onLog(log)
-            return            
-        
-        # 初始化接口
-        self.futuresApi.init(apiKey, secretKey, trace, contracts)
-        self.spotApi.init(apiKey, secretKey, trace, symbols)
+            return
+
+        # 记录订阅的交易品种类型
+        for symbol in subscrib_symbols:
+            if "week" in symbol or "quarter" in symbol:
+                self.contracts.append(symbol)                 
+            elif "SWAP" in symbol:
+                self.swap_contracts.append(symbol)
+            else:
+                self.currency_pairs.append(symbol)
+        # 创建行情和交易接口对象
+        future_leverage = setting.get('future_leverage', 10)
+        swap_leverage = setting.get('swap_leverage', 1)
+        margin_token = setting.get('margin_token',3)
+
+        if self.contracts:
+            self.restFuturesApi.connect(apiKey, apiSecret, passphrase, future_leverage, sessionCount)
+            self.wsFuturesApi.connect(apiKey, apiSecret, passphrase)  
+        if self.swap_contracts:
+            self.restSwapApi.connect(apiKey, apiSecret, passphrase, swap_leverage, sessionCount)
+            self.wsSwapApi.connect(apiKey, apiSecret, passphrase)
+        if self.currency_pairs:
+            self.restSpotApi.connect(apiKey, apiSecret, passphrase, margin_token, sessionCount)
+            self.wsSpotApi.connect(apiKey, apiSecret, passphrase)
+
+        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * self.orderID
 
         setQryEnabled = setting.get('setQryEnabled', None)
         self.setQryEnabled(setQryEnabled)
@@ -194,1795 +169,3191 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
         """订阅行情"""
-        pass
-        
+        symbol = subscribeReq.symbol
+        if symbol in self.contracts:
+            self.wsFuturesApi.subscribe(symbol)
+        elif symbol in self.swap_contracts:
+            self.wsSwapApi.subscribe(symbol)
+        else:
+            self.wsSpotApi.subscribe(symbol)
+
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
+        symbol = orderReq.symbol
+        self.orderID += 1
 
-        if orderReq.priceType == PRICETYPE_LIMITPRICE:
-            orderReq.priceType = 0
-        elif orderReq.priceType == PRICETYPE_MARKETPRICE:
-            orderReq.priceType =1
-
-        if 'quarter' in orderReq.vtSymbol or 'week' in orderReq.vtSymbol:
-            return self.futuresApi.sendOrder(orderReq)
+        if symbol in self.contracts:
+            return self.restFuturesApi.sendOrder(orderReq)
+        elif symbol in self.swap_contracts:
+            return self.restSwapApi.sendOrder(orderReq)
         else:
-            return self.spotApi.sendOrder(orderReq)
+            return self.restSpotApi.sendOrder(orderReq)
+
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
-        if 'quarter' in cancelOrderReq.vtSymbol or 'week' in cancelOrderReq.vtSymbol:
-            return self.futuresApi.cancelOrder(cancelOrderReq)
+        symbol = cancelOrderReq.symbol
+        if symbol in self.contracts:
+            self.restFuturesApi.cancelOrder(cancelOrderReq)
+        elif symbol in self.swap_contracts:
+            self.restSwapApi.cancelOrder(cancelOrderReq)
         else:
-            return self.spotApi.cancelOrder(cancelOrderReq)
+            self.restSpotApi.cancelOrder(cancelOrderReq)
+        
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """发单"""
+        return self.restFuturesApi.cancelAll(symbols=symbols, orders=orders)
 
-    #----------------------------------------------------------------------
-    def qryAccount(self):
-        """查询账户资金"""
-        pass
+    # ----------------------------------------------------------------------
+    def closeAll(self, symbols, direction=None):
+        """撤单"""
+        return self.restFuturesApi.closeAll(symbols, direction=direction)
 
-    #----------------------------------------------------------------------
-    def qryPosition(self):
-        """查询持仓"""
-        # self.futuresApi.futuresUserInfo()
-        pass
-    #------------------------------------------------
-    def qryAllOrders(self, vtSymbol, order_id, status= None):
-        symbol = vtSymbol[:3]+"_usd"
-        contract_type = vtSymbol.split(VN_SEPARATOR)[0]
-        contractType = contract_type[4:]
-        if 'quarter' in contractType or 'week' in contractType:
-            data = self.futuresApi.rest_qry_order(symbol,contractType,order_id,status)
-        else:
-            data = self.spotApi.rest_spot_orders(symbol,order_id,status)
-        return data
-
-    def batchCancelOrder(self, cancelOrderReqList):
-        self.futuresApi.batchCancelOrder(cancelOrderReqList)
-
-    def loadHistoryBar(self, vtSymbol, type_, size= None, since = None):
-        """策略初始化时下载历史数据"""
-        type_ = KlinePeriodMap[type_]
-        symbol= vtSymbol.split(VN_SEPARATOR)[0]
-        contractType = symbol[4:]
-
-        if 'quarter' in contractType or 'week' in contractType:
-            symbol = vtSymbol[:3]+"_usd"
-            data = self.futuresApi.rest_future_bar(symbol, type_, contractType, size, since)
-        else:
-            symbol = symbol
-            data = self.spotApi.rest_spot_bar(symbol, type_, size, since)
-        return data
-
-    #------------------------------------------------
-    def initPosition(self,vtSymbol):
-        """策略初始化时查询策略的持仓"""
-        symbol= vtSymbol.split(VN_SEPARATOR)[0]
-        contractType = symbol[4:]
-        if 'quarter' in contractType or 'week' in contractType:
-            symbol = vtSymbol[:3]
-            self.futuresApi.rest_futures_position(symbol,contractType)
-        else:
-            symbol = symbol
-            self.spotApi.rest_spot_posotion(symbol)
     #----------------------------------------------------------------------
     def close(self):
         """关闭"""
-        self.futuresApi.close()
-        self.spotApi.close()
-        
+        self.restFuturesApi.stop()
+        self.wsFuturesApi.stop()
+    
     #----------------------------------------------------------------------
     def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
-            self.qryFunctionList = [self.qryPosition]
-            
+            self.qryFunctionList = [self.queryInfo]
+
             self.qryCount = 0           # 查询触发倒计时
-            self.qryTrigger = freq         # 查询触发点
+            self.qryTrigger = freq      # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
-            
-            self.startQuery()  
-    
+
+            self.startQuery()
+
     #----------------------------------------------------------------------
     def query(self, event):
         """注册到事件处理引擎上的查询函数"""
         self.qryCount += 1
-        
+
         if self.qryCount > self.qryTrigger:
             # 清空倒计时
             self.qryCount = 0
-            
+
             # 执行查询函数
             function = self.qryFunctionList[self.qryNextFunction]
             function()
-            
+
             # 计算下次查询函数的索引，如果超过了列表长度，则重新设为0
             self.qryNextFunction += 1
             if self.qryNextFunction == len(self.qryFunctionList):
                 self.qryNextFunction = 0
-                
+
     #----------------------------------------------------------------------
     def startQuery(self):
         """启动连续查询"""
         self.eventEngine.register(EVENT_TIMER, self.query)
-    
+
     #----------------------------------------------------------------------
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
+    
+    #----------------------------------------------------------------------
+    def queryInfo(self):
+        """"""
+        if self.contracts:
+            self.restFuturesApi.queryAccount()
+            self.restFuturesApi.queryPosition()
+            self.restFuturesApi.queryOrder() 
+        if self.swap_contracts:
+            self.restSwapApi.queryAccount()
+            self.restSwapApi.queryPosition()
+            self.restSwapApi.queryOrder() 
+        if self.currency_pairs:
+            self.restSpotApi.queryAccount()
+            self.restSpotApi.queryOrder() 
 
-    def writeLog(self, content):
-        """快速记录日志"""
-        log = VtLogData()
-        log.gatewayName = self.gatewayName
-        log.logContent = content
-        self.onLog(log)
+    def initPosition(self,vtSymbol):
+        if vtSymbol in self.contracts:
+            self.restFuturesApi.queryPosition()
+        elif vtSymbol in self.swap_contracts:
+            self.restSwapApi.queryPosition()
+        else:
+            self.restSpotApi.queryAccount()
 
+    def qryAllOrders(self,vtSymbol,order_id,status=None):
+        pass
 
-##################################################################################################
-class SpotApi(OkexSpotApi):
-    """OKEX的现货SPOTAPI实现"""
+    def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
+        symbol = vtSymbol.split(':')[0]
+        if symbol in self.contracts:
+            return self.restFuturesApi.loadHistoryBarV1(vtSymbol,type_,size,since,end)
+        elif symbol in self.swap_contracts:
+            return self.restSwapApi.loadHistoryBarV3(vtSymbol,type_,size,since,end)
+        elif symbol in self.currency_pairs:
+            return self.restSpotApi.loadHistoryBarV3(vtSymbol,type_,size,since,end)
+
+########################################################################
+class OkexfRestApi(RestClient):
+    """REST API实现"""
 
     #----------------------------------------------------------------------
     def __init__(self, gateway):
         """Constructor"""
-        super(SpotApi, self).__init__()
-        
-        self.gateway = gateway                  # gateway对象
+        super(OkexfRestApi, self).__init__()
+
+        self.gateway = gateway                  # type: okexGateway # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
-
-        self.cbDict = {}
-        self.tickDict = {}
         
-        self.channelSymbolMap = {}
-
-        # 为了期货和现货共存于这个gateway，将两个类的委托号移到此处共享
-        self.orderDict = {}
-        self.localNo = 0                # 本地委托号
-        self.localNoQueue = Queue()     # 未收到系统委托号的本地委托号队列
-        self.localNoDict = {}           # key为本地委托号，value为系统委托号
-        self.localOrderDict = {}        # key为本地委托号, value为委托对象
-        self.orderIdDict = {}           # key为系统委托号，value为本地委托号
-        self.cancelDict = {}            # key为本地委托号，value为撤单请求
-
-        self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
-
-        self.cache_some_order = {}
-        self.tradeID = 0
-
-        self.registerSymbolPairArray = set([])
-
-    #----------------------------------------------------------------------
-    def onMessage(self, data):
-        """信息推送""" 
-        channel = data.get('channel', '')
-        if not channel:
-            return
-
-        if channel in self.cbDict:
-            callback = self.cbDict[channel]
-            callback(data)
-
-    #----------------------------------------------------------------------
-    def onError(self, data):
-        """错误推送"""
-        error = VtErrorData()
-        error.gatewayName = self.gatewayName
-        error.errorMsg = str(data)
-        self.gateway.onError(error)
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+        self.leverage = 0
         
-    #----------------------------------------------------------------------
-    def onClose(self):
-        """接口断开"""
-        self.gateway.connected = False
-        self.writeLog(u'现货服务器连接断开')
+        self.contractDict = {}
+        self.cancelDict = {}
+        self.localRemoteDict = gateway.localRemoteDict
+        self.orderDict = gateway.orderDict
     
     #----------------------------------------------------------------------
-    def onOpen(self):       
-        """连接成功"""
-        self.gateway.connected = True
-        self.writeLog(u'现货服务器连接成功')
+    def sign(self, request):
+        """okex的签名方案"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3]+'Z')#str(time.time())
+        request.data = json.dumps(request.data)
         
-        self.login()
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+            
+        msg = timestamp + request.method + path + request.data
+        signature = generateSignature(msg, self.apiSecret)
         
-        # 推送合约数据
-        for symbol in self.symbols:
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+
+    # ----------------------------------------------------------------------
+    def sign2(self, request):
+        """okex的签名方案, 针对全平和全撤接口"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3] + 'Z')  # str(time.time())
+
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+
+        if request.data:
+            request.data = json.dumps(request.data)
+            msg = timestamp + request.method + path + request.data
+        else:
+            msg = timestamp + request.method + path
+        signature = generateSignature(msg, self.apiSecret)
+
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+    
+    #----------------------------------------------------------------------
+    def connect(self, apiKey, apiSecret, passphrase, leverage, sessionCount):
+        """连接服务器"""
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
+        self.leverage = leverage
+        
+        self.init(REST_HOST)
+        self.start(sessionCount)
+        self.writeLog(u'REST API启动成功')
+        self.queryContract()
+    
+    #----------------------------------------------------------------------
+    def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)
+    
+    #----------------------------------------------------------------------
+    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+        """限速规则：20次/2s"""
+        self.orderID += 1
+        orderID = str(self.gateway.loginTime + self.gateway.orderID)
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
+        
+        type_ = typeMap[(orderReq.direction, orderReq.offset)]
+
+        for key,value in contractMap.items():
+            if value == orderReq.symbol: 
+                symbol = key  
+
+        data = {
+            'client_oid': orderID,
+            'instrument_id': symbol,
+            'type': type_,
+            'price': orderReq.price,
+            'size': int(orderReq.volume),
+            'leverage': self.leverage,
+        }
+        
+        order = VtOrderData()
+        order.gatewayName = self.gatewayName
+        order.symbol = orderReq.symbol
+        order.exchange = 'OKEX'
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.orderID = orderID
+        order.vtOrderID = vtOrderID
+        order.direction = orderReq.direction
+        order.offset = orderReq.offset
+        order.price = orderReq.price
+        order.totalVolume = orderReq.volume
+        
+        self.addRequest('POST', '/api/futures/v3/order', 
+                        callback=self.onSendOrder, 
+                        data=data, 
+                        extra=order,
+                        onFailed=self.onSendOrderFailed,
+                        onError=self.onSendOrderError)
+
+        self.localRemoteDict[orderID] = orderID
+        self.orderDict[orderID] = order
+        return vtOrderID
+    
+    #----------------------------------------------------------------------
+    def cancelOrder(self, cancelOrderReq):
+        """限速规则：10次/2s"""
+        #symbol = cancelOrderReq.symbol
+        orderID = cancelOrderReq.orderID
+        remoteID = self.localRemoteDict.get(orderID, None)
+        print("\ncancelorder\n",remoteID,orderID)
+
+        if not remoteID:
+            self.cancelDict[orderID] = cancelOrderReq
+            return
+
+        for key,value in contractMap.items():
+            if value == cancelOrderReq.symbol:
+                symbol = key
+        
+        req = {
+            'instrument_id': symbol,
+            'order_id': remoteID
+        }
+        path = '/api/futures/v3/cancel_order/%s/%s' %(symbol, remoteID)
+        self.addRequest('POST', path, 
+                        callback=self.onCancelOrder)#, 
+                        #data=req)
+
+    #----------------------------------------------------------------------
+    def queryContract(self):
+        """"""
+        self.addRequest('GET', '/api/futures/v3/instruments', 
+                        callback=self.onQueryContract)
+    
+    #----------------------------------------------------------------------
+    def queryAccount(self):
+        """"""
+        self.addRequest('GET', '/api/futures/v3/accounts', 
+                        callback=self.onQueryAccount)
+    
+    #----------------------------------------------------------------------
+    def queryPosition(self):
+        """"""
+        self.addRequest('GET', '/api/futures/v3/position', 
+                        callback=self.onQueryPosition)  
+    
+    #----------------------------------------------------------------------
+    def queryOrder(self):
+        """"""
+        self.writeLog('\n\n----------------------start Quary Orders,positions,Accounts-------------------')
+        for symbol in self.gateway.contracts:   #self.contractDict.keys():
+            for key,value in contractMap.items():
+                if value == symbol:
+                    symbol = key
+            # 未成交
+            req = {
+                'instrument_id': symbol,
+                'status': 0
+            }
+            path = '/api/futures/v3/orders/%s' %symbol
+            self.addRequest('GET', path, params=req,
+                            callback=self.onQueryOrder)
+            
+            # 部分成交
+            req2 = {
+                'instrument_id': symbol,
+                'status': 1
+            }
+            self.addRequest('GET', path, params=req2,
+                            callback=self.onQueryOrder)
+
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
+        Parameters
+        ----------
+        symbol : str, optional
+            用逗号隔开的多个合约代码,表示只撤销这些合约的挂单(默认为None,表示撤销所有合约的所有挂单)
+        orders : str, optional
+            用逗号隔开的多个vtOrderID.
+            若为None,先从交易所先查询所有未完成订单作为待撤销订单列表进行撤单;
+            若不为None,则对给出的对应订单中和symbol参数相匹配的订单作为待撤销订单列表进行撤单。
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含本次所有撤销的订单ID的列表
+        """
+        vtOrderIDs = []
+        if symbols:
+            symbols = symbols.split(",")
+        else:
+            symbols = self.gateway.contracts
+        for symbol in symbols:
+            for key, value in contractMap.items():
+                if value == symbol:
+                    symbol = key
+            # 未完成(包含未成交和部分成交)
+            req = {
+                'instrument_id': symbol,
+                'status': 6
+            }
+            path = '/api/futures/v3/orders/%s' % symbol
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+            request = self.sign2(request)
+            request.extra = orders
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['order_info']:
+                data = self.onCancelAll(data, request)
+                if data['result']:
+                    vtOrderIDs += data['order_ids']
+                    self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
+        print("全部撤单结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCancelAll(self, data, request):
+        orderids = [str(order['order_id']) for order in data['order_info'] if
+                    order['status'] == '0' or order['status'] == '1']
+        if request.extra:
+            orderids = list(set(orderids).intersection(set(request.extra.split(","))))
+        for i in range(len(orderids) // 20 + 1):
+            orderid = orderids[i * 20:(i + 1) * 20]
+
+            req = {
+                'instrument_id': request.params['instrument_id'],
+                'order_ids': orderid
+            }
+            path = '/api/futures/v3/cancel_batch_orders/%s' % request.params['instrument_id']
+            # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+
+            request = self.sign(request)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            return response.json()
+
+    def closeAll(self, symbols, direction=None):
+        """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
+        Parameters
+        ----------
+        symbols : str
+            所要平仓的合约代码,多个合约代码用逗号分隔开。
+        direction : str, optional
+            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含平仓操作发送的所有订单ID的列表
+        """
+        vtOrderIDs = []
+        symbols = symbols.split(",")
+        for symbol in symbols:
+            for key, value in contractMap.items():
+                if value == symbol:
+                    symbol = key
+            req = {
+                'instrument_id': symbol,
+            }
+            path = '/api/futures/v3/%s/position/' % symbol
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+
+            request = self.sign2(request)
+            request.extra = direction
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['holding']:
+                data = self.onCloseAll(data, request)
+                for i in data:
+                    if i['result']:
+                        vtOrderIDs.append(i['order_id'])
+                        self.writeLog(u'平仓成功%s' % i)
+        print("全部平仓结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCloseAll(self, data, request):
+        l = []
+
+        def _response(request, l):
+            request = self.sign(request)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            l.append(response.json())
+            return l
+        for holding in data['holding']:
+            path = '/api/futures/v3/order'
+            req_long = {
+                'instrument_id': holding['instrument_id'],
+                'type': '3',
+                'price': holding['long_avg_cost'],
+                'size': str(holding['long_avail_qty']),
+                'match_price': '1',
+                'leverage': self.leverage,
+            }
+            req_short = {
+                'instrument_id': holding['instrument_id'],
+                'type': '4',
+                'price': holding['short_avg_cost'],
+                'size': str(holding['short_avail_qty']),
+                'match_price': '1',
+                'leverage': self.leverage,
+            }
+            if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
+                # 多仓可平
+                request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+                l = _response(request, l)
+            elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
+                # 空仓可平
+                request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+                l = _response(request, l)
+            elif request.extra is None:
+                if int(holding['long_avail_qty']) > 0:
+                    # 多仓可平
+                    request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+                    l = _response(request, l)
+                if int(holding['short_avail_qty']) > 0:
+                    # 空仓可平
+                    request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+                    l = _response(request, l)
+        return l
+
+    #----------------------------------------------------------------------
+    def onQueryContract(self, data, request):
+        """"""
+        for d in data:
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
-            contract.symbol = symbol
-            contract.exchange = EXCHANGE_OKEX
+            
+            contract.symbol = d['instrument_id']
+            contract.exchange = 'OKEX'
+            #contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
+            
+            contract.name = contract.symbol
+            contract.productClass = PRODUCT_FUTURES
+            contract.priceTick = float(d['tick_size'])
+            contract.size = int(d['trade_increment'])
+            
+            self.contractDict[contract.symbol] = contract
+            
+        
+        self.writeLog(u'合约信息查询成功')
+
+        # map v1 symbol to contract
+        newcontractDict = {}
+        for newcontract in list(self.contractDict.keys()):
+            sym = newcontract[:7]
+            if sym in newcontractDict.keys():
+                newcontractDict[sym].append(newcontract[8:])
+            else:
+                newcontractDict[sym] = [newcontract[8:]]
+        for key,value in newcontractDict.items():
+            contractMap[key +'-'+ str(max(value))] = str.lower(key[:3])+'_quarter'
+            contractMap[key +'-'+ str(min(value))] = str.lower(key[:3])+'_this_week'
+            value.remove(max(value))
+            value.remove(min(value))
+            contractMap[key +'-'+ str(value[0])] = str.lower(key[:3])+'_next_week'
+
+        for key,value in contractMap.items():
+            contract = self.contractDict[key]
+            contract.symbol = value
             contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
-            contract.name = symbol
-            
-            contract.size = 0.00001
-            contract.priceTick = 0.00001
-            contract.productClass = PRODUCT_SPOT
             self.gateway.onContract(contract)
-    
+        
+        self.queryOrder()
+        self.queryAccount()
+        self.queryPosition()
+        
     #----------------------------------------------------------------------
-    def initCallback(self):
-        """初始化回调函数"""
-        for symbol in self.symbols:
-            # channel和symbol映射
-            self.channelSymbolMap["ok_sub_spot_%s_ticker" % symbol] = symbol
-            self.channelSymbolMap["ok_sub_spot_%s_depth_10" % symbol] = symbol
-            self.channelSymbolMap["ok_sub_spot_%s_deals" % symbol] = symbol
-            
-            # channel和callback映射
-            self.cbDict["ok_sub_spot_%s_ticker" % symbol] = self.onTicker
-            self.cbDict["ok_sub_spot_%s_depth_10" % symbol] = self.onDepth
-            self.cbDict["ok_sub_spot_%s_deals" % symbol] = self.onDeals
-            self.cbDict["ok_sub_spot_%s_order" % symbol] = self.onSubSpotOrder
-            self.cbDict["ok_sub_spot_%s_balance" % symbol] = self.onSubSpotBalance
-
-        self.cbDict['ok_spot_userinfo'] = self.onSpotUserInfo
-        self.cbDict['ok_spot_orderinfo'] = self.onSpotOrderInfo
-        self.cbDict['ok_spot_order'] = self.onSpotOrder
-        self.cbDict['ok_spot_cancel_order'] = self.onSpotCancelOrder
-        self.cbDict['login'] = self.onLogin
-    
-    #----------------------------------------------------------------------
-    def onLogin(self, data):
-        """"""
-        # 查询持仓
-        self.spotUserInfo()
-        
-        # 订阅推送
-    
-        for symbol in self.symbols:
-            self.subscribe(symbol)
-        self.writeLog(u'现货服务器登录成功')
-    #----------------------------------------------------------------------
-    def onTicker(self, data):
-        """"""
-        channel = data['channel']
-        symbol = self.channelSymbolMap[channel]
-        
-        if symbol not in self.tickDict:
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-            
-            
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        
-        d = data['data']
-        tick.highPrice = float(d['high'])
-        tick.lowPrice = float(d['low'])
-        tick.lastPrice = float(d['last'])
-        tick.volume = float(d['vol'].replace(',', ''))
-        tick.date, tick.time = self.generateDateTime(d['timestamp'])
-        tick.volumeChange = 0
-        tick.localTime = datetime.now()
-        if tick.bidPrice1 and tick.lastVolume:
-            newtick = copy(tick)
-            self.gateway.onTick(newtick)
-    
-    #----------------------------------------------------------------------
-    def onDepth(self, data):
-        """"""
-        channel = data['channel']
-        symbol = self.channelSymbolMap[channel]
-
-        if symbol not in self.tickDict:
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-            
-
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        
-        d = data['data']
-        
-        tick.bidPrice1, tick.bidVolume1 = d['bids'][0]
-        tick.bidPrice2, tick.bidVolume2 = d['bids'][1]
-        tick.bidPrice3, tick.bidVolume3 = d['bids'][2]
-        tick.bidPrice4, tick.bidVolume4 = d['bids'][3]
-        tick.bidPrice5, tick.bidVolume5 = d['bids'][4]
-        tick.bidPrice6, tick.bidVolume6 = d['bids'][5]
-        tick.bidPrice7, tick.bidVolume7 = d['bids'][6]
-        tick.bidPrice8, tick.bidVolume8 = d['bids'][7]
-        tick.bidPrice9, tick.bidVolume9 = d['bids'][8]
-        tick.bidPrice10, tick.bidVolume10 = d['bids'][9]
-        
-        tick.askPrice1, tick.askVolume1 = d['asks'][-1]
-        tick.askPrice2, tick.askVolume2 = d['asks'][-2]
-        tick.askPrice3, tick.askVolume3 = d['asks'][-3]
-        tick.askPrice4, tick.askVolume4 = d['asks'][-4]
-        tick.askPrice5, tick.askVolume5 = d['asks'][-5]   
-        tick.askPrice6, tick.askVolume6 = d['asks'][-6]
-        tick.askPrice7, tick.askVolume7 = d['asks'][-7]
-        tick.askPrice8, tick.askVolume8 = d['asks'][-8]
-        tick.askPrice9, tick.askVolume9 = d['asks'][-9]
-        tick.askPrice10, tick.askVolume10 = d['asks'][-10]  
-        
-        tick.bidPrice1 = float(tick.bidPrice1)
-        tick.bidPrice2 = float(tick.bidPrice2)
-        tick.bidPrice3 = float(tick.bidPrice3)
-        tick.bidPrice4 = float(tick.bidPrice4)
-        tick.bidPrice5 = float(tick.bidPrice5)
-        tick.askPrice1 = float(tick.askPrice1)
-        tick.askPrice2 = float(tick.askPrice2)
-        tick.askPrice3 = float(tick.askPrice3)
-        tick.askPrice4 = float(tick.askPrice4)
-        tick.askPrice5 = float(tick.askPrice5)   
-        
-        tick.bidVolume1 = float(tick.bidVolume1)
-        tick.bidVolume2 = float(tick.bidVolume2)
-        tick.bidVolume3 = float(tick.bidVolume3)
-        tick.bidVolume4 = float(tick.bidVolume4)
-        tick.bidVolume5 = float(tick.bidVolume5)
-        tick.askVolume1 = float(tick.askVolume1)
-        tick.askVolume2 = float(tick.askVolume2)
-        tick.askVolume3 = float(tick.askVolume3)
-        tick.askVolume4 = float(tick.askVolume4)
-        tick.askVolume5 = float(tick.askVolume5)          
-
-        tick.bidPrice6 = float(tick.bidPrice6)
-        tick.bidPrice7 = float(tick.bidPrice7)
-        tick.bidPrice8 = float(tick.bidPrice8)
-        tick.bidPrice9 = float(tick.bidPrice9)
-        tick.bidPrice10 = float(tick.bidPrice10)
-        tick.askPrice6 = float(tick.askPrice6)
-        tick.askPrice7 = float(tick.askPrice7)
-        tick.askPrice8 = float(tick.askPrice8)
-        tick.askPrice9 = float(tick.askPrice9)
-        tick.askPrice10 = float(tick.askPrice10)   
-        
-        tick.bidVolume6 = float(tick.bidVolume6)
-        tick.bidVolume7 = float(tick.bidVolume7)
-        tick.bidVolume8 = float(tick.bidVolume8)
-        tick.bidVolume9 = float(tick.bidVolume9)
-        tick.bidVolume10 = float(tick.bidVolume10)
-        tick.askVolume6 = float(tick.askVolume6)
-        tick.askVolume7 = float(tick.askVolume7)
-        tick.askVolume8 = float(tick.askVolume8)
-        tick.askVolume9 = float(tick.askVolume9)
-        tick.askVolume10 = float(tick.askVolume10)          
-        
-        tick.date, tick.time = self.generateDateTime(d['timestamp'])
-        tick.volumeChange  = 0
-        tick.localTime = datetime.now()
-        if tick.lastPrice and tick.lastVolume:
-            newtick = copy(tick)
-            self.gateway.onTick(newtick)
-
-    def onDeals(self,data):
-        """获取TICK成交量
-        [{"channel":"ok_sub_spot_bch_btc_deals",
-        "data":[["1001","2463.86","0.052","16:34:07","ask"]]}]
-        """
-        channel = data['channel']
-        symbol = self.channelSymbolMap[channel]
-
-        if symbol not in self.tickDict:
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-            
-
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        for i,d in enumerate(data['data']):
-            tick.lastPrice = float(d[1])
-            tick.lastVolume = float(d[2])
-            tick.lastTradedTime = d[3]
-            tick.type = d[4]
-            tick.volumeChange = 1
-            tick.localTime = datetime.now()
-            
-            if tick.bidPrice1:
-                newtick = copy(tick)
-                self.gateway.onTick(newtick)
-    
-    #----------------------------------------------------------------------        
-    def onSpotOrder(self, data):
-        """"""
-        # 如果委托失败，则通知委托被拒单的信息
-        if self.checkDataError(data):
-            try:
-                localNo = self.localNoQueue.get_nowait()
-            except Empty:
+    def onQueryAccount(self, data, request):
+        """{'info': {'eos': {'equity': '9.49516783', 'margin': '0.52631594', 'margin_mode': 'crossed', 
+        'margin_ratio': '18.0408', 'realized_pnl': '-0.6195932', 'total_avail_balance': '10.11476103', 
+        'unrealized_pnl': '0'}}} """
+        """{"info":{"eos":{"contracts":[{"available_qty":"3.9479","fixed_balance":"0",
+            "instrument_id":"EOS-USD-181228","margin_for_unfilled":"0","margin_frozen":"0",
+            "realized_pnl":"0.06547904","unrealized_pnl":"0"}],"equity":"3.94797857",
+            "margin_mode":"fixed","total_avail_balance":"3.88249953"}}}"""
+        for currency, d in data['info'].items():
+            if 'contracts' in d.keys(): # fixed-margin
+                self.writeLog('WARNING: temperately not support fixed-margin account')
                 return
-            
-            order = self.localOrderDict[localNo]
-            order.status = STATUS_REJECTED
-            self.gateway.onOrder(order)
-    
-    #----------------------------------------------------------------------
-    def onSpotCancelOrder(self, data):
-        """"""
-        self.checkDataError(data)
-        
-    #----------------------------------------------------------------------
-    def onSpotUserInfo(self, data):
-        """现货账户资金推送"""
-        if self.checkDataError(data):
-            return
-        
-        funds = data['data']['info']['funds']
-        free = funds['free']
-        freezed = funds['freezed']
-        # 持仓信息
-        for symbol in free.keys():
-            frozen = float(freezed[symbol])
-            available = float(free[symbol])
-            
-            if frozen or available:
+            else:
                 account = VtAccountData()
                 account.gatewayName = self.gatewayName
                 
-                account.accountID = symbol
+                account.accountID = currency
                 account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
-                account.balance = frozen + available
-                account.available = available
                 
-                self.gateway.onAccount(account)                      
-        
-        self.writeLog(u'现货持仓信息查询成功')
-        
-        # 查询委托
-        # for symbol in self.symbols:
-        #     self.spotOrderInfo(symbol, '-1')        
+                account.balance = float(d['equity'])
+                account.available = float(d['total_avail_balance'])
+                account.margin = float(d['margin'])
+                account.positionProfit = float(d['unrealized_pnl'])
+                account.closeProfit = float(d['realized_pnl'])
             
+            self.gateway.onAccount(account)
+    
     #----------------------------------------------------------------------
-    def onSpotOrderInfo(self, data):
-        """委托信息查询回调"""
-        if self.checkDataError(data):
-            return
+    def onQueryPosition(self, data, request):
+        """{'result': True, 'holding': [[
+            {'long_qty': '0', 'long_avail_qty': '0', 'long_avg_cost': '0', 'long_settlement_price': '0', 
+            'realised_pnl': '-0.00032468', 'short_qty': '1', 'short_avail_qty': '0', 'short_avg_cost': '3.08', 
+            'short_settlement_price': '3.08', 'liquidation_price': '0.000', 'instrument_id': 'EOS-USD-181228', 
+            'leverage': '10', 'created_at': '2018-11-28T07:57:38.0Z', 'updated_at': '2018-11-28T08:57:40.0Z', 
+            'margin_mode': 'crossed'}]]}"""
         
-        rawData = data['data']
-        
-        for d in rawData['orders']:
-            self.localNo += 1
-            localNo = str(self.localNo)
-            orderId = str(d['order_id'])
-            
-            self.localNoDict[localNo] = orderId
-            self.orderIdDict[orderId] = localNo
-            
-            if orderId not in self.orderDict:
+        for holding in data['holding']:
+            # print(holding,"p")
+            for d in holding:
+                longPosition = VtPositionData()
+                longPosition.gatewayName = self.gatewayName
+                longPosition.symbol = contractMap.get(d['instrument_id'],None)
+                longPosition.exchange = 'OKEX'
+                longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
+                longPosition.direction = DIRECTION_LONG
+                longPosition.vtPositionName = VN_SEPARATOR.join([longPosition.vtSymbol, longPosition.direction])
+                longPosition.position = int(d['long_qty'])
+                longPosition.frozen = longPosition.position - int(d['long_avail_qty'])
+                longPosition.price = float(d['long_avg_cost'])
+                
+                shortPosition = copy(longPosition)
+                shortPosition.direction = DIRECTION_SHORT
+                shortPosition.vtPositionName = VN_SEPARATOR.join([shortPosition.vtSymbol, shortPosition.direction])
+                shortPosition.position = int(d['short_qty'])
+                shortPosition.frozen = shortPosition.position - int(d['short_avail_qty'])
+                shortPosition.price = float(d['short_avg_cost'])
+                
+                self.gateway.onPosition(longPosition)
+                self.gateway.onPosition(shortPosition)
+    
+    #----------------------------------------------------------------------
+    def onQueryOrder(self, data, request):
+        """{'result': True, 'order_info': [
+            {'instrument_id': 'EOS-USD-181228', 'size': '1', 'timestamp': '2018-11-28T08:57:40.000Z', 
+            'filled_qty': '0', 'fee': '0', 'order_id': '1878226413689856', 'price': '3.075', 'price_avg': '0', 
+            'status': '0', 'type': '4', 'contract_val': '10', 'leverage': '10'}]} """
+        for d in data['order_info']:
+            #print(d,"or")
+
+            order = self.orderDict.get(str(d['order_id']),None)
+
+            if not order:
                 order = VtOrderData()
                 order.gatewayName = self.gatewayName
                 
-                order.symbol = d['symbol']
-                order.exchange = EXCHANGE_OKEX
+                order.symbol = contractMap.get(d['instrument_id'],None)
+                order.exchange = 'OKEX'
                 order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-    
-                order.orderID = localNo
+
+                self.orderID += 1
+                order.orderID = str(self.loginTime + self.orderID)
                 order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-                
-                order.price = d['price']
-                order.totalVolume = d['amount']
-                order.direction, priceType = priceTypeMap[d['type']]
-                date, order.orderTime = self.generateDateTime(d['create_date'])
-                
-                self.orderDict[orderId] = order
-            else:
-                order = self.orderDict[orderId]
-                
-            order.tradedVolume = d['deal_amount']
-            order.status = statusMap[d['status']]
+                self.localRemoteDict[order.orderID] = d['order_id']
+                order.tradedVolume = 0
+                self.writeLog('order by other source, id: %s'%d['order_id'])
             
-            self.gateway.onOrder(copy(order))
+            order.price = float(d['price'])
+            order.price_avg = float(d['price_avg'])
+            order.totalVolume = int(d['size'])
+            order.thisTradedVolume = int(d['filled_qty']) - order.tradedVolume
+            order.tradedVolume = int(d['filled_qty'])
+            order.status = statusMapReverse[d['status']]
+            order.direction, order.offset = typeMapReverse[d['type']]
+            
+            dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
+            order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()
+            
+            self.gateway.onOrder(order)
+            self.orderDict[d['order_id']] = order
+
+            if order.thisTradedVolume:
+
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = float(data['price_avg'])
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                
+                self.gateway.onTrade(trade)
+    
+    #----------------------------------------------------------------------
+    def onSendOrderFailed(self, data, request):
+        """
+        下单失败回调：服务器明确告知下单失败
+        """
+        self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
+        """
+        下单失败回调：连接错误
+        """
+        self.writeLog("%s onsendordererror, %s"%(exceptionType,exceptionValue))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = "onSendOrderError: OKEX server issue"#str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrder(self, data, request):
+        """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
+        'order_id': '1878377147147264'}"""
+
+        self.localRemoteDict[data['client_oid']] = data['order_id']
+        self.orderDict[data['order_id']] = self.orderDict[data['client_oid']]#request.extra
+        
+        if data['client_oid'] in self.cancelDict:
+            req = self.cancelDict.pop(data['client_oid'])
+            self.cancelOrder(req)
+
+        if data['error_code']:
+            self.writeLog('WARNING: %s sendorder error %s %s'%(data['client_oid'],data['error_code'],data['error_message']))
+
+        self.writeLog('localID:%s,--,exchangeID:%s'%(data['client_oid'],data['order_id']))
+
+        # print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
+        # "\norderDict:",self.orderDict.keys())
+    
+    #----------------------------------------------------------------------
+    def onCancelOrder(self, data, request):
+        """1:{'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
+        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
+        'error_code': '32004', 'order_id': '1882519016480768'} 
+        """
+        if data['result']:
+            self.writeLog(u'交易所返回%s撤单成功: id: %s'%(data['instrument_id'],str(data['order_id'])))
+        else:
+            error = VtErrorData()
+            error.gatewayName = self.gatewayName
+            error.errorID = data['error_code']
+            if 'error_message' in data.keys():
+                error.errorMsg = str(data['order_id']) + ' ' + data['error_message']
+            else:
+                error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
+            self.gateway.onError(error)
+
+            # could be risky,just testify
+            # if str(data['error_code']) == '32004':
+            #     order = self.orderDict.get(str(data['order_id']),None)
+            #     if order:
+            #         order.status = STATUS_CANCELLED
+            #         self.gateway.onOrder(order)
+            #         self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
+            #         for key,value in list(self.localRemoteDict.items()):
+            #             if value == str(data['order_id']):
+            #                 del self.localRemoteDict[key]
+            #                 del self.orderDict[key]
+            #                 if self.orderDict.get(str(data['order_id']),None):
+            #                     del self.orderDict[str(data['order_id'])]
+    
+    #----------------------------------------------------------------------
+    def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
+        """
+        请求失败处理函数（HttpStatusCode!=2xx）.
+        默认行为是打印到stderr
+        """
+        print("onfailed",request)
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = str(httpStatusCode)
+        e.errorMsg = str(httpStatusCode) #request.response.text
+        self.gateway.onError(e)
+    
+    #----------------------------------------------------------------------
+    def onError(self, exceptionType, exceptionValue, tb, request):
+        """
+        Python内部错误处理：默认行为是仍给excepthook
+        """
+        print(request,"onerror")
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
+
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
 
     #----------------------------------------------------------------------
-    def onSubSpotOrder(self, data):
-        """交易数据"""
-        rawData = data["data"]
-        orderId = str(rawData['orderId'])  
-        
-        # 获取本地委托号
-        if orderId in self.orderIdDict:
-            localNo = self.orderIdDict[orderId]
-        else:
-            try:
-                localNo = self.localNoQueue.get_nowait()
-            except Empty:
-                self.localNo += 1
-                localNo = str(self.localNo)
-        
-        self.localNoDict[localNo] = orderId
-        self.orderIdDict[orderId] = localNo        
+    def loadHistoryBarV1(self,vtSymbol,type_,size=None,since=None,end=None):
+        KlinePeriodMap = {}
+        KlinePeriodMap['1min'] = '1min'
+        KlinePeriodMap['5min'] = '5min'
+        KlinePeriodMap['15min'] = '15min'
+        KlinePeriodMap['30min'] = '30min'
+        KlinePeriodMap['60min'] = '1hour'
+        KlinePeriodMap['1day'] = 'day'
+        KlinePeriodMap['1week'] = 'week'
+        KlinePeriodMap['4hour'] = '4hour'
 
-        # 获取委托对象
-        if orderId in self.orderDict:
-            order = self.orderDict[orderId]
+        url = "https://www.okex.com/api/v1/future_kline.do" 
+        type_ = KlinePeriodMap[type_]
+        symbol= vtSymbol.split(VN_SEPARATOR)[0]
+        contractType = symbol[4:]
+        symbol = vtSymbol[:3]+"_usd"
+        params = {"symbol":symbol,
+                    "contract_type":contractType,
+                    "type":type_}
+        if size:
+            params["size"] = size
+        if since:
+            params["since"] = since
+
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
+        text = eval(r.text)
+
+        volume_symbol = vtSymbol[:3]
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%volume_symbol])
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x / 1000))
+        return df
+
+    def loadHistoryBarV3(self,vtSymbol,type_,size=None,since=None,end=None):
+        """[[1544518800000,3389.44,3405.16,3362.8,3372.46,365950.0,10809.8175776],
+        [1544515200000,3374.45,3392.9,3363.01,3389.57,221418.0,6551.58850662]]"""
+        symbol = vtSymbol.split(VN_SEPARATOR)[0]
+        for key, value in contractMap.items():
+                if value == symbol:
+                    instrument_id = key
+
+        params = {'granularity':granularityMap[type_]}
+        url = REST_HOST +'/api/futures/v3/instruments/'+instrument_id+'/candles?'
+        if size:
+            s = datetime.now()-timedelta(seconds = (size*granularityMap[type_]))
+            params['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
+
+        if since:
+            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
+            
+        if end:
+            params['end'] = end
         else:
-            order = VtOrderData()
-            order.gatewayName = self.gatewayName
-            order.symbol = rawData['symbol']
-            order.exchange = EXCHANGE_OKEX
-            order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-            order.orderID = localNo
-            order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, localNo])
-            order.direction, priceType = priceTypeMap[rawData['tradeType']]
-            order.price = float(rawData['tradeUnitPrice'])
-            order.totalVolume = float(rawData['tradeAmount'])
-            date, order.orderTime = self.generateDateTime(rawData['createdDate'])
+            params['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
+
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
+        text = eval(r.text)
+
+        volume_symbol = vtSymbol[:3]
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%volume_symbol])
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x / 1000))
+        # df["datetime"] = df["datetime"].map(lambda x: x.strftime("%Y-%m-%d %H:%M:%S"))
+        # delta = timedelta(hours=8)
+        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
+        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+
+        return df#.to_csv('a.csv')
+
+########################################################################
+class OkexfWebsocketApi(WebsocketClient):
+    """FUTURES WS API"""
+
+    #----------------------------------------------------------------------
+    def __init__(self, gateway):
+        """Constructor"""
+        super(OkexfWebsocketApi, self).__init__()
         
-        lastTradedVolume = order.tradedVolume
+        self.gateway = gateway
+        self.gatewayName = gateway.gatewayName
         
-        order.status = statusMap[rawData['status']]
-        order.tradedVolume = float(rawData['completedTradeAmount'])
-        self.gateway.onOrder(copy(order))
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
         
-        # 成交信息
-        if order.tradedVolume > lastTradedVolume:
-            trade = VtTradeData()
-            trade.gatewayName = self.gatewayName
+        self.orderDict = gateway.orderDict
+        self.localRemoteDict = gateway.localRemoteDict
+        
+        
+        self.callbackDict = {}
+        self.channelSymbolDict = {}
+        self.tickDict = {}
     
-            trade.symbol = order.symbol
-            trade.exchange = order.exchange
-            trade.vtSymbol = order.vtSymbol
-            
-            self.tradeID += 1
-            trade.tradeID = str(self.tradeID)
-            trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
-            
-            trade.orderID = order.orderID
-            trade.vtOrderID = order.vtOrderID
-            
-            trade.direction = order.direction
-            trade.price = float(rawData['averagePrice'])
-            trade.volume = order.tradedVolume - lastTradedVolume
-            
-            trade.tradeTime = datetime.now().strftime('%H:%M:%S')
-            self.gateway.onTrade(trade)
+    #----------------------------------------------------------------------
+    def unpackData(self, data):
+        """重载"""
+        return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
         
-        # 撤单
-        if localNo in self.cancelDict:
-            req = self.cancelDict[localNo]
-            self.cancelOrder(req)
-            del self.cancelDict[localNo]        
-
-    #----------------------------------------------------------------------        
-    def onSubSpotBalance(self, data):
+    #----------------------------------------------------------------------
+    def connect(self, apiKey, apiSecret, passphrase):
         """"""
-        rawData = data['data']
-        free = rawData['info']['free']
-        freezed = rawData['info']['freezed']
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
         
-        for symbol in free.keys():            
+        self.init(WEBSOCKET_HOST_V3)
+        self.start()
+    
+    #----------------------------------------------------------------------
+    def onConnected(self):
+        """连接回调"""
+        self.writeLog(u'Futures Websocket API连接成功')
+        self.login()
+    
+    #----------------------------------------------------------------------
+    def onDisconnected(self):
+        """连接回调"""
+        self.writeLog(u'Futures Websocket API连接断开')
+    
+    #----------------------------------------------------------------------
+    def onPacket(self, packet):
+        """数据回调"""
+        if 'event' in packet.keys():
+            if packet['event'] == 'login':
+                callback = self.callbackDict['login']
+                callback(packet)
+            elif packet['event'] == 'subscribe':
+                self.writeLog(u'FUTURES subscribe %s successfully'%packet['channel'])
+            else:
+                self.writeLog(u'FUTURES info %s'%packet)
+        elif 'error_code' in packet.keys():
+            print('FUTURES error:',packet['error_code'])
+        else:
+            channel = packet['table']
+            callback = self.callbackDict.get(channel, None)
+            if callback:
+                callback(packet['data'])
+    
+    #----------------------------------------------------------------------
+    def onError(self, exceptionType, exceptionValue, tb):
+        """Python错误回调"""
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
+        
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
+    
+    #----------------------------------------------------------------------
+    def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)    
+
+    #----------------------------------------------------------------------
+    def login(self):
+        """"""
+        timestamp = str(time.time())
+        
+        msg = timestamp + 'GET' + '/users/self/verify'
+        signature = generateSignature(msg, self.apiSecret)
+        
+        req = {
+            "op": "login",
+            "args": [self.apiKey,self.passphrase,timestamp,str(signature,encoding = "utf-8")]
+        }
+        self.sendPacket(req)
+        
+        self.callbackDict['login'] = self.onLogin
+        
+    #----------------------------------------------------------------------
+    def subscribe(self, symbol):
+        """"""
+        for key, value in contractMap.items():
+            if value == symbol:
+                contract = key
+
+        # 订阅TICKER
+        channel1 = 'futures/ticker:%s' %(contract)
+        self.callbackDict['futures/ticker'] = self.onFuturesTick
+        self.channelSymbolDict[channel1] = contract
+        
+        req1 = {
+            'op': 'subscribe',
+            'args': channel1
+        }
+        self.sendPacket(req1)
+        
+        # 订阅DEPTH
+        channel2 = 'futures/depth5:%s' %(contract)
+        self.callbackDict['futures/depth5'] = self.onFuturesDepth
+        self.channelSymbolDict[channel2] = contract
+        
+        req2 = {
+            'op': 'subscribe',
+            'args': channel2
+        }
+        self.sendPacket(req2)
+
+        # subscribe trade
+        channel3 = 'futures/trade:%s' %(contract)
+        self.callbackDict['futures/trade'] = self.onFuturesTrades
+        self.channelSymbolDict[channel3] = contract
+
+        req3 = {
+            'op': 'subscribe',
+            'args': channel3
+        }
+        self.sendPacket(req3)
+
+        # subscribe price range
+        channel4 = 'futures/price_range:%s' %(contract)
+        self.callbackDict['futures/price_range'] = self.onFuturesPriceRange
+        self.channelSymbolDict[channel4] = contract
+
+        req4 = {
+            'op': 'subscribe',
+            'args': channel4
+        }
+        self.sendPacket(req4)
+
+        
+        # 创建Tick对象
+        tick = VtTickData()
+        tick.gatewayName = self.gatewayName
+        tick.symbol = symbol
+        tick.exchange = 'OKEX'
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        self.tickDict[tick.symbol] = tick
+        self.sendPacket({'op': 'subscribe', 'args': 'futures/position:%s'%contract})
+        self.sendPacket({'op': 'subscribe', 'args': 'futures/account:%s'%contract[:3]})
+        self.sendPacket({'op': 'subscribe', 'args': 'futures/order:%s'%contract})
+    
+    #----------------------------------------------------------------------
+    def onLogin(self, d):
+        """"""
+        if not d['success']:
+            return
+        
+        # 订阅交易相关推送
+        self.callbackDict['futures/order'] = self.onTrade
+        self.callbackDict['futures/account'] = self.onAccount
+        self.callbackDict['futures/position'] = self.onPosition
+
+        for contract in self.gateway.contracts:
+            self.subscribe(contract)
+            
+    #----------------------------------------------------------------------
+    def onFuturesTick(self, d):
+        """{"table": "futures/ticker", "data": [{
+             "last": 3922.4959, "best_bid": 3921.8319, "high_24h": 4059.74,
+             "low_24h": 3922.4959, "volume_24h": 2396.1, "best_ask": 4036.165,
+             "instrument_id": "BTC-USD-170310", "timestamp": "2018-12-17T06:30:07.142Z"
+         }]}"""
+
+        for n, data in enumerate(d):
+            symbol = contractMap[data['instrument_id']]
+            tick = self.tickDict[symbol]
+            
+            tick.lastPrice = float(data['last'])
+            tick.highPrice = float(data['high_24h'])
+            tick.lowPrice = float(data['low_24h'])
+            tick.volume = float(data['volume_24h'])
+            tick.askPrice1 = float(data['best_ask'])
+            tick.bidPrice1 = float(data['best_bid'])
+            # tick.upperLimit = float(data['limitHigh'])
+            # tick.lowerLimit = float(data['limitLow'])
+            # tick.openInterest = float(data['hold_amount'])
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+        
+        if tick.askPrice1:        
+            tick = copy(tick)
+            self.gateway.onTick(tick)
+
+    #----------------------------------------------------------------------
+    def onFuturesDepth(self, d):
+        """{"table": "futures/depth5", "data": [{
+        "asks": [
+            [3921.8772, 1, 1, 1], [3981.6852, 40, 1, 1], [4036.165, 12, 1, 1],
+            [4059.7606, 95, 1, 1], [4100.0, 6, 0, 4]
+        ],
+        "bids": [
+            [3921.608, 12, 0, 1], [3920.972, 12, 0, 1], [3920.692, 12, 0, 1],
+            [3920.672, 12, 0, 1], [3920.3759, 12, 0, 1]
+        ],
+        "instrument_id": "BTC-USD-170310", "timestamp": "2018-12-17T09:48:09.978Z"
+        }]}"""
+        # print(d,"depthhhhh\n\n")
+        for n, data in enumerate(d):
+            symbol = contractMap[data['instrument_id']]
+            tick = self.tickDict[symbol]
+            
+            for n, buf in enumerate(data['bids']):
+                price, volume = buf[:2]
+                tick.__setattr__('bidPrice%s' %(n+1), float(price))
+                tick.__setattr__('bidVolume%s' %(n+1), int(volume))
+            
+            for n, buf in enumerate(data['asks']):
+                price, volume = buf[:2]
+                tick.__setattr__('askPrice%s' %(10-n), float(price))
+                tick.__setattr__('askVolume%s' %(10-n), int(volume))
+            
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            if tick.lastPrice:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+
+    def onFuturesTrades(self,d):
+        """{'table': 'futures/trade', 'data': [{
+            'side': 'sell', 'trade_id': '2188405999304707', 'price': 2.196, 'qty': 50, 
+            'instrument_id': 'EOS-USD-190329', 'timestamp': '2019-01-22T03:40:25.530Z'}]}
+        """
+        for n, data in enumerate(d):
+            symbol = contractMap[data['instrument_id']]
+            tick = self.tickDict[symbol]
+            tick.lastPrice = float(data['price'])
+            tick.lastVolume = float(data['qty'])
+            tick.lastTradedTime = data['timestamp']
+            tick.type = data['side']
+
+            tick.volumeChange = 1
+            tick.localTime = datetime.now()
+            if tick.askPrice1:
+                tick = copy(tick)
+                self.gateway.onTick(tick)
+    def onFuturesPriceRange(self,d):
+        """{"table": "futures/price_range", "data": [{
+                "highest": "4159.5279", "instrument_id": "BTC-USD-170310",
+                "lowest": "2773.0186", "timestamp": "2018-12-18T10:49:40.021Z"
+        }]}"""
+        # print(d,"\n\n\nrangerangerngr")
+        
+        for n, data in enumerate(d):
+            symbol = contractMap[data['instrument_id']]
+            tick = self.tickDict[symbol]
+            tick.upperLimit = data['highest']
+            tick.lowerLimit = data['lowest']
+
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            if tick.askPrice1:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+    
+    #----------------------------------------------------------------------
+    def onTrade(self, d):
+        """{"table":"futures/order", "data":[{
+            "leverage":"10", "size":"1", "filled_qty":"1", "price":"4393.0",
+            "fee":"-0.00000683", "contract_val":"100", "price_avg":"4393.0", "type":"2",
+            "instrument_id":"BTC-USD-170317", "order_id":"1997723572808704",
+            "timestamp":"2018-12-19T11:27:22.000Z", "status":"2"}]}"""
+        for n, data in enumerate(d):
+            # print(data)
+            order = self.orderDict.get(str(data['orderid']), None)
+            if not order:
+                order = VtOrderData()
+                order.gatewayName = self.gatewayName
+                order.symbol = contractMap.get(data['instrument_id'],None)
+                order.exchange = 'OKEX'
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+
+                if 'client_oid' in data.keys():
+                    order.orderID = data['client_oid']
+                else:
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                order.price = data['price']
+                order.totalVolume = int(data['size'])
+                order.tradedVolume = 0
+                order.direction, order.offset = typeMapReverse[str(data['type'])]
+
+            order.orderDatetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            order.price_avg = data['price_avg']
+            order.deliveryTime = datetime.now()   
+            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+            order.status = statusMapReverse[str(data['status'])]
+            order.tradedVolume = int(data['filled_qty'])
+
+            self.gateway.onOrder(copy(order))
+            self.localRemoteDict[order.orderID] = str(data['orderid'])
+            self.orderDict[str(data['orderid'])] = order
+
+            if order.thisTradedVolume:
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = float(data['price_avg'])
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                self.gateway.onTrade(trade)
+            if order.status==STATUS_ALLTRADED or order.status==STATUS_CANCELLED:
+                if order.orderID in self.localRemoteDict:
+                    del self.localRemoteDict[order.orderID]
+                if str(data['orderid']) in self.orderDict:
+                    del self.orderDict[str(data['orderid'])]
+                if order.orderID in self.orderDict:
+                    del self.orderDict[order.orderID]
+        
+    #----------------------------------------------------------------------
+    def onAccount(self, d):
+        """01, {"table": "futures/account", "data": [{
+        "BTC": { "equity": "102.38162222", "margin": "3.773884998",
+            "margin_mode": "crossed", "margin_ratio": "27.129", "realized_pnl": "-34.53829072",
+            "total_avail_balance": "135.54", "unrealized_pnl": "1.37991294"
+        }}]}"""
+        """02, {"table":"futures/account", "data":[{
+            "BTC":{"contracts":[{
+                    "available_qty":"990.05445298", "fixed_balance":"0", "instrument_id":"BTC-USD-170310",
+                    "margin_for_unfilled":"5.63890118", "margin_frozen":"0", "realized_pnl":"-0.02197068",
+                    "unrealized_pnl":"0"
+                },{
+                    "available_qty":"990.05445298","fixed_balance":"0.90761235","instrument_id":"BTC-USD-170317",
+                    "margin_for_unfilled":"0.1135112","margin_frozen":"0.27228744","realized_pnl":"-0.63532491",
+                    "unrealized_pnl":"0.8916"
+                }],
+                "equity":"997.40890131","margin_mode":"fixed",
+                "total_avail_balance":"995.83140014"
+            }}]}"""
+        for n, data in enumerate(d):
+            for key, value in data:
+                account = VtAccountData()
+                account.gatewayName = self.gatewayName
+                account.accountID = '%s_FUTURES'%key
+                account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
+                
+                account.balance = value['equity']
+                account.available = value['total_avail_balance']
+                if data['margin_mode'] =='crossed':
+                    account.closeProfit = data['fixed_balance']
+                    account.margin = data['margin']
+                    self.writeLog('当前币种%s为全仓账户'%key)
+                else:
+                    account.margin = 0
+                    account.closeProfit = 0
+                    for contract in value['contracts']:
+                        account.margin += data['margin_frozen']
+                        account.closeProfit += data['realized_pnl']
+                    self.writeLog('当前币种%s为逐仓账户'%key)
+                self.gateway.onAccount(account)
+    
+    #----------------------------------------------------------------------
+    def onPosition(self, d):
+        """01, {"table":"futures/position","data":[{
+        "long_qty":"62","long_avail_qty":"62","long_margin":"0.229","long_liqui_price":"2469.319",
+        "long_pnl_ratio":"3.877","long_avg_cost":"2689.763","long_settlement_price":"2689.763",
+        "short_qty":"17","short_avail_qty":"17","short_margin":"0.039","short_liqui_price":"4803.766",
+        "short_pnl_ratio":"-0.049","short_avg_cost":"4371.398","short_settlement_price":"4371.398",
+        "instrument_id":"BTC-USD-170317","long_leverage":"10","short_leverage":"10",
+        "created_at":"2018-12-07T10:49:59.000Z","updated_at":"2018-12-19T09:43:26.000Z",
+        "realised_pnl":"-0.635", "margin_mode":"fixed"
+        }]}"""
+        """02, {"table":"futures/position", "data":[{
+        "long_qty":"1","long_avail_qty":"1","long_avg_cost":"3175.115","long_settlement_price":"3175.115",
+        "short_qty":"18","short_avail_qty":"18","short_avg_cost":"4275.449","short_settlement_price":"4275.449",
+        "instrument_id":"BTC-USD-170317", "leverage":"10", "liquidation_price":"0.0",
+        "created_at":"2018-12-14T06:09:37.000Z","updated_at":"2018-12-19T07:16:19.000Z",
+        "realised_pnl":"0.007","margin_mode":"crossed"
+        }]}"""
+        for n, data in enumerate(d):
+            position = VtPositionData()
+            position.gatewayName = self.gatewayName
+            position.symbol = contractMap.get(data['instrument_id'],None)
+            position.exchange = 'OKEX'
+            position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
+
+            longpos = copy(position)
+            shortpos = copy(position)
+            longpos.position = int(data['long_qty'])
+            longpos.available = int(data['long_avail_qty'])
+            longpos.frozen = longpos.position - longpos.available
+            longpos.price = float(data['long_avg_cost'])
+            longpos.direction = DIRECTION_LONG
+            longpos.vtPositionName = VN_SEPARATOR.join([longpos.vtSymbol, longpos.direction])
+
+            shortpos.position = int(data['short_qty'])
+            shortpos.available = int(data['short_avail_qty'])
+            shortpos.frozen = shortpos.position - shortpos.available
+            shortpos.price = float(data['short_avg_cost'])
+            shortpos.direction = DIRECTION_SHORT
+            shortpos.vtPositionName = VN_SEPARATOR.join([shortpos.vtSymbol, shortpos.direction])
+
+            self.gateway.onPosition(longpos)
+            self.gateway.onPosition(shortpos)
+
+####################################################################################################
+class OkexSwapRestApi(RestClient):
+    """永续合约 REST API实现"""
+
+    #----------------------------------------------------------------------
+    def __init__(self, gateway):
+        """Constructor"""
+        super(OkexSwapRestApi, self).__init__()
+
+        self.gateway = gateway                  # type: okexGateway # gateway对象
+        self.gatewayName = gateway.gatewayName  # gateway对象名称
+        
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+        self.leverage = 0
+        
+        self.contractDict = {}
+        self.cancelDict = {}
+        self.localRemoteDict = gateway.localRemoteDict
+        self.orderDict = gateway.orderDict
+    
+    #----------------------------------------------------------------------
+    def connect(self, apiKey, apiSecret, passphrase, leverage, sessionCount):
+        """连接服务器"""
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
+        self.leverage = leverage
+        
+        self.init(REST_HOST)
+        self.start(sessionCount)
+        self.writeLog(u'SWAP REST API启动成功')
+        self.queryContract()
+    #----------------------------------------------------------------------
+    def sign(self, request):
+        """okex的签名方案"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3]+'Z')#str(time.time())
+        request.data = json.dumps(request.data)
+        
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+            
+        msg = timestamp + request.method + path + request.data
+        signature = generateSignature(msg, self.apiSecret)
+        
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+
+    # ----------------------------------------------------------------------
+    def sign2(self, request):
+        """okex的签名方案, 针对全平和全撤接口"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3] + 'Z')  # str(time.time())
+
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+
+        if request.data:
+            request.data = json.dumps(request.data)
+            msg = timestamp + request.method + path + request.data
+        else:
+            msg = timestamp + request.method + path
+        signature = generateSignature(msg, self.apiSecret)
+
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+    #----------------------------------------------------------------------
+    def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)
+    
+    #----------------------------------------------------------------------
+    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+        """限速规则：20次/2s"""
+        orderID = str(self.gateway.loginTime + self.gateway.orderID)
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
+        
+        type_ = typeMap[(orderReq.direction, orderReq.offset)]
+
+        data = {
+            'client_oid': orderID,
+            'instrument_id': orderReq.symbol,
+            'type': type_,
+            'price': orderReq.price,
+            'size': int(orderReq.volume)
+        }
+        
+        order = VtOrderData()
+        order.gatewayName = self.gatewayName
+        order.symbol = orderReq.symbol
+        order.exchange = 'OKEX'
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.orderID = orderID
+        order.vtOrderID = vtOrderID
+        order.direction = orderReq.direction
+        order.offset = orderReq.offset
+        order.price = orderReq.price
+        order.totalVolume = orderReq.volume
+        
+        self.addRequest('POST', '/api/swap/v3/order', 
+                        callback=self.onSendOrder, 
+                        data=data, 
+                        extra=order,
+                        onFailed=self.onSendOrderFailed,
+                        onError=self.onSendOrderError)
+
+        self.localRemoteDict[orderID] = orderID
+        self.orderDict[orderID] = order
+        return vtOrderID
+    
+    #----------------------------------------------------------------------
+    def cancelOrder(self, cancelOrderReq):
+        """限速规则：10次/2s"""
+        symbol = cancelOrderReq.symbol
+        orderID = cancelOrderReq.orderID
+        remoteID = self.localRemoteDict.get(orderID, None)
+        print("\ncancelorder\n",remoteID,orderID)
+
+        if not remoteID:
+            self.cancelDict[orderID] = cancelOrderReq
+            return
+
+        req = {
+            'instrument_id': symbol,
+            'order_id': remoteID
+        }
+        path = '/api/swap/v3/cancel_order/%s/%s' %(symbol, remoteID)
+        self.addRequest('POST', path, 
+                        callback=self.onCancelOrder)#, 
+                        #data=req)
+
+    #----------------------------------------------------------------------
+    def queryContract(self):
+        """"""
+        self.addRequest('GET', '/api/swap/v3/instruments', 
+                        callback=self.onQueryContract)
+    
+    #----------------------------------------------------------------------
+    def queryAccount(self):
+        """"""
+        self.addRequest('GET', '/api/swap/v3/accounts', 
+                        callback=self.onQueryAccount)
+    
+    #----------------------------------------------------------------------
+    def queryPosition(self):
+        """"""
+        self.addRequest('GET', '/api/swap/v3/position', 
+                        callback=self.onQueryPosition)  
+    
+    #----------------------------------------------------------------------
+    def queryOrder(self):
+        """"""
+        self.writeLog('\n\n----------start Quary SWAP Orders,positions,Accounts---------------')
+        for symbol in self.gateway.swap_contracts:  
+            # 未成交, 部分成交
+            req = {
+                'instrument_id': symbol,
+                'status': 6
+            }
+            path = '/api/swap/v3/orders/%s' %symbol
+            self.addRequest('GET', path, params=req,
+                            callback=self.onQueryOrder)
+
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
+
+        Parameters
+        ----------
+        symbol : str, optional
+            用逗号隔开的多个合约代码,表示只撤销这些合约的挂单(默认为None,表示撤销所有合约的所有挂单)
+        orders : str, optional
+            用逗号隔开的多个vtOrderID.
+            若为None,先从交易所先查询所有未完成订单作为待撤销订单列表进行撤单;
+            若不为None,则对给出的对应订单中和symbol参数相匹配的订单作为待撤销订单列表进行撤单。
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含本次所有撤销的订单ID的列表
+        """
+        vtOrderIDs = []
+        if symbols:
+            symbols = symbols.split(",")
+        else:
+            symbols = self.gateway.swap_contracts
+        for symbol in symbols:
+            # 未完成(包含未成交和部分成交)
+            req = {
+                'instrument_id': symbol,
+                'status': 6
+            }
+            path = '/api/swap/v3/orders/%s' % symbol
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+            request = self.sign2(request)
+            request.extra = orders
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['order_info']:
+                data = self.onCancelAll(data, request)
+                if data['result']:
+                    vtOrderIDs += data['order_ids']
+                    self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
+        print("全部撤单结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCancelAll(self, data, request):
+        orderids = [str(order['order_id']) for order in data['order_info'] if
+                    order['status'] == '0' or order['status'] == '1']
+        if request.extra:
+            orderids = list(set(orderids).intersection(set(request.extra.split(","))))
+        for i in range(len(orderids) // 20 + 1):
+            orderid = orderids[i * 20:(i + 1) * 20]
+
+            req = {
+                'instrument_id': request.params['instrument_id'],
+                'order_ids': orderid
+            }
+            path = '/api/swap/v3/cancel_batch_orders/%s' % request.params['instrument_id']
+            # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+
+            request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            return response.json()
+
+    def closeAll(self, symbols, direction=None):
+        """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
+
+        Parameters
+        ----------
+        symbols : str
+            所要平仓的合约代码,多个合约代码用逗号分隔开。
+        direction : str, optional
+            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
+
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含平仓操作发送的所有订单ID的列表
+        """
+        vtOrderIDs = []
+        symbols = symbols.split(",")
+        for symbol in symbols:
+            req = {
+                'instrument_id': symbol,
+            }
+            path = '/api/swap/v3/%s/position/' % symbol
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+
+            request = self.sign2(request)
+            request.extra = direction
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['holding']:
+                data = self.onCloseAll(data, request)
+                for i in data:
+                    if i['result']:
+                        vtOrderIDs.append(i['order_id'])
+                        self.writeLog(u'平仓成功%s' % i)
+        print("全部平仓结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCloseAll(self, data, request):
+        l = []
+
+        # def _response(request, l):
+        #     request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+        #     url = self.makeFullUrl(request.path)
+        #     response = requests.post(url, headers=request.headers, data=request.data)
+        #     l.append(response.json())
+        #     return l
+        # for holding in data['holding']:
+        #     path = '/api/swap/v3/order'
+        #     req_long = {
+        #         'instrument_id': holding['instrument_id'],
+        #         'type': '3',
+        #         'price': holding['long_avg_cost'],
+        #         'size': str(holding['long_avail_qty']),
+        #         'match_price': '1',
+        #         'leverage': self.leverage,
+        #     }
+        #     req_short = {
+        #         'instrument_id': holding['instrument_id'],
+        #         'type': '4',
+        #         'price': holding['short_avg_cost'],
+        #         'size': str(holding['short_avail_qty']),
+        #         'match_price': '1',
+        #         'leverage': self.leverage,
+        #     }
+        #     if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
+        #         # 多仓可平
+        #         request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+        #         l = _response(request, l)
+        #     elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
+        #         # 空仓可平
+        #         request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+        #         l = _response(request, l)
+        #     elif request.extra is None:
+        #         if int(holding['long_avail_qty']) > 0:
+        #             # 多仓可平
+        #             request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+        #             l = _response(request, l)
+        #         if int(holding['short_avail_qty']) > 0:
+        #             # 空仓可平
+        #             request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+        #             l = _response(request, l)
+        return l
+
+    #----------------------------------------------------------------------
+    def onQueryContract(self, data, request):
+        """ [{'instrument_id': 'BTC-USD-SWAP', 'underlying_index': 'BTC', 'quote_currency': 'USD', 
+        'coin': 'BTC', 'contract_val': '100', 'listing': '2018-08-28T02:43:23.000Z', 
+        'delivery': '2019-01-19T14:00:00.000Z', 'size_increment': '1', 'tick_size': '0.1'}, 
+        {'instrument_id': 'LTC-USD-SWAP', 'underlying_index': 'LTC', 'quote_currency': 'USD', 'coin': 'LTC', 
+        'contract_val': '10', 'listing': '2018-12-21T07:53:47.000Z', 'delivery': '2019-01-19T14:00:00.000Z', 
+        'size_increment': '1', 'tick_size': '0.01'}]"""
+        # print("swap_contract,data",data)
+        for d in data:
+            contract = VtContractData()
+            contract.gatewayName = self.gatewayName
+            
+            contract.symbol = d['instrument_id']
+            contract.exchange = 'OKEX'
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
+            
+            contract.name = contract.symbol
+            contract.productClass = PRODUCT_FUTURES
+            contract.priceTick = float(d['tick_size'])
+            contract.size = int(d['size_increment'])
+            
+            self.contractDict[contract.symbol] = contract
+
+            self.gateway.onContract(contract)
+        self.writeLog(u'合约信息查询成功')
+        self.queryOrder()
+        self.queryAccount()
+        self.queryPosition()
+        
+    #----------------------------------------------------------------------
+    def onQueryAccount(self, data, request):
+        # print("swap_account",data)
+        """{'info': [{'equity': '0.0000', 'fixed_balance': '0.0000', 'instrument_id': 'BTC-USD-SWAP', 
+        'margin': '0.0000', 'margin_frozen': '0.0000', 'margin_mode': '', 'margin_ratio': '0.0000', 
+        'realized_pnl': '0.0000', 'timestamp': '2019-01-19T06:14:36.717Z', 'total_avail_balance': '0.0000', 
+        'unrealized_pnl': '0.0000'}]}"""
+        for currency in data['info']:
             account = VtAccountData()
             account.gatewayName = self.gatewayName
             
-            account.accountID = symbol
+            account.accountID = currency['instrument_id']
             account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
-            account.available = float(free[symbol])
-            account.balance = account.available + float(freezed[symbol])
             
-            self.gateway.onAccount(account)           
+            account.balance = float(currency['equity'])
+            account.available = float(currency['total_avail_balance'])
+            account.margin = float(currency['margin'])
+            account.positionProfit = float(currency['unrealized_pnl'])
+            account.closeProfit = float(currency['realized_pnl'])
+            
+            self.gateway.onAccount(account)
     
     #----------------------------------------------------------------------
-    def init(self, apiKey, secretKey, trace, symbols):
-        """初始化接口"""
-        self.symbols = symbols
-        self.initCallback()
-        self.connect(OKEX_SPOT_HOST, apiKey, secretKey, trace)
-        if not apiKey:
-            self.writeLog(u'请添加apiKey和对应的密钥')
-            return
-        self.writeLog(u'现货接口初始化成功')
-
-    #----------------------------------------------------------------------
-    def sendOrder(self, req):
-        """发单"""
-        type_ = priceTypeMapReverse[(req.direction, req.priceType)]
-        result = self.spotOrder(req.symbol, type_, str(req.price), str(req.volume))
-        # 若请求失败，则返回空字符串委托号
-        if not result:
-            return ''
-        
-        # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
-        self.localNo += 1
-        self.localid = '_spot_' +str(self.localNo)
-        self.localNoQueue.put(str(self.localid))
-        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(self.localid)])
-        # 缓存委托信息
-        order = VtOrderData()
-        order.gatewayName = self.gatewayName
-        order.symbol = req.symbol
-        order.exchange = EXCHANGE_OKEX
-        order.vtSymbol = req.vtSymbol
-        order.orderID= str(self.localid)
-        order.vtOrderID = vtOrderID
-        order.direction = req.direction
-        order.offset = req.offset
-        order.price = req.price
-        order.totalVolume = req.volume
-        
-        self.localOrderDict[str(self.localid)] = order
-        return vtOrderID
+    def onQueryPosition(self, data, request):
+        """[{"margin_mode":"crossed","holding":[]}]"""
+        # print(data,"\n\n\n********p")
+        for holding in data:
+            if holding['holding']:
+                for d in holding['holding']:
+                    longPosition = VtPositionData()
+                    longPosition.gatewayName = self.gatewayName
+                    longPosition.symbol = d['instrument_id']
+                    longPosition.exchange = 'OKEX'
+                    longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
+                    longPosition.direction = DIRECTION_LONG
+                    longPosition.vtPositionName = VN_SEPARATOR.join([longPosition.vtSymbol, longPosition.direction])
+                    longPosition.position = int(d['long_qty'])
+                    longPosition.frozen = longPosition.position - int(d['long_avail_qty'])
+                    longPosition.price = float(d['long_avg_cost'])
+                    
+                    shortPosition = copy(longPosition)
+                    shortPosition.direction = DIRECTION_SHORT
+                    shortPosition.vtPositionName = VN_SEPARATOR.join([shortPosition.vtSymbol, shortPosition.direction])
+                    shortPosition.position = int(d['short_qty'])
+                    shortPosition.frozen = shortPosition.position - int(d['short_avail_qty'])
+                    shortPosition.price = float(d['short_avg_cost'])
+                    
+                    self.gateway.onPosition(longPosition)
+                    self.gateway.onPosition(shortPosition)
     
     #----------------------------------------------------------------------
-    def cancelOrder(self, req):
-        """撤单"""
-        localNo = req.orderID
-        if localNo in self.localNoDict:
-            orderID = self.localNoDict[localNo]
-            self.spotCancelOrder(req.symbol, orderID)
-        else:
-            # 如果在系统委托号返回前客户就发送了撤单请求，则保存
-            # 在cancelDict字典中，等待返回后执行撤单任务
-            self.cancelDict[localNo] = req
+    def onQueryOrder(self, data, request):
+        """{"order_info": [{
+        "instrument_id": "BTC-USD-SWAP", "size": "5", "timestamp": "2018-10-23T20:11:00.443Z", "filled_qty": "2", "fee": "0.00432458", 
+        "order_id": "64-2b-16122f931-3", "price": "25", "price_avg": "21", "status": "1", "type": "1", "contract_val": "100"
+        },{
+        "instrument_id": "BTC-USD-SWAP", "size": "10", "timestamp": "2018-10-23T20:11:00.443Z", "filled_position": "3", "fee": "0.00434457"
+        "order_id": "64-2a-26132f931-3", "price": "20", "price_avg": "17", "status": "1", "type": "1", "contract_val": "100"
+        }]}"""
+        for d in data['order_info']:
+            #print(d,"or")
 
-    #----------------------------------------------------------------------
-    def generateDateTime(self, s):
-        """生成时间"""
-        dt = datetime.fromtimestamp(float(s)/1e3)
-        time = dt.strftime("%H:%M:%S.%f")
-        date = dt.strftime("%Y%m%d")
-        return date, time
+            order = self.orderDict.get(str(d['order_id']),None)
 
-    #----------------------------------------------------------------------
-    def writeLog(self, content):
-        """快速记录日志"""
-        log = VtLogData()
-        log.gatewayName = self.gatewayName
-        log.logContent = content
-        self.gateway.onLog(log)
+            if not order:
+                order = VtOrderData()
+                order.gatewayName = self.gatewayName
+                
+                order.symbol = d['instrument_id']
+                order.exchange = 'OKEX'
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
+                self.gateway.orderID += 1
+                order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                self.localRemoteDict[order.orderID] = d['order_id']
+                order.tradedVolume = 0
+                self.writeLog('order by other source, id: %s'%d['order_id'])
+            
+            order.price = float(d['price'])
+            order.price_avg = float(d['price_avg'])
+            order.totalVolume = int(d['size'])
+            order.thisTradedVolume = int(d['filled_qty']) - order.tradedVolume
+            order.tradedVolume = int(d['filled_qty'])
+            order.status = statusMapReverse[d['status']]
+            order.direction, order.offset = typeMapReverse[d['type']]
+            
+            dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
+            order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()
+            
+            self.gateway.onOrder(order)
+            self.orderDict[d['order_id']] = order
+
+            if order.thisTradedVolume:
+
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = float(data['price_avg'])
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                
+                self.gateway.onTrade(trade)
+    
     #----------------------------------------------------------------------
-    def checkDataError(self, data):
-        """检查回报是否存在错误"""
-        rawData = data['data']
-        if 'error_code' not in rawData:
-            return False
+    def onSendOrderFailed(self, data, request):
+        """
+        下单失败回调：服务器明确告知下单失败
+        """
+        self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
+        """
+        下单失败回调：连接错误
+        """
+        self.writeLog("%s onsendordererror, %s"%(exceptionType,exceptionValue))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = "onSendOrderError: OKEX server issue"#str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrder(self, data, request):
+        """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
+        'order_id': '1878377147147264'}"""
+
+        self.localRemoteDict[data['client_oid']] = data['order_id']
+        self.orderDict[data['order_id']] = self.orderDict[data['client_oid']]#request.extra
+        
+        if data['client_oid'] in self.cancelDict:
+            req = self.cancelDict.pop(data['client_oid'])
+            self.cancelOrder(req)
+
+        if data['error_code']:
+            self.writeLog('WARNING: %s sendorder error %s %s'%(data['client_oid'],data['error_code'],data['error_message']))
+
+        self.writeLog('localID:%s,--,exchangeID:%s'%(data['client_oid'],data['order_id']))
+
+        # print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
+        # "\norderDict:",self.orderDict.keys())
+    
+    #----------------------------------------------------------------------
+    def onCancelOrder(self, data, request):
+        """1:{'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
+        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
+        'error_code': '32004', 'order_id': '1882519016480768'} 
+        """
+        if data['result']:
+            self.writeLog(u'交易所返回%s撤单成功: id: %s'%(data['instrument_id'],str(data['order_id'])))
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName
-            error.errorID = rawData['error_code']
-            error.errorMsg = u'请求失败，功能：%s' %data['channel']
+            error.errorID = data['error_code']
+            if 'error_message' in data.keys():
+                error.errorMsg = str(data['order_id']) + ' ' + data['error_message']
+            else:
+                error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
-            return True
 
     #----------------------------------------------------------------------
-    def subscribe(self, symbol):
-        """订阅行情"""        
-        self.subscribeSpotTicker(symbol)
-        self.subscribeSpotDepth(symbol, 10)
-        self.subscribeSpotDeals(symbol)
-        self.subSpotOrder(symbol)
-        self.subSpotBalance(symbol)
+    def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
+        """
+        请求失败处理函数（HttpStatusCode!=2xx）.
+        默认行为是打印到stderr
+        """
+        print("onfailed",request)
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = str(httpStatusCode)
+        e.errorMsg = str(httpStatusCode) #request.response.text
+        self.gateway.onError(e)
+    
+    #----------------------------------------------------------------------
+    def onError(self, exceptionType, exceptionValue, tb, request):
+        """
+        Python内部错误处理：默认行为是仍给excepthook
+        """
+        print(request,"onerror")
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
 
-    def rest_spot_bar(self, symbol,type_,size = None, since = None):
-        data = self.spotKline(symbol, type_, size, since)
-        return data
-    def rest_spot_posotion(self, symbol):
-        pass
-    def rest_spot_orders(self,symbol,order_id,status):
-        pass
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
+    def loadHistoryBarV3(self,vtSymbol,type_,size=None,since=None,end=None):
+        """[["2018-12-21T09:00:00.000Z","4022.6","4027","3940","3975.6","9001","225.7652"],
+        ["2018-12-21T08:00:00.000Z","3994.8","4065.2","3994.8","4033","16403","407.4138"]]"""
+        
+        instrument_id = vtSymbol.split(VN_SEPARATOR)[0]
+        params = {'granularity':granularityMap[type_]}
+        url = REST_HOST +'/api/futures/v3/instruments/'+instrument_id+'/candles?'
+        if size:
+            s = datetime.now()-timedelta(seconds = (size*granularityMap[type_]))
+            params['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
 
-class FuturesApi(OkexFuturesApi):
-    """OKEX的期货API实现"""
+        if since:
+            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
+            
+        if end:
+            params['end'] = end
+        else:
+            params['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
+
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
+        text = eval(r.text)
+
+        volume_symbol = vtSymbol[:3]
+        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume","%s_volume"%volume_symbol])
+        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%dT%H:%M:%S.%fZ"))
+        # delta = timedelta(hours=8)
+        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
+        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+
+        return df
+
+class OkexSwapWebsocketApi(WebsocketClient):
+    """永续合约WS API"""
+    #----------------------------------------------------------------------
     def __init__(self, gateway):
         """Constructor"""
-        super(FuturesApi, self).__init__()
+        super(OkexSwapWebsocketApi, self).__init__()
         
-        self.gateway = gateway                  # gateway对象
-        self.gatewayName = gateway.gatewayName  # gateway对象名称
-
-        self.cbDict = {}
+        self.gateway = gateway
+        self.gatewayName = gateway.gatewayName
+        
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+        
+        self.orderDict = gateway.orderDict
+        self.localRemoteDict = gateway.localRemoteDict
+        
+        self.callbackDict = {}
+        self.channelSymbolDict = {}
         self.tickDict = {}
-        self.orderDict = {}
-        self.channelSymbolMap = {}
-        self.channelcontractTypeMap = {}
-        
-        self.localNo = 0                # 本地委托号
-        self.localNoQueue = Queue()     # 未收到系统委托号的本地委托号队列
-        self.localNoDict = {}           # key为本地委托号，value为系统委托号
-        self.localOrderDict = {}        # key为本地委托号, value为委托对象
-        self.orderIdDict = {}           # key为系统委托号，value为本地委托号
-        self.cancelDict = {}            # key为本地委托号，value为撤单请求
-        self.strategyDict = {}
-
-        self.wsOrderDict = {}           # 存储ws返回的订单信息
-        self.sendOrderDict = {}         # 存储rest返回的订单信息
-        self.exchangeOrderDict = {}     # 存储交易所返回的id和本地id映射
-        self.contractidDict = {}        # 用于持仓信息中, 对应rest查询的合约和ws查询的合约，获取品种信息
-        self.orphanDict ={}             # 存储丢单信息
-        self.filledList =['']*100       # 缓存交易所id，长度100个
-        self.recordOrderId_BefVolume = {}       # 记录的之前处理的量
-
-        self.cache_some_order = {}
-        self.minute_temp = 0
-        self.tradeID = 0
-        self.symbolSizeDict = {}        # 保存合约代码和合约大小的印射关系
-    #----------------------------------------------------------------------
-    def onMessage(self, data):
-        """信息推送""" 
-        channel = data.get('channel', '')
-        if not channel:
-            return
-
-        if channel in self.cbDict:
-            callback = self.cbDict[channel]
-            callback(data)
-
-    #----------------------------------------------------------------------
-    def onError(self, data):
-        """错误推送"""
-        error = VtErrorData()
-        error.gatewayName = self.gatewayName
-        error.errorMsg = str(data)
-        self.gateway.onError(error)
-        
-    #----------------------------------------------------------------------
-    def onClose(self):
-        """接口断开"""
-        self.gateway.connected = False
-        self.writeLog(u'期货服务器连接断开')
     
     #----------------------------------------------------------------------
-    def onOpen(self):       
-        """连接成功"""
-        self.gateway.connected = True
+    def unpackData(self, data):
+        """重载"""
+        return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
         
-        self.login()
-        self.writeLog(u'期货服务器连接成功')
-        
-        # 推送合约数据
-        for symbol in self.contracts:
-            contract = VtContractData()
-            contract.gatewayName = self.gatewayName
-
-            contract.symbol = symbol
-            contract.exchange = EXCHANGE_OKEX
-            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
-            contract.name = symbol
-            contract.size = 0.00001
-            contract.priceTick = 0.00001
-            contract.productClass = PRODUCT_FUTURES
-            self.gateway.onContract(contract)
-    
     #----------------------------------------------------------------------
-    def initCallback(self):
-        """初始化回调函数"""
-        for symbol in self.contracts:
-            # channel和symbol映射
-            contractType = symbol[4:]
-            symbol = symbol[:3]
-            self.channelSymbolMap["ok_sub_futureusd_%s_ticker_%s" %(symbol,contractType)] = symbol
-            # self.channelSymbolMap["ok_sub_futureusd_%s_kline_this_week_week" %(symbol)] = symbol  ## WS并不会给历史K线，提供的是实时数据
-            self.channelSymbolMap["ok_sub_futureusd_%s_depth_%s_10" %(symbol,contractType)] = symbol
-            self.channelSymbolMap["ok_sub_futureusd_%s_trade_%s" %(symbol, contractType)] = symbol
-
-            self.channelcontractTypeMap["ok_sub_futureusd_%s_ticker_%s" %(symbol,contractType)] = contractType
-            self.channelcontractTypeMap["ok_sub_futureusd_%s_depth_%s_10" %(symbol,contractType)] = contractType
-            self.channelcontractTypeMap["ok_sub_futureusd_%s_trade_%s" %(symbol, contractType)] = contractType
-
-            # channel和callback映射
-            self.cbDict["ok_sub_futureusd_%s_ticker_%s" % (symbol,contractType)] = self.onTicker
-            self.cbDict["ok_sub_futureusd_%s_depth_%s_10" % (symbol,contractType)] = self.onDepth
-            # self.cbDict["ok_sub_futureusd_%s_order" % symbol] = self.onSubFuturesOrder
-            self.cbDict["ok_sub_futureusd_%s_trade_%s" %(symbol, contractType)] = self.onSubFuturesTrades
-            
-        self.cbDict["ok_sub_futureusd_userinfo"] = self.onSubFuturesBalance
-        self.cbDict['ok_futureusd_userinfo'] = self.onFuturesUserInfo
-        self.cbDict['ok_futureusd_orderinfo'] = self.onFuturesOrderInfo
-        # self.cbDict['ok_futureusd_trade'] = self.onSubFuturesOrderError 
-        self.cbDict['ok_sub_futureusd_trades'] = self.onFuturesOrderInfo
-        # self.cbDict['ok_futureusd_order'] = self.onFuturesOrder
-        self.cbDict['ok_futureusd_cancel_order'] = self.onFuturesCancelOrder
-        self.cbDict['ok_sub_futureusd_positions'] = self.onSubFuturesPosition
-        # self.cbDict['ok_sub_futureusd_userinfo'] = self.subscribeFuturesUserInfo
-        self.cbDict['login'] = self.onLogin
-    
-    #----------------------------------------------------------------------
-    def onLogin(self, data):
+    def connect(self, apiKey, apiSecret, passphrase):
         """"""
-        # 查询持仓
-        self.futuresUserInfo()
-        # self.subscribeFuturesPositions()   # 没用，Websocket初始查询不给持仓信息
-
-        # 订阅推送
-        for symbol in self.contracts:
-            contractType = symbol[4:]
-            symbol = symbol[:3]
-            self.subscribe(symbol,contractType)
-            self.rest_futures_position(symbol,contractType)  # 初始化后使用restful查询持仓信息
-        self.contactOrders()
-        self.writeLog(u'期货服务器登录成功')
-
-    #----------------------------------------------------------------------
-    def onTicker(self, data):
-        """
-        {'high': '724.306', 'limitLow': '693.093', 'vol': '852082', 'last': '714.333', 
-        'low': '677.024', 'buy': '714.448', 'hold_amount': '599090', 'sell': '715.374', 
-        'contractId': 201807060050052, 'unitAmount': '10', 'limitHigh': '735.946'}
-        """
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
         
-        channel = data['channel']
-        # print('gw on tick',datetime.now(),data['data']['last'])
-        symbol = self.channelSymbolMap[channel]
-        contractType = self.channelcontractTypeMap[channel]
-        symbol = symbol+'_'+contractType                         # 从回报获取品种名称
-
-        if symbol not in self.tickDict:
-
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-            
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        
-        d = data['data']
-        tick.highPrice = float(d['high'])
-        tick.lowPrice = float(d['low'])
-        tick.lastPrice = float(d['last'])
-        tick.volume = float(d['vol'].replace(',', ''))
-        tick.upperLimit = float(d['limitHigh'])
-        tick.lowerLimit = float(d['limitLow'])
-        tick.openInterest = float(d['hold_amount'])
-        tick.volumeChange = 0                                   # 是否更新最新成交量的标记
-        tick.localTime = datetime.now()
-
-        if tick.bidPrice1 and tick.lastVolume:
-            newtick = copy(tick)
-            self.gateway.onTick(newtick)
-    #----------------------------------------------------------------------
-    def onDepth(self, data):
-        """
-        {'binary': 0, 'channel': 'ok_sub_futureusd_btc_depth_this_week_10', 
-        'data': {'asks': [[6785, 0, 0.0147, 264.3977, 17575], [6559.82, 30, 0.4573, 52.6851, 3442], [6534.79, 3, 0.0459, 29.6748, 1936], 
-        [6532.37, 0, 0.0306, 27.2538, 1778], [6532.03, 2, 0.0306, 27.9454, 1823], [6523.49, 99, 1.5175, 17.2985, 1128], 
-        [6523.15, 0, 1.5176, 16.1018, 1050], [6522.38, 0, 0.0306, 10.6901, 697], [6517.38, 80, 1.2274, 2.9305, 191]], 
-        'bids': [[6512.65, 0, 1.2283, 1.2283, 80], [6509.74, 7, 0.1075, 8.7075, 567], [6507.45, 2, 0.0307, 14.8835, 969], 
-        [6500.29, 0, 0.923, 33.9322, 2208], [6495.82, 0, 0.0307, 47.4715, 3088], [6494.98, 1, 0.0153, 45.4584, 2957], 
-        [6494.74, 0, 0.0307, 47.5329, 3092],[6488.79, 30, 0.4623, 58.1995, 3784], [6481.17, 30, 0.4628, 64.3499, 4183], 
-        [6468.13, 40, 0.6184, 110.2866, 7156], [6200, 71, 1.1451, 309.136, 19816], [6190, 99, 1.5993, 310.7353, 19915]], 
-        'timestamp': 1530704626966}}
-        """
-        channel = data['channel']
-        symbol = self.channelSymbolMap[channel]
-        contractType = self.channelcontractTypeMap[channel]
-        symbol = symbol+'_'+contractType
-
-        if symbol not in self.tickDict:
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        
-        d = data['data']
-        tick.bidPrice1, tick.bidVolume1 = d['bids'][0][0],d['bids'][0][1]
-        tick.bidPrice2, tick.bidVolume2 = d['bids'][1][0],d['bids'][1][1]
-        tick.bidPrice3, tick.bidVolume3 = d['bids'][2][0],d['bids'][2][1]
-        tick.bidPrice4, tick.bidVolume4 = d['bids'][3][0],d['bids'][3][1]
-        tick.bidPrice5, tick.bidVolume5 = d['bids'][4][0],d['bids'][4][1]
-        tick.bidPrice6, tick.bidVolume6 = d['bids'][5][0],d['bids'][5][1]
-        tick.bidPrice7, tick.bidVolume7 = d['bids'][6][0],d['bids'][6][1]
-        tick.bidPrice8, tick.bidVolume8 = d['bids'][7][0],d['bids'][7][1]
-        tick.bidPrice9, tick.bidVolume9 = d['bids'][8][0],d['bids'][8][1]
-        tick.bidPrice10, tick.bidVolume10 = d['bids'][9][0],d['bids'][9][1]
-        tick.bidPrice1 = float(tick.bidPrice1)
-        tick.bidPrice2 = float(tick.bidPrice2)
-        tick.bidPrice3 = float(tick.bidPrice3)
-        tick.bidPrice4 = float(tick.bidPrice4)
-        tick.bidPrice5 = float(tick.bidPrice5)
-        tick.bidPrice6 = float(tick.bidPrice6)
-        tick.bidPrice7 = float(tick.bidPrice7)
-        tick.bidPrice8 = float(tick.bidPrice8)
-        tick.bidPrice9 = float(tick.bidPrice9)
-        tick.bidPrice10 = float(tick.bidPrice10)
-        tick.bidVolume1 = float(tick.bidVolume1)
-        tick.bidVolume2 = float(tick.bidVolume2)
-        tick.bidVolume3 = float(tick.bidVolume3)
-        tick.bidVolume4 = float(tick.bidVolume4)
-        tick.bidVolume5 = float(tick.bidVolume5)
-        tick.bidVolume6 = float(tick.bidVolume6)
-        tick.bidVolume7 = float(tick.bidVolume7)
-        tick.bidVolume8 = float(tick.bidVolume8)
-        tick.bidVolume9 = float(tick.bidVolume9)
-        tick.bidVolume10 = float(tick.bidVolume10)
-
-        tick.askPrice1, tick.askVolume1 = d['asks'][-1][0],d['asks'][-1][1]
-        tick.askPrice2, tick.askVolume2 = d['asks'][-2][0],d['asks'][-2][1]
-        tick.askPrice3, tick.askVolume3 = d['asks'][-3][0],d['asks'][-3][1]
-        tick.askPrice4, tick.askVolume4 = d['asks'][-4][0],d['asks'][-4][1]
-        tick.askPrice5, tick.askVolume5 = d['asks'][-5][0],d['asks'][-5][1]
-        tick.askPrice6, tick.askVolume6 = d['asks'][-6][0],d['asks'][-6][1]
-        tick.askPrice7, tick.askVolume7 = d['asks'][-7][0],d['asks'][-7][1]
-        tick.askPrice8, tick.askVolume8 = d['asks'][-8][0],d['asks'][-8][1]
-        tick.askPrice9, tick.askVolume9 = d['asks'][-9][0],d['asks'][-9][1]
-        tick.askPrice10, tick.askVolume10 = d['asks'][-10][0],d['asks'][-10][1]
-        tick.askPrice1 = float(tick.askPrice1)
-        tick.askPrice2 = float(tick.askPrice2)
-        tick.askPrice3 = float(tick.askPrice3)
-        tick.askPrice4 = float(tick.askPrice4)
-        tick.askPrice5 = float(tick.askPrice5)   
-        tick.askPrice6 = float(tick.askPrice6)
-        tick.askPrice7 = float(tick.askPrice7)
-        tick.askPrice8 = float(tick.askPrice8)
-        tick.askPrice9 = float(tick.askPrice9)
-        tick.askPrice10 = float(tick.askPrice10)         
-        tick.askVolume1 = float(tick.askVolume1)
-        tick.askVolume2 = float(tick.askVolume2)
-        tick.askVolume3 = float(tick.askVolume3)
-        tick.askVolume4 = float(tick.askVolume4)
-        tick.askVolume5 = float(tick.askVolume5)    
-        tick.askVolume6 = float(tick.askVolume6)
-        tick.askVolume7 = float(tick.askVolume7)
-        tick.askVolume8 = float(tick.askVolume8)
-        tick.askVolume9 = float(tick.askVolume9)
-        tick.askVolume10 = float(tick.askVolume10)   
-
-        tick.date, tick.time = self.generateDateTime(d['timestamp'])
-        tick.volumeChange = 0                                    # 是否更新最新成交量的标记
-        tick.localTime = datetime.now()
-        if tick.lastPrice and tick.openInterest:
-            newtick = copy(tick)
-            self.gateway.onTick(newtick)
+        self.init(WEBSOCKET_HOST_V3)
+        self.start()
     
     #----------------------------------------------------------------------
-    def onSubFuturesTrades(self,data):
-        """接收最新成交量数据
-        [交易序号, 价格, 成交量(张), 时间, 买卖类型，成交量(币-新增)]
-        [
-                "732916899",
-                "999.49",
-                "2.0",
-                "15:25:04",
-                "ask",
-                "0.2001"
-            ]
-        """
-        channel = data['channel']
-        symbol = self.channelSymbolMap[channel]
-        contract_type = self.channelcontractTypeMap[channel]
-        symbol = symbol+'_'+contract_type
-
-        if symbol not in self.tickDict:
-            tick = VtTickData()
-            tick.symbol = symbol
-            tick.exchange = EXCHANGE_OKEX
-            tick.gatewayName = self.gatewayName
-            tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
-            self.tickDict[symbol] = tick
-        else:
-            tick = self.tickDict[symbol]
-        
-        for i,d in enumerate(data['data']):
-            tick.lastPrice = float(d[1])
-            tick.lastVolume = float(d[2])
-            tick.lastTradedTime = d[3]
-            tick.type = d[4]
-            tick.volumeChange = 1                                    # 是否更新最新成交量的标记
-            tick.localTime = datetime.now()
-            if tick.bidPrice1 and tick.openInterest:
-                newtick = copy(tick)
-                self.gateway.onTick(newtick)
-            if tick.localTime.minute != self.minute_temp:
-                self.contactOrders()
-                self.minute_temp = tick.localTime.minute
-
-    #---------------------------------------------------
-    def onFuturesUserInfo(self, data):
-        """期货账户资金推送"""  
-        #{'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
-
-        # 'info': {'btc': {'balance': 0.00524741, 'rights': 0.00524741, 
-        # 'contracts': [{'contract_type': 'this_week', 'freeze': 0, 'balance': 5.259e-05, 'contract_id':201807060000013, 
-        # 'available': 0.00524741, 'profit': -5.259e-05, 'bond': 0, 'unprofit': 0}, 
-        # {'contract_type': 'next_week', 'freeze': 0, 'balance': 0, 'contract_id': 201807130000034, 'available': 0.00524741, 
-        # 'profit': 0, 'bond': 0, 'unprofit': 0}]}, 
-
-        # 'eos': {'balance': 0, 'rights': 0, 'contracts': []}, 
-        # 'ltc': {'balance': 0, 'rights': 0, 'contracts': []}}}}
-
-        #    {'binary': 0, 'channel': 'ok_futureusd_userinfo', 'data': {'result': True, 
-        #    'info': {'btc': {'risk_rate': 10000, 'account_rights': 0.00080068, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'btg': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'etc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'bch': {'risk_rate': 10000, 'account_rights': 0.07406406, 'profit_unreal': 0, 'profit_real': 0.00017953, 'keep_deposit': 0}, 
-        #    'xrp': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'eth': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'eos': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}, 
-        #    'ltc': {'risk_rate': 10000, 'account_rights': 0, 'profit_unreal': 0, 'profit_real': 0, 'keep_deposit': 0}}}}
-
-        if self.checkDataError(data):
-            return
-        # print(data,"持仓的币种")
-        contracts = data['data']['info']
-        flag = 0
-        # 帐户信息
-        for symbol in contracts.keys():
-            fund = contracts[symbol]
-
-            if 'account_rights' in fund.keys():
-                balance= float(fund['account_rights'])
-                if balance:                   ##过滤掉没有持仓的币种
-                    account = VtAccountData()
-                    account.gatewayName = self.gatewayName
-                    account.accountID = symbol + '_usd'
-                    account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
-                    account.risk_rate = fund['risk_rate']
-                    account.balance = balance
-                    profit_real = fund['profit_real']
-                    account.closeProfit = '%10.8f' % profit_real
-                    profit_unreal = fund['profit_unreal']
-                    account.positionProfit = '%10.8f' % profit_unreal
-                    keep_deposit = fund['keep_deposit']
-                    account.margin = '%10.9f' %keep_deposit
-                    self.gateway.onAccount(account)    
-                    flag = 1
-                
-            elif 'balance' in fund.keys():
-                balance= float(fund['balance'])
-                if balance:                     ##过滤掉没有持仓的币种
-                    account = VtAccountData()
-                    account.gatewayName = self.gatewayName
-                    account.accountID = symbol + '_usd'
-                    account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
-                    account.available = fund['rights']
-                    account.balance = balance
-                    self.gateway.onAccount(account)    
-                self.writeLog(u'期货账户信息查询成功, 该账户是逐仓模式')
-        if flag:
-            self.writeLog(u'期货账户信息查询成功, 该账户是全仓模式')
-        
-        # 查询委托
-        # for symbol in self.contracts:
-        #     contractType = symbol[4:]
-        #     symbol = symbol[:3]
-        #     order_id = 1
-        #     self.futuresOrderInfo(symbol,order_id, contractType,"2","1","1")        
-            
+    def onConnected(self):
+        """连接回调"""
+        self.writeLog(u'SWAP Websocket API连接成功')
+        self.login()
+    
     #----------------------------------------------------------------------
-    def onFuturesOrderInfo(self, data):
-        """委托信息查询回调
-        {'lever_rate': 10.0, 'amount': 1.0, 'orderid': 1018500247351296, 'contract_id': 201807060050052, 
-        'fee': 0.0, 'contract_name': 'BCH0706', 'unit_amount': 10.0, 'price_avg': 0.0, 'type': 1, 
-        'deal_amount': 0.0, 'contract_type': 'this_week', 'user_id': ********, 'system_type': 0, 
-        'price': 654.977, 'create_date_str': '2018-06-29 20:58:00', 'create_date': 1530277080437, 'status': 0}
-        """
-        if self.checkDataError(data):
-            return
-        rawData = data['data']
-        orderId = str(rawData['orderid'])
-        if orderId not in self.exchangeOrderDict.keys():
-            self.exchangeOrderDict[orderId] = 'fromws'          # 如果是第一次接收到该订单号则给与'fromws'标记
-        self.writeLog('check wsorderdict when receive id %s ::: %s'%(
-            orderId,self.wsOrderDict.keys())) 
-
-        name = rawData['contract_name'][:3]
-        contract_type = rawData['contract_type']
-        symbol = str.lower(name) + '_' + contract_type
-
-        order = VtOrderData()
-        order.symbol = symbol
-        order.gatewayName = self.gatewayName
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-        order.exchange = EXCHANGE_OKEX
-        order.price = rawData['price']
-        order.price_avg = rawData['price_avg']
-        order.direction, order.offset = futureOrderTypeMap[str(rawData['type'])]
-        order.totalVolume = int(rawData['amount'])    
-        order.exchangeOrderID = orderId        
-        order.user_id = rawData['user_id']
-        order.gatewayName = self.gatewayName
-        order.orderDatetime  = datetime.fromtimestamp(float(rawData['create_date'])/1e3)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
-        
-        order.deliverTime = datetime.now()
-        order.status = statusMap[rawData['status']] 
-        order.fee = rawData['fee']
-        # lastTradedVolume = order.tradedVolume
-        order.tradedVolume = int(rawData['deal_amount'])
-        self.wsOrderDict[orderId] = order
-
-        # 待更新信息： vtOrderID
-        self.order_arbitration(order)  
-
-        # self.writeLog('check orderDict from id %s :%s'%(orderId,self.orderDict.items())) 
-        # if order.status == STATUS_CANCELLED or order.status == STATUS_ALLTRADED:
-        #     del self.exchangeOrderDict[str(orderId)]
-        #     del self.orderDict[order.vtOrderID]
-
-    #----------------------------------------------------------------------  
-    # def onSubFuturesOrderError(self, data):
-    #     """ ws下单报错信息"""
-    #     if self.checkDataError(data):
-    #         return
-    #     rawData = data["data"]
-    #     if rawData['result']:
-    #         orderId = str(rawData['order_id'])  
-    #     else:
-    #         print("下单报错信息:",rawData['error_code'])
+    def onDisconnected(self):
+        """连接回调"""
+        self.writeLog(u'SWAP Websocket API连接断开')
+    
     #----------------------------------------------------------------------
-    def onFuturesCancelOrder(self,data):
-        """撤单回调"""
-        if self.checkDataError(data):
-            return
-        rawData = data["data"]
-        if rawData['result']:
-            orderId = str(rawData['order_id']) 
-            self.writeLog(u'交易所返回撤单成功: id: %s'%orderId)
-        else:
-            error = VtErrorData()
-            error.gatewayName = self.gatewayName
-            error.errorID = rawData['error_code']
-            if str(error.errorID) =='20015':
-                error.errorMsg = u'要撤的订单不存在'
-            elif str(error.errorID) =='20049':
-                error.errorMsg = u'撤单过于频繁'
-            self.gateway.onError(error)
-    #----------------------------------------------------------------------
-        
-    def onSubFuturesBalance(self, data):
-        """
-        {'binary': 0, 'channel': 'ok_sub_futureusd_userinfo', 
-        'data': {'symbol': 'eth_usd', 'balance': 0.03080528, 'unit_amount': 10.0, 
-        'profit_real': 0.00077335, 'keep_deposit': 0.002298829}}
-        """
-        if self.checkDataError(data):
-            return
-        rawData = data['data']
-
-        # 帐户信息更新
-        account = VtAccountData()
-        account.gatewayName = self.gatewayName
-        account.accountID = rawData['symbol']
-        account.vtAccountID = ':'.join([account.gatewayName, account.accountID])
-        account.balance = rawData['balance']
-        profit_real = rawData['profit_real']
-        account.closeProfit = '%10.8f' % profit_real
-        keep_deposit = rawData['keep_deposit']
-        account.margin = '%10.9f' %keep_deposit
-        self.gateway.onAccount(account)  
-        
-        self.writeLog(u'期货账户信息更新成功')
-
-    #--------------------------------------------------------------------
-    def onSubFuturesPosition(self,data):
-        """
-        {'binary': 0, 'channel': 'ok_sub_futureusd_positions', 
-        'data': {'symbol': 'bch_usd', 'user_id': ***********, 
-        'positions': [{'bondfreez': 0.0, 'margin': 0.0, 'avgprice': 660.97060244,'eveningup': 0.0, 
-        'contract_id': 201807130050065, 'hold_amount': 0.0, 'contract_name': 'BCH0713','realized': -0.00316062, 
-        'position': 1, 'costprice': 660.97060244, 'position_id': 1017505776168960}
-        , {'bondfreez': 0.0, 'margin': 0.0, 'avgprice': 659.89775978, 'eveningup': 2.0, 'contract_id': 2018
-        07130050065, 'hold_amount': 2.0, 'contract_name': 'BCH0713', 'realized': -0.00316062, 'position': 2
-        , 'costprice': 659.89775978, 'position_id': 1017505776168960}]}}        
-        """
-        if self.checkDataError(data):
-            return
-        # if not self.contract_id:   #判断REST的持仓信息是否已经推送
-        #     return
-            
-        # symbol = data['data']['symbol']
-        position = data['data']['positions']
-        sid = str(position[0]['contract_id'])
-        
-        if sid in self.contractidDict.keys():
-            symbol = self.contractidDict[sid]
-        else:
-            self.writeLog('can\'t identify trading symbol, msg discharged,contract_id = %s'%sid)
-            return
-
-        pos = VtPositionData()
-        pos.gatewayName = self.gatewayName
-        pos.symbol = symbol
-        pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
-        pos.exchange = EXCHANGE_OKEX
-        
-        # 多头仓位
-        longPos = copy(pos)
-        longPos.direction = DIRECTION_LONG
-        longPos.position = position[0]['hold_amount']
-        longPos.price = position[0]['avgprice']
-        longPos.frozen = longPos.position - position[0]['eveningup']
-        profit = position[0]['realized']
-        longPos.positionProfit = '%10.8f' % profit
-        longPos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, longPos.direction])
-
-        # 空头仓位    
-        shortPos = copy(pos)
-        shortPos.direction = DIRECTION_SHORT
-        shortPos.position = position[1]['hold_amount']
-        shortPos.price = position[1]['avgprice']
-        shortPos.frozen = shortPos.position - position[1]['eveningup']
-        profit = position[1]['realized']
-        shortPos.positionProfit = '%10.8f' % profit
-        shortPos.vtPositionName = VN_SEPARATOR.join([pos.vtSymbol, shortPos.direction])            
-            
-        self.gateway.onPosition(longPos)
-        self.gateway.onPosition(shortPos)
-        
-    #----------------------------------------------------------------------
-    def init(self, apiKey, secretKey, trace, contracts):
-        """初始化接口"""
-
-        self.contracts = contracts
-        self.initCallback()
-        self.connect(OKEX_FUTURES_HOST, apiKey, secretKey, trace)
-        if not apiKey:
-            self.writeLog(u'请添加apiKey和对应的密钥')
-            return
-        self.writeLog(u'期货接口初始化成功')
-
-    #----------------------------------------------------------------------
-    def sendOrder(self, req):
-        """发单"""
-        # 缓存委托信息
-        # 本地委托号加1，并将对应字符串保存到队列中，返回基于本地委托号的vtOrderID
-        self.localNo += 1
-        vtOrderID = VN_SEPARATOR.join([self.gatewayName, str(self.localNo)])
-        # self.localNoQueue.put(str(self.localNo))
-
-        type_ = futureOrderTypeMapReverse[(req.direction, req.offset)]
-
-        symbol = req.symbol[:3] + "_usd"
-        contract_type = req.symbol[4:]
-
-        # # 下单判断状态 1 ： 网络状态不良，不下单，返回拒单状态的订单
-        # if not self.gateway.connected:
-        #     self.writeLog(u'网络状态不良，订单号 %s 不执行%s的下单命令'%(vtOrderID,req.vtSymbol))
-        #     order = VtOrderData()
-        #     order.vtOrderID = vtOrderID
-        #     order.orderID = self.localNo
-        #     order.symbol= req.symbol
-
-        #     order.vtSymbol = req.vtSymbol
-        #     order.status = STATUS_REJECTED
-        #     order.gatewayName = self.gatewayName
-        #     order.rejectedInfo = 'BAD NETWORK'
-        #     order.byStrategy = req.byStrategy
-        #     order.direction = req.direction
-        #     order.offset = req.offset
-        #     order.price = req.price
-        #     order.totalVolume = req.volume
-        #     order.orderTime = datetime.now()
-        #     order.deliverTime = datetime.now()
-        #     self.gateway.onOrder(copy(order))
-        #     self.orderDict[vtOrderID] = order #更新order信息
-        #     return vtOrderID
-        
-        # 下单判断状态 2 ： 发单失败，返回失败请求
-        # result = self.futuresTrade(
-            # req.symbol, req.contractType ,type_, req.price, req.volume, req.priceType ,"10") # ws
-        try:
-            data = self.future_trade(
-                symbol, contract_type ,req.price, req.volume, type_, req.priceType)  # restful
-        
-        except:
-            self.writeLog('request_error_%s_%s'%(vtOrderID,req.vtSymbol))
-            order = VtOrderData()
-            order.vtOrderID = vtOrderID
-            order.orderID = self.localNo
-            order.symbol= req.symbol
-
-            order.vtSymbol = req.vtSymbol
-            order.status = STATUS_UNKNOWN
-            order.gatewayName = self.gatewayName
-            order.rejectedInfo = 'RESTFUL REQUEST ERROR'
-            order.byStrategy = req.byStrategy
-            order.direction = req.direction
-            order.offset = req.offset
-            order.price = req.price
-            order.totalVolume = req.volume
-            order.orderDatetime = datetime.now()
-            order.orderTime = datetime.now()
-            order.deliverTime = datetime.now()
-            self.orderDict[vtOrderID] = order   #更新order信息
-            self.gateway.onOrder(copy(order))
-            self.exchangeOrderDict[vtOrderID]= vtOrderID
-            self.orphanDict[vtOrderID] = order
-            
-            return vtOrderID        
-        
-        if 'result' in data.keys():
-            self.writeLog(u'gw_sendorder_check下单返回信息:%s' %data)
-            result= data['result']
-
-            if result:
-                # 下单判断状态 ： 发单正常，下单成功，返回下单信息
-                order_id = str(data['order_id'])
-                self.exchangeOrderDict[order_id]= vtOrderID
-                self.localNoDict[str(self.localNo)] = order_id
-            
+    def onPacket(self, packet):
+        """数据回调"""
+        # print(packet,"*********************")
+        if 'event' in packet.keys():
+            if packet['event'] == 'login':
+                callback = self.callbackDict['login']
+                callback(packet)
+            elif packet['event'] == 'subscribe':
+                self.writeLog(u'SWAP subscribe %s successfully'%packet['channel'])
             else:
-                # 下单判断状态 ： 发单正常，下单失败，返回报错信息
-                # {'result': False, 'error_code': 20008}
-                error_code = data['error_code']
-                order = VtOrderData()
-                order.vtOrderID = vtOrderID
-                order.orderID = self.localNo
-                order.symbol= req.symbol
-                order.vtSymbol = req.vtSymbol
-                order.gatewayName = self.gatewayName
-                order.status = STATUS_REJECTED
-                order.rejectedInfo = str(error_code) +':'+ orderErrorMap[str(error_code)]
-                order.byStrategy = req.byStrategy
-                order.direction = req.direction
-                order.offset= req.offset
-                order.price = req.price
-                order.totalVolume = req.volume
-                order.orderDatetime = datetime.now()
-                order.orderTime = datetime.now()
-                order.deliverTime = datetime.now()
-                self.gateway.onOrder(copy(order))
-                self.orderDict[vtOrderID] = order #更新order信息
-                return vtOrderID
+                self.writeLog(u'SWAP info %s'%packet)
+        elif 'error_code' in packet.keys():
+            print('SWAP error:',packet['error_code'])
         else:
-            self.writeLog(u'gw_sendorder_error_obtain_data:%s'%data)
-            return ''
-
-        order = VtOrderData()
-        self.writeLog(u'--gw-sendorder_generate_order---,%s,%s,exid(%s)'%(req.symbol,vtOrderID,order_id))
-        
-        order.gatewayName = self.gatewayName
-        order.exchangeOrderID = order_id
-        order.symbol = req.symbol
-        order.exchange = EXCHANGE_OKEX
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-        order.orderID= str(self.localNo)
-        order.vtOrderID = vtOrderID
-        order.direction = req.direction
-        order.offset = req.offset
-        order.price = req.price
-        order.price_avg = order.price
-        order.totalVolume = req.volume
-        order.tradedVolume = 0
-        order.orderTime = datetime.now()
-        order.orderDatetime = datetime.now()
-        order.deliverTime = datetime.now()
-        order.byStrategy = req.byStrategy
-        order.status = STATUS_UNKNOWN
-        self.orderDict[vtOrderID] = order #更新order信息
-        self.sendOrderDict[str(order_id)] = order
-
-        # 待更新信息： status，price，tradedvolume，thistradedvolume
-        validate = self.order_arbitration(order,source = 'sendorder')
-
-        if not validate:
-            # self.localOrderDict[str(self.localNo)] = order
-            # self.localNoDict[str(self.localNo)] = vtOrderID
-            self.rest_qry_order(symbol,contract_type,order_id)
-            self.writeLog('gw_send_order not validate, go_rest_qry_order')
-         
-        # self.localOrderDict[str(self.localNo)] = order
-        # self.localNoDict[str(self.localNo)] = vtOrderID
-        
-        return vtOrderID
-    #---------------------------------------------------------------------------
-    def cancelOrder(self, req):
-        """撤单"""
-        localNo = str(req.orderID)
-        if localNo in self.localNoDict.keys():
-            orderID = self.localNoDict[localNo]
-            symbol = req.symbol[:3]+"_usd"
-            contract_type = req.symbol[4:]
-            self.futuresCancelOrder(symbol, orderID, contract_type)
-            self.writeLog(u'--gw-cancelorder---,%s,%s,%s,%s'%(symbol,localNo,orderID,contract_type))
-        else:
-            # 如果在系统委托号返回前客户就发送了撤单请求，则保存
-            # 在cancelDict字典中，等待返回后执行撤单任务
-            self.cancelDict[localNo] = req
-            self.writeLog(u'gw_Not in localNoDict')
-
+            channel = packet['table']
+            callback = self.callbackDict.get(channel, None)
+            if callback:
+                callback(packet['data'])
+    
     #----------------------------------------------------------------------
-    def order_arbitration(self, orderinfo, source = 'onorder'):
-        """将sendorder发出的和futureordersinfo收到的订单信息对应起来"""
-
-        order = deepcopy(orderinfo)
-
-        if source == 'sendorder':
-            if str(orderinfo.exchangeOrderID) in self.wsOrderDict.keys():
-                order2 = self.wsOrderDict[str(order.exchangeOrderID)]
-                order.status = order2.status
-                order.price = order2.price
-                order.price_avg = order2.price_avg
-                order.tradedVolume = order2.tradedVolume
-                order.thisTradedVolume = order.tradedVolume - order2.tradedVolume
-                self.orderDict[str(order.vtOrderID)] = order
-                self.gateway.onOrder(order)
-                self.exchangeOrderDict[str(order.exchangeOrderID)] = order.vtOrderID
-                return True
-            else:
-                self.writeLog('rest quicker in order_arb_sendorder, waiting wsonorder id:%s'%orderinfo.exchangeOrderID)
-                return False
-
-        elif source == 'onorder':
-            if str(orderinfo.exchangeOrderID) in self.sendOrderDict.keys():
-                order2 = self.sendOrderDict[str(order.exchangeOrderID)]
-                order.orderID = order2.orderID
-                order.vtOrderID = order2.vtOrderID
-                order.byStrategy = order2.byStrategy
-                order.thisTradedVolume = order.tradedVolume - order2.tradedVolume
-                self.orderDict[order.vtOrderID] = order
-                self.gateway.onOrder(order)
-                self.sendOrderDict[str(order.exchangeOrderID)] = order 
-                self.exchangeOrderDict[str(order.exchangeOrderID)] = order.vtOrderID
-                if order.tradedVolume > order2.tradedVolume:
-                    trade = VtTradeData()
-                    trade.gatewayName = self.gatewayName
-                    trade.symbol = order.symbol
-                    trade.exchange = order.exchange
-                    trade.vtSymbol = order.vtSymbol
-                    
-                    self.tradeID += 1
-                    trade.tradeID = str(self.tradeID)
-                    trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
-                    trade.orderID = order.orderID
-                    trade.vtOrderID = order.vtOrderID
-                    trade.exchangeOrderID = str(order.exchangeOrderID)
-                    trade.direction = order.direction
-                    trade.offset = order.offset
-                    trade.price = order.price_avg   # OKEX提供的price是委托价
-                    trade.fee = order.fee
-                    trade.volume = order.tradedVolume - order2.tradedVolume
-                    trade.tradeTime = order.deliverTime
-                    trade.tradeDatetime = trade.tradeTime
-                    trade.status = order.status
-                    self.writeLog(u'gw_trade_detail: %s, %s,volume:%s'%(trade.vtTradeID,trade.symbol,trade.volume))
-                    self.gateway.onTrade(trade)
-                if order.status in [STATUS_ALLTRADED, STATUS_CANCELLED, STATUS_REJECTED]:
-                    self.filledList[0:99] = self.filledList[1:100]
-                    self.filledList[-1] = str(order.exchangeOrderID)
-                    if order.exchangeOrderID in self.sendOrderDict.keys():
-                        if order.exchangeOrderID in self.wsOrderDict.keys():
-                            if order.exchangeOrderID in self.exchangeOrderDict.keys():    
-                                del self.sendOrderDict[str(order.exchangeOrderID)]
-                                del self.exchangeOrderDict[str(order.exchangeOrderID)]
-                                del self.wsOrderDict[str(order.exchangeOrderID)]                            
-                                self.writeLog('gw_remove_dictKeys_that_filled_or_cancelled(%s, %s)'%(order.vtOrderID,order.exchangeOrderID))
-                return True
-            else:
-                self.writeLog('ws quicker in order_arb_onorder,waiting sendorder rest id:%s'%orderinfo.exchangeOrderID)
-                return False
-        # # # 撤单
-        localNo = order.orderID
-        if localNo in self.cancelDict:
-            req = self.cancelDict[localNo]
-            self.cancelOrder(req)
-            del self.cancelDict[localNo]  
-
-    #----------------------------------------------------------------------
-    def contactOrders(self):
-        """轮询接口"""
-        qryDict = {}
-        for orderid in self.exchangeOrderDict.keys():
-            if orderid in self.sendOrderDict.keys():
-                order = self.sendOrderDict[orderid]
-                symbol = order.symbol
-                if symbol not in qryDict.keys():
-                    qryDict[symbol] = [orderid]
-                else:
-                    qryDict[symbol].append(orderid)
-            elif orderid in self.wsOrderDict.keys():
-                order = self.wsOrderDict[orderid]
-                symbol = order.symbol
-                if symbol not in qryDict.keys():
-                    qryDict[symbol] = [orderid]
-                else:
-                    qryDict[symbol].append(orderid)
-        for symbol in qryDict.keys():
-            contract_type = symbol[4:]
-            qrysymbol = symbol[:3]+'_usd'
-            idlist = ','.join(qryDict[symbol][:50])       # OKEX 支持50个订单的批量查询
-            self.batchQryOrder(qrysymbol,contract_type,idlist)  
-        if qryDict:  
-            self.writeLog(u'对本地挂单的exchangeorderid批量轮询，(品种字典：%s)'%qryDict)
-        del qryDict
-
-    #----------------------------------------
-    def generateDateTime(self, s):
-        """生成时间"""
-        dt = datetime.fromtimestamp(float(s)/1e3)
-        time = dt.strftime("%H:%M:%S.%f")
-        date = dt.strftime("%Y%m%d")
-        return date, time
-
+    def onError(self, exceptionType, exceptionValue, tb):
+        """Python错误回调"""
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
+        
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
+    
     #----------------------------------------------------------------------
     def writeLog(self, content):
-        """快速记录日志"""
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)    
+
+    #----------------------------------------------------------------------
+    def login(self):
+        """"""
+        timestamp = str(time.time())
+        
+        msg = timestamp + 'GET' + '/users/self/verify'
+        signature = generateSignature(msg, self.apiSecret)
+        
+        req = {
+            "op": "login",
+            "args": [self.apiKey,self.passphrase,timestamp,str(signature,encoding = "utf-8")]
+        }
+        self.sendPacket(req)
+        
+        self.callbackDict['login'] = self.onLogin
+        
+    #----------------------------------------------------------------------
+    def subscribe(self, symbol):
+        """"""
+        # 订阅TICKER
+        channel1 = 'swap/ticker:%s' %(symbol)
+        self.callbackDict['swap/ticker'] = self.onSwapTick
+        self.channelSymbolDict[channel1] = symbol
+        
+        req1 = {
+            'op': 'subscribe',
+            'args': channel1
+        }
+        self.sendPacket(req1)
+        
+        # 订阅DEPTH
+        channel2 = 'swap/depth5:%s' %(symbol)
+        self.callbackDict['swap/depth5'] = self.onSwapDepth
+        self.channelSymbolDict[channel2] = symbol
+        
+        req2 = {
+            'op': 'subscribe',
+            'args': channel2
+        }
+        self.sendPacket(req2)
+
+        # subscribe trade
+        channel3 = 'swap/trade:%s' %(symbol)
+        self.callbackDict['swap/trade'] = self.onSwapTrades
+        self.channelSymbolDict[channel3] = symbol
+
+        req3 = {
+            'op': 'subscribe',
+            'args': channel3
+        }
+        self.sendPacket(req3)
+
+        # subscribe price range
+        channel4 = 'swap/price_range:%s' %(symbol)
+        self.callbackDict['swap/price_range'] = self.onSwapPriceRange
+        self.channelSymbolDict[channel4] = symbol
+
+        req4 = {
+            'op': 'subscribe',
+            'args': channel4
+        }
+        self.sendPacket(req4)
+        
+        # 创建Tick对象
+        tick = VtTickData()
+        tick.gatewayName = self.gatewayName
+        tick.symbol = symbol
+        tick.exchange = 'OKEX'
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        self.tickDict[tick.symbol] = tick
+    
+    #----------------------------------------------------------------------
+    def onLogin(self, d):
+        """"""
+        if not d['success']:
+            return
+        
+        # 订阅交易相关推送
+        self.callbackDict['swap/order'] = self.onTrade
+        self.callbackDict['swap/account'] = self.onAccount
+        self.callbackDict['swap/position'] = self.onPosition
+
+        for contract in self.gateway.swap_contracts:
+            self.subscribe(contract)
+            self.sendPacket({'op': 'subscribe', 'args': 'swap/position:%s'%contract})
+            self.sendPacket({'op': 'subscribe', 'args': 'swap/account:%s'%contract})
+            self.sendPacket({'op': 'subscribe', 'args': 'swap/order:%s'%contract})
+    #----------------------------------------------------------------------
+    def onSwapTick(self, d):
+        # print(d,"tickerrrrrrrrrrrrrrrrrrrr\n\n")
+        """{"table": "swap/ticker","data": [{
+                "high_24h": "24711", "best_bid": "5", "best_ask": "8.8",
+                "instrument_id": "BTC-USD-SWAP", "last": "22621", "low_24h": "22478.92",
+                "timestamp": "2018-11-22T09:27:31.351Z", "volume_24h": "85"
+        }]}"""
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
+            
+            tick.lastPrice = float(data['last'])
+            tick.highPrice = float(data['high_24h'])
+            tick.lowPrice = float(data['low_24h'])
+            tick.volume = float(data['volume_24h'])
+            tick.askPrice1 = float(data['best_ask'])
+            tick.bidPrice1 = float(data['best_bid'])
+            # tick.upperLimit = float(data['limitHigh'])
+            # tick.lowerLimit = float(data['limitLow'])
+            # tick.openInterest = float(data['hold_amount'])
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            
+            if tick.askPrice5:    
+                tick=copy(tick)    
+                self.gateway.onTick(tick)
+
+    #----------------------------------------------------------------------
+    def onSwapDepth(self, d):
+        """{"table": "swap/depth5","data": [{
+            "asks": [
+             ["3986", "7", 0, 1], ["3986.9", "198", 0, 2], ["3987", "9499", 0, 2],
+             ["3987.5", "6455", 0, 5], ["3987.8", "501", 0, 1]
+            ], "bids": [
+             ["3983", "12790", 0, 4], ["3981.9", "2907", 0, 3], ["3981.6", "7963", 0, 1],
+             ["3981.5", "9800", 0, 2], ["3981", "700", 0, 3]
+            ],
+            "instrument_id": "BTC-USD-SWAP", "timestamp": "2018-12-04T09:51:56.500Z"
+            }]}"""
+        # print(d,"depthhhhh\n\n")
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
+            
+            for n, buf in enumerate(data['bids']):
+                price, volume = buf[:2]
+                tick.__setattr__('bidPrice%s' %(n+1), float(price))
+                tick.__setattr__('bidVolume%s' %(n+1), int(volume))
+            
+            for n, buf in enumerate(data['asks']):
+                price, volume = buf[:2]
+                tick.__setattr__('askPrice%s' %(10-n), float(price))
+                tick.__setattr__('askVolume%s' %(10-n), int(volume))
+            
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            if tick.lastPrice:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+
+    def onSwapTrades(self,d):
+        """{"table": "swap/trade", "data": [{
+                "instrument_id": "BTC-USD-SWAP", "price": "3250",
+                "side": "sell", "size": "1",
+                "timestamp": "2018-12-17T09:48:41.903Z", "trade_id": "126518511769403393"
+            }]}"""
+        # print(d,"tradessss\n\n\n\n\n")
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
+            tick.lastPrice = float(data['price'])
+            tick.lastVolume = float(data['size'])
+            tick.lastTradedTime = data['timestamp']
+            tick.type = data['side']
+
+            tick.volumeChange = 1
+            tick.localTime = datetime.now()
+            if tick.askPrice1:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+    def onSwapPriceRange(self,d):
+        """{"table": "swap/price_range", "data": [{
+                "highest": "22391.96", "instrument_id": "BTC-USD-SWAP",
+                "lowest": "20583.40", "timestamp": "2018-11-22T08:46:45.016Z"
+        }]}"""
+        # print(d,"\n\n\nrangerangerngr")
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
+            tick.upperLimit = data['highest']
+            tick.lowerLimit = data['lowest']
+
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            if tick.askPrice1:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+    
+    #----------------------------------------------------------------------
+    def onTrade(self, d):
+        """{"table":"swap/order", "data":[{
+            "size":"1", "filled_qty":"0",  "price":"46.1930",
+            "fee":"0.000000", "contract_val":"10",
+            "price_avg":"0.0000", "type":"1",
+            "instrument_id":"LTC-USD-SWAP", "order_id":"65-6e-2e904c43d-0",
+            "status":"0", "timestamp":"2018-11-26T08:02:18.618Z"
+            }]} """
+        # print(d)
+        for n, data in enumerate(d):
+            order = self.orderDict.get(str(data['order_id']), None)
+            if not order:
+                order = VtOrderData()
+                order.gatewayName = self.gatewayName
+                order.symbol = data['instrument_id']
+                order.exchange = 'OKEX'
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+
+                if 'client_oid' in data.keys():
+                    order.orderID = data['client_oid']
+                else:
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                order.price = data['price']
+                order.totalVolume = int(data['size'])
+                order.tradedVolume = 0
+                order.direction, order.offset = typeMapReverse[str(data['type'])]
+
+            
+            order.orderDatetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            order.price_avg = data['price_avg']
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()   
+            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+            order.status = statusMapReverse[str(data['status'])]
+            order.tradedVolume = int(data['filled_qty'])
+
+            self.gateway.onOrder(copy(order))
+            self.localRemoteDict[order.orderID] = str(data['order_id'])
+            self.orderDict[str(data['order_id'])] = order
+
+            if order.thisTradedVolume:
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = float(data['price_avg'])
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                self.gateway.onTrade(trade)
+            if order.status==STATUS_ALLTRADED or order.status==STATUS_CANCELLED:
+                if order.orderID in self.localRemoteDict:
+                    del self.localRemoteDict[order.orderID]
+                if str(data['order_id']) in self.orderDict:
+                    del self.orderDict[str(data['order_id'])]
+                if order.orderID in self.orderDict:
+                    del self.orderDict[order.orderID]
+        
+    #----------------------------------------------------------------------
+    def onAccount(self, d):
+        """{ "table":"swap/account", "data":[{
+            "equity":"333378.858", "fixed_balance":"555.649",
+            "instrument_id":"LTC-USD-SWAP", "margin":"554.017",
+            "margin_frozen":"7.325", "margin_mode":"fixed",
+            "margin_ratio":"0.000", "realized_pnl":"-1.633",
+            "timestamp":"2018-11-26T07:43:52.303Z", "total_avail_balance":"332774.283",
+            "unrealized_pnl":"50.556"
+            }]}"""
+        # print(d)
+        for n, data in enumerate(d):
+            account = VtAccountData()
+            account.gatewayName = self.gatewayName
+            account.accountID = data['instrument_id']
+            account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
+            
+            account.balance = data['equity']
+            account.available = data['total_avail_balance']
+            if data['margin_mode'] =='fixed':
+                account.available = data['fixed_balance']
+            account.margin = data['margin']
+            account.closeProfit = data['realized_pnl']
+        
+            self.gateway.onAccount(account)
+    
+    #----------------------------------------------------------------------
+    def onPosition(self, d):
+        """{"table":"swap/position","data":[{ "holding":[{
+        "avail_position":"1.000", "avg_cost":"48.0000", "leverage":"11", "liquidation_price":"52.5359", "margin":"0.018", 
+        "position":"1.000", "realized_pnl":"-0.001", "settlement_price":"48.0000", "side":"short", "timestamp":"2018-11-29T02:37:01.963Z"
+        }], "instrument_id":"LTC-USD-SWAP", "margin_mode":"fixed"
+        }]} """
+        # print(d)
+        for n, data in enumerate(d):
+            symbol = data['holding']['instrument_id']
+            
+            for buf in data['holding']:
+                position = VtPositionData()
+                position.gatewayName = self.gatewayName
+                position.symbol = symbol
+                position.exchange = 'OKEX'
+                position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
+                position.position = int(buf['position'])
+                position.frozen = int(buf['position']) - int(buf['avail_position'])
+                position.available = int(buf['avail_position'])
+                position.price = float(buf['avg_cost'])
+                
+                if buf['side'] == "long":
+                    position.direction = DIRECTION_LONG
+                else:
+                    position.direction = DIRECTION_SHORT
+                position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
+                self.gateway.onPosition(position)
+
+
+#############################################################################################################
+class OkexSpotRestApi(RestClient):
+    """SPOT REST API实现"""
+
+    #----------------------------------------------------------------------
+    def __init__(self, gateway):
+        """Constructor"""
+        super(OkexSpotRestApi, self).__init__()
+
+        self.gateway = gateway                  # type: okexGateway # gateway对象
+        self.gatewayName = gateway.gatewayName  # gateway对象名称
+        
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+        self.leverage = 0
+        
+        self.contractDict = {}
+        self.cancelDict = {}
+        self.localRemoteDict = gateway.localRemoteDict
+        self.orderDict = gateway.orderDict
+    
+    #----------------------------------------------------------------------
+    def connect(self, apiKey, apiSecret, passphrase, leverage, sessionCount):
+        """连接服务器"""
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
+        self.leverage = leverage
+        
+        self.init(REST_HOST)
+        self.start(sessionCount)
+        self.writeLog(u'SPOT REST API启动成功')
+        self.queryContract()
+    #----------------------------------------------------------------------
+    def sign(self, request):
+        """okex的签名方案"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3]+'Z')#str(time.time())
+        request.data = json.dumps(request.data)
+        
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+            
+        msg = timestamp + request.method + path + request.data
+        signature = generateSignature(msg, self.apiSecret)
+        
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+
+    # ----------------------------------------------------------------------
+    def sign2(self, request):
+        """okex的签名方案, 针对全平和全撤接口"""
+        # 生成签名
+        timestamp = (datetime.utcnow().isoformat()[:-3] + 'Z')  # str(time.time())
+
+        if request.params:
+            path = request.path + '?' + urlencode(request.params)
+        else:
+            path = request.path
+
+        if request.data:
+            request.data = json.dumps(request.data)
+            msg = timestamp + request.method + path + request.data
+        else:
+            msg = timestamp + request.method + path
+        signature = generateSignature(msg, self.apiSecret)
+
+        # 添加表头
+        request.headers = {
+            'OK-ACCESS-KEY': self.apiKey,
+            'OK-ACCESS-SIGN': signature,
+            'OK-ACCESS-TIMESTAMP': timestamp,
+            'OK-ACCESS-PASSPHRASE': self.passphrase,
+            'Content-Type': 'application/json'
+        }
+        return request
+    #----------------------------------------------------------------------
+    def writeLog(self, content):
+        """发出日志"""
         log = VtLogData()
         log.gatewayName = self.gatewayName
         log.logContent = content
         self.gateway.onLog(log)
+    
+    #----------------------------------------------------------------------
+    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+        """限速规则：20次/2s"""
+        orderID = str(self.gateway.loginTime + self.gateway.orderID)
+        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
+        
+        type_ = typeMap[(orderReq.direction, orderReq.offset)]
+
+        if self.leverage:
+            margin_trading = 2
+        else:
+            margin_trading = 1
+
+        data = {
+            'client_oid': orderID,
+            'instrument_id': orderReq.symbol,
+            'side': type_,
+            'price': orderReq.price,
+            'size': float(orderReq.volume),
+            'margin_trading': margin_trading,
+        }
+        
+        order = VtOrderData()
+        order.gatewayName = self.gatewayName
+        order.symbol = orderReq.symbol
+        order.exchange = 'OKEX'
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.orderID = orderID
+        order.vtOrderID = vtOrderID
+        order.direction = orderReq.direction
+        order.offset = orderReq.offset
+        order.price = orderReq.price
+        order.totalVolume = orderReq.volume
+        
+        self.addRequest('POST', '/api/spot/v3/order', 
+                        callback=self.onSendOrder, 
+                        data=data, 
+                        extra=order,
+                        onFailed=self.onSendOrderFailed,
+                        onError=self.onSendOrderError)
+
+        self.localRemoteDict[orderID] = orderID
+        self.orderDict[orderID] = order
+        return vtOrderID
+    
+    #----------------------------------------------------------------------
+    def cancelOrder(self, cancelOrderReq):
+        """限速规则：10次/2s"""
+        #symbol = cancelOrderReq.symbol
+        orderID = cancelOrderReq.orderID
+        remoteID = self.localRemoteDict.get(orderID, None)
+        print("\ncancel_spot_order\n",remoteID,orderID)
+
+        if not remoteID:
+            self.cancelDict[orderID] = cancelOrderReq
+            return
+
+        req = {
+            'client_oid': orderID,
+            'instrument_id': cancelOrderReq.symbol,
+        }
+        path = '/api/spot/v3/cancel_orders/%s' %(remoteID)
+        self.addRequest('POST', path, params=req,
+                        callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
-    def checkDataError(self, data):
-        """检查回报是否存在错误"""
-        rawData = data['data']
-        if 'error_code' not in rawData:
-            return False
+    def queryContract(self):
+        """"""
+        self.addRequest('GET', '/api/spot/v3/instruments', 
+                        callback=self.onQueryContract)
+    
+    #----------------------------------------------------------------------
+    def queryAccount(self):
+        """"""
+        self.addRequest('GET', '/api/spot/v3/accounts', 
+                        callback=self.onQueryAccount)
+    
+    #----------------------------------------------------------------------
+    def queryOrder(self):
+        """"""
+        self.writeLog('\n\n----------start Quary SPOT Orders,positions,Accounts---------------')
+        for symbol in self.gateway.currency_pairs:  
+            # 未成交
+            req = {
+                'instrument_id': symbol,
+                'status': 'part_filled%7Copen'
+            }
+            path = '/api/spot/v3/orders/%s' %symbol
+            self.addRequest('GET', path, params=req,
+                            callback=self.onQueryOrder)
+
+    # ----------------------------------------------------------------------
+    def cancelAll(self, symbols=None, orders=None):
+        """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
+
+        Parameters
+        ----------
+        symbol : str, optional
+            用逗号隔开的多个合约代码,表示只撤销这些合约的挂单(默认为None,表示撤销所有合约的所有挂单)
+        orders : str, optional
+            用逗号隔开的多个vtOrderID.
+            若为None,先从交易所先查询所有未完成订单作为待撤销订单列表进行撤单;
+            若不为None,则对给出的对应订单中和symbol参数相匹配的订单作为待撤销订单列表进行撤单。
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含本次所有撤销的订单ID的列表
+        """
+        vtOrderIDs = []
+        if symbols:
+            symbols = symbols.split(",")
+        else:
+            symbols = self.gateway.currency_pairs
+        for symbol in symbols:
+            # 未完成(包含未成交和部分成交)
+            req = {
+                'instrument_id': symbol,
+                'status': 6
+            }
+            path = '/api/spot/v3/orders/%s' % symbol
+            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+            request = self.sign2(request)
+            request.extra = orders
+            url = self.makeFullUrl(request.path)
+            response = requests.get(url, headers=request.headers, params=request.params)
+            data = response.json()
+            if data['result'] and data['order_info']:
+                data = self.onCancelAll(data, request)
+                if data['result']:
+                    vtOrderIDs += data['order_ids']
+                    self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
+        print("全部撤单结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCancelAll(self, data, request):
+        orderids = [str(order['order_id']) for order in data['order_info'] if
+                    order['status'] == '0' or order['status'] == '1']
+        if request.extra:
+            orderids = list(set(orderids).intersection(set(request.extra.split(","))))
+        for i in range(len(orderids) // 20 + 1):
+            orderid = orderids[i * 20:(i + 1) * 20]
+
+            req = {
+                'instrument_id': request.params['instrument_id'],
+                'order_ids': orderid
+            }
+            path = '/api/spot/v3/cancel_batch_orders/%s' % request.params['instrument_id']
+            # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+
+            request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+            url = self.makeFullUrl(request.path)
+            response = requests.post(url, headers=request.headers, data=request.data)
+            return response.json()
+
+    def closeAll(self, symbols, direction=None):
+        """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
+
+        Parameters
+        ----------
+        symbols : str
+            所要平仓的合约代码,多个合约代码用逗号分隔开。
+        direction : str, optional
+            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
+
+        Return
+        ------
+        vtOrderIDs: list of str
+        包含平仓操作发送的所有订单ID的列表
+        """
+        vtOrderIDs = []
+        # symbols = symbols.split(",")
+        # for symbol in symbols:
+        #     for key, value in contractMap.items():
+        #         if value == symbol:
+        #             symbol = key
+        #     req = {
+        #         'instrument_id': symbol,
+        #     }
+        #     path = '/api/spot/v3/%s/position/' % symbol
+        #     request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+
+        #     request = sign2(request,self.apiKey,self.apiSecret,self.passphrase)
+        #     request.extra = direction
+        #     url = self.makeFullUrl(request.path)
+        #     response = requests.get(url, headers=request.headers, params=request.params)
+        #     data = response.json()
+        #     if data['result'] and data['holding']:
+        #         data = self.onCloseAll(data, request)
+        #         for i in data:
+        #             if i['result']:
+        #                 vtOrderIDs.append(i['order_id'])
+        #                 self.writeLog(u'平仓成功%s' % i)
+        # print("全部平仓结果", vtOrderIDs)
+        return vtOrderIDs
+
+    def onCloseAll(self, data, request):
+        l = []
+
+        # def _response(request, l):
+        #     request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+        #     url = self.makeFullUrl(request.path)
+        #     response = requests.post(url, headers=request.headers, data=request.data)
+        #     l.append(response.json())
+            # return l
+        # for holding in data['holding']:
+        #     path = '/api/spot/v3/order'
+        #     req_long = {
+        #         'instrument_id': holding['instrument_id'],
+        #         'type': '3',
+        #         'price': holding['long_avg_cost'],
+        #         'size': str(holding['long_avail_qty']),
+        #         'match_price': '1',
+        #         'leverage': self.leverage,
+        #     }
+        #     req_short = {
+        #         'instrument_id': holding['instrument_id'],
+        #         'type': '4',
+        #         'price': holding['short_avg_cost'],
+        #         'size': str(holding['short_avail_qty']),
+        #         'match_price': '1',
+        #         'leverage': self.leverage,
+        #     }
+        #     if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
+        #         # 多仓可平
+        #         request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+        #         l = _response(request, l)
+        #     elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
+        #         # 空仓可平
+        #         request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+        #         l = _response(request, l)
+        #     elif request.extra is None:
+        #         if int(holding['long_avail_qty']) > 0:
+        #             # 多仓可平
+        #             request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
+        #             l = _response(request, l)
+        #         if int(holding['short_avail_qty']) > 0:
+        #             # 空仓可平
+        #             request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
+        #             l = _response(request, l)
+        return l
+
+    #----------------------------------------------------------------------
+    def onQueryContract(self, data, request):
+        """ [{"base_currency":"DASH","base_increment":"0.000001","base_min_size":"0.001","instrument_id":"DASH-BTC",
+        "min_size":"0.001","product_id":"DASH-BTC","quote_currency":"BTC","quote_increment":"0.00000001",
+        "size_increment":"0.000001","tick_size":"0.00000001"}"""
+        # print("spot,symbol",data)
+        for d in data:
+            contract = VtContractData()
+            contract.gatewayName = self.gatewayName
+            
+            contract.symbol = d['instrument_id']
+            contract.exchange = 'OKEX'
+            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
+            
+            contract.name = contract.symbol
+            contract.productClass = PRODUCT_FUTURES
+            contract.priceTick = float(d['tick_size'])
+            contract.size = float(d['size_increment'])
+            
+            self.contractDict[contract.symbol] = contract
+
+            self.gateway.onContract(contract)
+        self.writeLog(u'合约信息查询成功')
+        self.queryOrder()
+        self.queryAccount()
+        
+    #----------------------------------------------------------------------
+    def onQueryAccount(self, data, request):
+        # print("spot_account",data)
+        """[{"frozen":"0","hold":"0","id":"8445285","currency":"BTC","balance":"0.00000000723",
+        "available":"0.00000000723","holds":"0"},
+        {"frozen":"0","hold":"0","id":"8445285","currency":"ETH","balance":"0.0100001336",
+        "available":"0.0100001336","holds":"0"}]"""
+
+        for currency in data:
+            account = VtAccountData()
+            account.gatewayName = self.gatewayName
+            
+            account.accountID = currency['currency']
+            account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+            
+            account.balance = float(currency['balance'])
+            account.available = float(currency['available'])
+            
+            self.gateway.onAccount(account)
+    
+    #----------------------------------------------------------------------
+    def onQueryOrder(self, data, request):
+        """{
+            "order_id": "233456", "notional": "10000.0000", "price"："8014.23"， "size"："4", "instrument_id": "BTC-USDT",  
+            "side": "buy", "type": "market", "timestamp": "2016-12-08T20:09:05.508Z",
+            "filled_size": "0.1291771", "filled_notional": "10000.0000", "status": "filled"
+        }"""
+        for d in data['order_info']:
+            #print(d,"or")
+
+            order = self.orderDict.get(str(d['order_id']),None)
+
+            if not order:
+                order = VtOrderData()
+                order.gatewayName = self.gatewayName
+                
+                order.symbol = d['instrument_id']
+                order.exchange = 'OKEX'
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+
+                self.gateway.orderID += 1
+                order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                self.localRemoteDict[order.orderID] = d['order_id']
+                order.tradedVolume = 0
+                self.writeLog('order by other source, id: %s'%d['order_id'])
+
+            if str(data['side']) == 'buy':
+                order.direction, order.offset = typeMapReverse['1']
+            elif str(data['side']) == 'sell':
+                order.direction, order.offset = typeMapReverse['2']
+            
+            order.price = float(d['price'])
+            order.price_avg = float(d['filled_notional'])/float(d['filled_size'])
+            order.totalVolume = int(d['size'])
+            order.thisTradedVolume = int(d['filled_size']) - order.tradedVolume
+            order.tradedVolume = int(d['filled_size'])
+            order.status = statusMapReverse[d['status']]
+            
+            dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
+            order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()
+            
+            self.gateway.onOrder(order)
+            self.orderDict[d['order_id']] = order
+
+            if order.thisTradedVolume:
+
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = order.price_avg
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                
+                self.gateway.onTrade(trade)
+    
+    #----------------------------------------------------------------------
+    def onSendOrderFailed(self, data, request):
+        """
+        下单失败回调：服务器明确告知下单失败
+        """
+        self.writeLog("%s onsendorderfailed, %s"%(data,request.response.text))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
+        """
+        下单失败回调：连接错误
+        """
+        self.writeLog("%s onsendordererror, %s"%(exceptionType,exceptionValue))
+        order = request.extra
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = "onSendOrderError: OKEX server issue"#str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        self.gateway.onOrder(order)
+    
+    #----------------------------------------------------------------------
+    def onSendOrder(self, data, request):
+        """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
+        'order_id': '1878377147147264'}"""
+
+        self.localRemoteDict[data['client_oid']] = data['order_id']
+        self.orderDict[data['order_id']] = self.orderDict[data['client_oid']]#request.extra
+        
+        if data['client_oid'] in self.cancelDict:
+            req = self.cancelDict.pop(data['client_oid'])
+            self.cancelOrder(req)
+
+        if data['error_code']:
+            self.writeLog('WARNING: %s sendorder error %s %s'%(data['client_oid'],data['error_code'],data['error_message']))
+
+        self.writeLog('localID:%s,--,exchangeID:%s'%(data['client_oid'],data['order_id']))
+
+        # print('\nsendorder cancelDict:',self.cancelDict,"\nremotedict:",self.localRemoteDict,
+        # "\norderDict:",self.orderDict.keys())
+    
+    #----------------------------------------------------------------------
+    def onCancelOrder(self, data, request):
+        """1:{'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
+        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
+        'error_code': '32004', 'order_id': '1882519016480768'} 
+        """
+        if data['result']:
+            self.writeLog(u'交易所返回%s撤单成功: id: %s'%(data['instrument_id'],str(data['order_id'])))
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName
-            error.errorID = rawData['error_code']
-            error.errorMsg = u'请求失败，功能：%s' %data['channel']
-            self.writeLog("from_error_msg:%s"%data)
+            error.errorID = data['error_code']
+            if 'error_message' in data.keys():
+                error.errorMsg = str(data['order_id']) + ' ' + data['error_message']
+            else:
+                error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
-            return True
+    #----------------------------------------------------------------------
+    def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
+        """
+        请求失败处理函数（HttpStatusCode!=2xx）.
+        默认行为是打印到stderr
+        """
+        print("onfailed",request)
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = str(httpStatusCode)
+        e.errorMsg = str(httpStatusCode) #request.response.text
+        self.gateway.onError(e)
+    
+    #----------------------------------------------------------------------
+    def onError(self, exceptionType, exceptionValue, tb, request):
+        """
+        Python内部错误处理：默认行为是仍给excepthook
+        """
+        print(request,"onerror")
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
+
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
+
+    def loadHistoryBarV3(self,vtSymbol,type_,size=None,since=None,end=None):
+        """[{"close":"3417.0365","high":"3444.0271","low":"3412.535","open":"3432.194","time":"2018-12-11T09:00:00.000Z","volume":"1215.46194777"}]"""
+        
+        instrument_id = vtSymbol.split(VN_SEPARATOR)[0]
+        params = {'granularity':granularityMap[type_]}
+        url = REST_HOST +'/api/spot/v3/instruments/'+instrument_id+'/candles?'
+        if size:
+            s = datetime.now()-timedelta(seconds = (size*granularityMap[type_]))
+            params['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
+
+        if since:
+            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            params['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
+            
+        if end:
+            params['end'] = end
+        else:
+            params['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
+
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = params,timeout=10)
+        text = eval(r.text)
+
+        df = pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume"])
+        df["datetime"] = df["time"].map(lambda x: datetime.strptime(x,"%Y-%m-%dT%H:%M:%S.%fZ"))
+        # delta = timedelta(hours=8)
+        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
+        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+
+        return df
+
+class OkexSpotWebsocketApi(WebsocketClient):
+    """SPOT WS API"""
+    #----------------------------------------------------------------------
+    def __init__(self, gateway):
+        """Constructor"""
+        super(OkexSpotWebsocketApi, self).__init__()
+        
+        self.gateway = gateway
+        self.gatewayName = gateway.gatewayName
+        
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+        
+        self.orderDict = gateway.orderDict
+        self.localRemoteDict = gateway.localRemoteDict
+        
+        self.callbackDict = {}
+        self.channelSymbolDict = {}
+        self.tickDict = {}
+    
+    #----------------------------------------------------------------------
+    def unpackData(self, data):
+        """重载"""
+        return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
+        
+    #----------------------------------------------------------------------
+    def connect(self, apiKey, apiSecret, passphrase):
+        """"""
+        self.apiKey = apiKey
+        self.apiSecret = apiSecret
+        self.passphrase = passphrase
+        
+        self.init(WEBSOCKET_HOST_V3)
+        self.start()
+    
+    #----------------------------------------------------------------------
+    def onConnected(self):
+        """连接回调"""
+        self.writeLog(u'SPOT Websocket API连接成功')
+        self.login()
+    
+    #----------------------------------------------------------------------
+    def onDisconnected(self):
+        """连接回调"""
+        self.writeLog(u'SPOT Websocket API连接断开')
+    
+    #----------------------------------------------------------------------
+    def onPacket(self, packet):
+        """数据回调"""
+        #print(packet,"*********************")
+        if 'event' in packet.keys():
+            if packet['event'] == 'login':
+                callback = self.callbackDict['login']
+                callback(packet)
+            elif packet['event'] == 'subscribe':
+                self.writeLog(u'SPOT subscribe %s successfully'%packet['channel'])
+            else:
+                self.writeLog(u'SPOT info %s'%packet)
+        elif 'error_code' in packet.keys():
+            print('SPOT error:',packet['error_code'])
+        else:
+            channel = packet['table']
+            callback = self.callbackDict.get(channel, None)
+            if callback:
+                callback(packet['data'])
+    
+    #----------------------------------------------------------------------
+    def onError(self, exceptionType, exceptionValue, tb):
+        """Python错误回调"""
+        e = VtErrorData()
+        e.gatewayName = self.gatewayName
+        e.errorID = exceptionType
+        e.errorMsg = exceptionValue
+        self.gateway.onError(e)
+        
+        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
+    
+    #----------------------------------------------------------------------
+    def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.gateway.onLog(log)    
 
     #----------------------------------------------------------------------
-    def subscribe(self, symbol,contractType):
-        """订阅行情"""
-        self.subsribeFuturesTicker(symbol,contractType)
-        # self.subscribeFuturesKline(symbol,"this_week","30min")  # 订阅推送K线数据
-        self.subscribeFuturesDepth(symbol,contractType)
-        self.subscribeFuturesTrades(symbol,contractType)
-        # self.subscribeFuturesUserInfo()
-    #------------------------------------------------------
-    #Restful 配置
-    def rest_futures_position(self, symbol,contractType):
-        """初始化时查询持仓（因为ws接口不给，只能rest）"""
-        try:
-            data = self.future_position(symbol,contractType)
-        except:
-            return ''
-        """
-        {'result': True, 
-        'holding': [
-            {'buy_price_avg': 653.83300536, 'symbol': 'bch_usd', 'lever_rate': 10, 'buy_available': 0, 
-            'contract_id': 201807060050052, 'buy_amount': 0, 'buy_profit_real': -0.0011777, 
-            'contract_type': 'this_week', 'sell_amount': 0, 'sell_price_cost': 655.176, 
-            'buy_price_cost': 653.83300536, 'create_date': 1529979371000,'sell_price_avg': 655.176, 
-            'sell_profit_real': -0.0011777, 'sell_available': 0}], 'force_liqu_price': '0.000'}
-        """
-        # print("restonFuturesPosition",data)
-        if data['result']:
-            if not data['holding']:
-                return
-            position = data['holding'][0]
-            pos = VtPositionData()
-            pos.gatewayName = self.gatewayName
-            pos.exchange = EXCHANGE_OKEX
-            symbol = position['symbol'][:3]
-            contract_type = position['contract_type']
-            pos.symbol = symbol + '_' + contract_type
-            pos.vtSymbol = VN_SEPARATOR.join([pos.symbol, pos.gatewayName])
-            self.contractidDict[str(position['contract_id'])] =pos.symbol
-
-            pos1 = copy(pos)
-            pos1.direction = DIRECTION_LONG
-            pos1.vtPositionName = VN_SEPARATOR.join([pos1.vtSymbol, pos1.direction])
-            
-            # 汇总总仓
-            pos1.position = position['buy_amount']
-            pos1.positionProfit = position['buy_profit_real']
-            pos1.price =  position['buy_price_avg']
-            pos1.frozen = pos1.position - position['buy_available']
-            print('**RESTFUL_initposition**',pos1.vtPositionName,pos1.position,pos1.frozen)
-            self.gateway.onPosition(pos1)
-
-            pos2 = copy(pos)
-            pos2.direction = DIRECTION_SHORT
-            pos2.vtPositionName = VN_SEPARATOR.join([pos2.vtSymbol, pos2.direction])
-
-            # 汇总总仓
-            pos2.position = position['sell_amount']
-            pos2.positionProfit = position['sell_profit_real']
-            pos2.price =  position['sell_price_avg']
-            pos2.frozen = pos2.position - position['sell_available']
-            print('**RESTFUL_initposition**',pos2.vtPositionName,pos2.position,pos1.frozen)
-            self.gateway.onPosition(pos2)
-            # # 遍历推送
-            # for pos in list(self.posDict.values()):
-            #     self.gateway.onPosition(pos)
-            # # 清空缓存
-            # self.posDict.clear()
-        else:
-            # {'result': False, 'error_code': 20022, 'interface': '/api/v1/future_position_4fix'}
-            return data['error_code']
-
-
-    def rest_qry_order(self, symbol, contractType, order_id, status = None ):
-        """
-                {
-        "orders":
-            [
-                {
-                    "amount":1,
-                    "contract_name":"LTC0815",
-                    "create_date":1408076414000,
-                    "deal_amount":1,
-                    "fee":0,
-                    "order_id":106837,
-                    "price":1111,
-                    "price_avg":0,
-                    "status":"0",
-                    "symbol":"ltc_usd",
-                    "type":"1",
-                    "unit_amount":10,
-                    "lever_rate":10
-                }
-            ],
-        "result":true
+    def login(self):
+        """"""
+        timestamp = str(time.time())
+        
+        msg = timestamp + 'GET' + '/users/self/verify'
+        signature = generateSignature(msg, self.apiSecret)
+        
+        req = {
+            "op": "login",
+            "args": [self.apiKey,self.passphrase,timestamp,str(signature,encoding = "utf-8")]
         }
-        """
-        try:
-            data = self.future_order_info(symbol,contractType,order_id,status)
-        except:
-            self.writeLog(u'***rest_qry_order***return_error,ID:(%s)'%order_id)
+        self.sendPacket(req)
+        
+        self.callbackDict['login'] = self.onLogin
+        
+    #----------------------------------------------------------------------
+    def subscribe(self, symbol):
+        """"""
+        # 订阅TICKER
+        channel1 = 'spot/ticker:%s' %(symbol)
+        self.callbackDict['spot/ticker'] = self.onSpotTick
+        self.channelSymbolDict[channel1] = symbol
+        
+        req1 = {
+            'op': 'subscribe',
+            'args': channel1
+        }
+        self.sendPacket(req1)
+        
+        # 订阅DEPTH
+        channel2 = 'spot/depth5:%s' %(symbol)
+        self.callbackDict['spot/depth5'] = self.onSpotDepth
+        self.channelSymbolDict[channel2] = symbol
+        
+        req2 = {
+            'op': 'subscribe',
+            'args': channel2
+        }
+        self.sendPacket(req2)
+
+        # subscribe trade
+        channel3 = 'spot/trade:%s' %(symbol)
+        self.callbackDict['spot/trade'] = self.onSpotTrades
+        self.channelSymbolDict[channel3] = symbol
+
+        req3 = {
+            'op': 'subscribe',
+            'args': channel3
+        }
+        self.sendPacket(req3)
+        
+        # 创建Tick对象
+        tick = VtTickData()
+        tick.gatewayName = self.gatewayName
+        tick.symbol = symbol
+        tick.exchange = 'OKEX'
+        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        self.tickDict[tick.symbol] = tick
+    
+    #----------------------------------------------------------------------
+    def onLogin(self, d):
+        """"""
+        if not d['success']:
             return
         
-        if 'result' in data.keys():
-            if data['result']:
-                orderinfo = data['orders']
-                self.writeLog(u'***rest_qry_order**found %s orders,**%s**'%(len(orderinfo),data))
-                for i in range(len(orderinfo)):
-                    orderdetail = orderinfo[i]
-                    order_id = str(orderdetail['order_id'])
-                    if order_id not in self.wsOrderDict.keys():
-                        return
+        # 订阅交易相关推送
+        self.callbackDict['spot/order'] = self.onTrade
+        self.callbackDict['spot/account'] = self.onAccount
 
-                    if order_id in self.exchangeOrderDict.keys():
-                        vtOrderID = self.exchangeOrderDict[order_id]
-                        if vtOrderID == 'fromws':
-                            self.writeLog(u'no vtorderID found in id = %s'%order_id)
-                            continue
-                        order = self.orderDict[vtOrderID]
-
-                        order.status = statusMap[orderdetail['status']]
-                        lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = int(orderdetail['deal_amount'])
-                        order.thisTradedVolume = order.tradedVolume - lastTradedVolume
-                        order.price = orderdetail['price']
-                        order.price_avg = orderdetail['price_avg']
-                        order.deliverTime = datetime.now()
-                        order.fee = orderdetail['fee']
-                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-
-                        self.writeLog(u'rest_qry_order_findout_%s,%s,status:%s'%(
-                                order.symbol,order.vtOrderID,order.status))
-                    else:
-                        self.writeLog(
-                            'rest_qry_order: we don\'t have this order in record, Now create it!!  id = %s'%order_id)
-                        order = VtOrderData()
-                        order.symbol = symbol[:3] + contractType
-                        order.gatewayName = self.gatewayName
-                        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-                        order.exchange = EXCHANGE_OKEX
-                        order.price = orderdetail['price']
-                        order.price_avg = orderdetail['price_avg']
-                        order.direction, order.offset = futureOrderTypeMap[str(orderdetail['type'])]
-                        order.totalVolume = int(orderdetail['amount'])    
-                        order.exchangeOrderID = order_id        
-                        order.gatewayName = self.gatewayName
-                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-                        
-                        order.deliverTime = datetime.now()
-                        order.status = statusMap[orderdetail['status']] 
-                        order.fee = orderdetail['fee']
-                        # lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = int(orderdetail['deal_amount'])
-                        self.wsOrderDict[order_id] = order
-                    
-                    self.order_arbitration(order)    #进入订单信息仲裁匹配
-            else:
-                self.writeLog(u'rest_qry_order: 没有订单')
-
-    def rest_future_bar(self, symbol, type_, contract_type, size=None, since=None):
-        data = self.futureKline(symbol, type_, contract_type, size, since)
-        return data
-
-    def batchCancelOrder(self, reqList):
-        cancelMenu = {}
-        for req in reqList:
-            cancelMenu[req.symbol] =[]
-
-        for req in reqList:
-            localNo = str(req.orderID)
+        for currency in self.gateway.currency_pairs:
+            self.subscribe(currency)
+            self.sendPacket({'op': 'subscribe', 'args': 'spot/account:%s'%currency.split('-')[0]})
+            self.sendPacket({'op': 'subscribe', 'args': 'spot/order:%s'%currency})
+    #----------------------------------------------------------------------
+    def onSpotTick(self, d):
+        # print(d,"tickerrrrrrrrrrrrrrrrrrrr\n\n")
+        """{'table': 'spot/ticker', 'data': [{
+            'instrument_id': 'ETH-USDT', 'last': '120.2243', 'best_bid': '120.1841', 'best_ask': '120.2242', 
+            'open_24h': '121.1132', 'high_24h': '121.7449', 'low_24h': '117.5606', 'base_volume_24h': '386475.880496', 
+            'quote_volume_24h': '46309890.36931134', 'timestamp': '2019-01-19T08:50:40.943Z'}]} """
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
             
-            if localNo in self.localNoDict.keys():
-                orderID = self.localNoDict[localNo]
-                cancelMenu[req.symbol].insert(-1,orderID)
-            else:
-                # 如果在系统委托号返回前客户就发送了撤单请求，则保存
-                # 在cancelDict字典中，等待返回后执行撤单任务
-                self.cancelDict[localNo] = req
-                self.writeLog(u'gw_rest_cancel_Not in localNoDict: we cannot cancel this order')
-        # data = {}
-        for key in cancelMenu.keys():
-            symbol = key[:3]+"_usd"
-            contract_type = key[4:]
-            try:
-                data = self.future_cancel_order(symbol, contract_type, cancelMenu[key])
-            except:
-                self.writeLog(u'***rest_cancel_batch_orders***return_error*******DICT:%s'%cancelMenu[key])
-            self.writeLog(u'--gw-rest_cancelorder---,%s,%s,%s'%(symbol,cancelMenu[key],contract_type))
-        
-        del cancelMenu
-        return data
-
-    #----------------------------------------------------------------
-    def batchQryOrder(self, symbol, contract_type, order_id_list):
-        """
-        {"orders":
-            [{
-                    "amount":1,
-                    "contract_name":"LTC0815",
-                    "create_date":1408076414000,
-                    "deal_amount":1,
-                    "fee":0,
-                    "order_id":106837,
-                    "price":1111,
-                    "price_avg":0,
-                    "status":"0",
-                    "symbol":"ltc_usd",
-                    "type":"1",
-                    "unit_amount":10,
-                    "lever_rate":10
-                }],
-        "result":true
-        }
-        """
-        try:
-            data = self.future_orders_info(symbol,contract_type,order_id_list)
-        except:
-            self.writeLog(u'***batchQryOrder***%s,%sreturn_error,ID:(%s)'%(symbol, contract_type, order_id_list))
-            return
-        
-        if 'result' in data.keys():
-            if data['result']:
-                orderinfo = data['orders']
-                # self.writeLog(u'***batchQryOrder**found %s orders,**%s**'%(len(orderinfo),data))
-                for i in range(len(orderinfo)):
-                    orderdetail = orderinfo[i]
-                    order_id = str(orderdetail['order_id'])
-                    if order_id in self.filledList:
-                        if order_id in self.sendOrderDict.keys():
-                            del self.sendOrderDict[order_id]
-                        if order_id in self.wsOrderDict.keys():
-                            del self.wsOrderDict[order_id]
-                        if order_id in self.exchangeOrderDict.keys():
-                            del self.exchangeOrderDict[order_id]
-                        self.writeLog('gw_batchQryOrder_again_remove_dictKeys_that_filled_or_cancelled(%s)'%(order_id))
-                        continue
-                    if order_id not in self.wsOrderDict.keys():
-                        return
-
-                    if order_id in self.exchangeOrderDict.keys():
-                        vtOrderID = self.exchangeOrderDict[order_id]
-                        if vtOrderID == 'fromws':
-                            self.writeLog(u'no vtorderID found in id = %s'%order_id)
-                            continue
-                        order = self.orderDict[vtOrderID]
-
-                        order.status = statusMap[orderdetail['status']]
-                        lastTradedVolume = order.tradedVolume
-                        order.tradedVolume = int(orderdetail['deal_amount'])
-                        order.thisTradedVolume = order.tradedVolume - lastTradedVolume
-                        order.price = orderdetail['price']
-                        order.price_avg = orderdetail['price_avg']
-                        order.deliverTime = datetime.now()
-                        order.fee = orderdetail['fee']
-                        order.orderDatetime  = datetime.fromtimestamp(float(orderdetail['create_date'])/1e3)
-
-                        self.writeLog(u'batchQryOrder_findout_%s,%s,status:%s'%(
-                                order.symbol,order.vtOrderID,order.status))
-                        self.order_arbitration(order)  # 进入订单匹配流程
-
-                    else:
-                        self.writeLog(
-                            'batchQryOrder: this id: %s has been dropped after filled or cancelled'%order_id)
-                    
-            else:
-                self.writeLog(u'batchQryOrder: 没有订单')
+            tick.lastPrice = float(data['last'])
+            tick.highPrice = float(data['high_24h'])
+            tick.lowPrice = float(data['low_24h'])
+            tick.volume = float(data['quote_volume_24h'])
+            tick.askPrice1 = float(data['best_ask'])
+            tick.bidPrice1 = float(data['best_bid'])
+            # tick.upperLimit = float(data['limitHigh'])
+            # tick.lowerLimit = float(data['limitLow'])
+            # tick.openInterest = float(data['hold_amount'])
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
             
+            if tick.askPrice5:    
+                tick=copy(tick)    
+                self.gateway.onTick(tick)
+
+    #----------------------------------------------------------------------
+    def onSpotDepth(self, d):
+        """{'table': 'spot/depth5', 'data': [{
+            'asks': [['120.2248', '1.468488', 1], ['120.2397', '14.27', 1], ['120.2424', '0.3', 1], 
+            ['120.2454', '3.805996', 1], ['120.25', '0.003', 1]], 
+            'bids': [['120.1868', '0.12', 1], ['120.1732', '0.354665', 1], ['120.1679', '21.15', 1], 
+            ['120.1678', '23.25', 1], ['120.1677', '18.760982', 1]], 
+            'instrument_id': 'ETH-USDT', 'timestamp': '2019-01-19T08:50:41.422Z'}]} """
+        # print(d,"depthhhhh\n\n")
+        for data in d:
+            tick = self.tickDict[data['instrument_id']]
+            
+            for n, buf in enumerate(data['bids']):
+                price, volume = buf[:2]
+                tick.__setattr__('bidPrice%s' %(n+1), float(price))
+                tick.__setattr__('bidVolume%s' %(n+1), float(volume))
+            
+            for n, buf in enumerate(data['asks']):
+                price, volume = buf[:2]
+                tick.__setattr__('askPrice%s' %(10-n), float(price))
+                tick.__setattr__('askVolume%s' %(10-n), float(volume))
+            
+            tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            tick.date = tick.datetime.strftime('%Y%m%d')
+            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.localTime = datetime.now()
+            tick.volumeChange = 0
+            if tick.lastPrice:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+
+    def onSpotTrades(self,d):
+        """[{'instrument_id': 'ETH-USDT', 'price': '120.32', 'side': 'buy', 'size': '1.628', 
+        'timestamp': '2019-01-19T08:56:48.669Z', 'trade_id': '782430504'}]"""
+        # print(d,"tradessss\n\n\n\n\n")
+        for n, data in enumerate(d):
+            tick = self.tickDict[data['instrument_id']]
+            tick.lastPrice = float(data['price'])
+            tick.lastVolume = float(data['size'])
+            tick.lastTradedTime = data['timestamp']
+            tick.type = data['side']
+
+            tick.volumeChange = 1
+            tick.localTime = datetime.now()
+            if tick.askPrice1:
+                tick=copy(tick)
+                self.gateway.onTick(tick)
+    #---------------------------------------------------
+    def onTrade(self, d):
+        """{
+            "table": "spot/order",
+            "data": [{
+                "filled_notional": "0", "filled_size": "0",
+                "instrument_id": "LTC-USDT", "margin_trading": "2",
+                "notional": "", "order_id": "1997224323070976",
+                "price": "1", "side": "buy", "size": "1", "status": "open",
+                "timestamp": "2018-12-19T09:20:24.608Z", "type": "limit"
+            }]
+        }"""
+        # print(d)
+        for n, data in enumerate(d):
+            order = self.orderDict.get(str(data['order_id']), None)
+            if not order:
+                order = VtOrderData()
+                order.gatewayName = self.gatewayName
+                order.symbol = data['instrument_id']
+                order.exchange = 'OKEX'
+                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+
+                if 'client_oid' in data.keys():
+                    order.orderID = data['client_oid']
+                else:
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+
+                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                order.price = data['price']
+                order.totalVolume = float(data['size'])
+                order.tradedVolume = 0
+            if str(data['side']) == 'buy':
+                order.direction, order.offset = typeMapReverse['1']
+            elif str(data['side']) == 'sell':
+                order.direction, order.offset = typeMapReverse['2']
+            
+            order.orderDatetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
+            order.price_avg = float(data['filled_notional'])/float(data['filled_size'])
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            order.deliveryTime = datetime.now()   
+            order.thisTradedVolume = float(data['filled_size']) - order.tradedVolume
+            order.status = statusMapReverse[str(data['status'])]
+            order.tradedVolume = float(data['filled_size'])
+
+            self.gateway.onOrder(copy(order))
+            self.localRemoteDict[order.orderID] = str(data['order_id'])
+            self.orderDict[str(data['order_id'])] = order
+
+            if order.thisTradedVolume:
+                self.gateway.tradeID += 1
+                
+                trade = VtTradeData()
+                trade.gatewayName = order.gatewayName
+                trade.symbol = order.symbol
+                trade.exchange = order.exchange
+                trade.vtSymbol = order.vtSymbol
+                
+                trade.orderID = order.orderID
+                trade.vtOrderID = order.vtOrderID
+                trade.tradeID = str(self.gateway.tradeID)
+                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                
+                trade.direction = order.direction
+                trade.offset = order.offset
+                trade.volume = order.thisTradedVolume
+                trade.price = order.price_avg
+                trade.tradeDatetime = datetime.now()
+                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                self.gateway.onTrade(trade)
+            if order.status==STATUS_ALLTRADED or order.status==STATUS_CANCELLED:
+                if order.orderID in self.localRemoteDict:
+                    del self.localRemoteDict[order.orderID]
+                if str(data['order_id']) in self.orderDict:
+                    del self.orderDict[str(data['order_id'])]
+                if order.orderID in self.orderDict:
+                    del self.orderDict[order.orderID]
+        
+    #----------------------------------------------------------------------
+    def onAccount(self, d):
+        """[{'balance': '0.0100001336', 'available': '0.0100001336', 'currency': 'ETH', 'id': '8445285', 'hold': '0'}]"""
+        print(d)
+        for n, data in enumerate(d):
+            account = VtAccountData()
+            account.gatewayName = self.gatewayName
+            account.accountID = data['currency']+'_SPOT'
+            account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
+            
+            account.balance = data['balance']
+            account.available = data['available']
+        
+            self.gateway.onAccount(account)
+
+            # position = VtPositionData()
+            # position.gatewayName = self.gatewayName
+            # position.symbol = symbol # 无法判定对应的spot symbol
+            # position.exchange = 'OKEX'
+            # position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
+            # position.position = data['balance']
+            # position.available = data['available']
+            # position.frozen = position.position - position.available
+            # position.direction = DIRECTION_LONG
+            # position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
+            # self.gateway.onPosition(position)

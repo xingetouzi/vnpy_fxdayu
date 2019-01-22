@@ -1,12 +1,14 @@
 {
     "apiKey": "",
-    "secretKey": "",
-    "trace": false,
-    "symbols":["btc_usdt","ltc_btc","bch_eth"],
-    "contracts":["btc_this_week","btc_next_week","btc_quarter",
-        "bch_this_week","bch_next_week","bch_quarter",
-        "eth_this_week","eth_next_week","eth_quarter"],
+    "apiSecret": "",
+    "passphrase": "",
+    "future_leverage": 10,
+    "swap_leverage": 1,
+    "margin_token": 3,
+    "contracts":["eos_this_week","EOS-USD-SWAP","EOS-USDT"],
+    "sessionCount": 3,
     "setQryEnabled": false,
     "setQryFreq": 60,
+    "trace": false,
     "note":""
 }
