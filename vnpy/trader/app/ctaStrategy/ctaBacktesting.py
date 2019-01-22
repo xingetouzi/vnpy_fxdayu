@@ -276,8 +276,8 @@ class BacktestingEngine(object):
                     symbols_no_data[symbol].remove(file.replace(".h5", ""))
             no_data_days += len(symbols_no_data[symbol])
 
-        # 如果没有完全从本地文件加载完数据,则从mongodb下载数据，并缓存到本地
-        if no_data_days > 0:
+        # 如果没有完全从本地文件加载完数据,则尝试从指定的mongodb下载数据，并缓存到本地
+        if len(self.dbName) > 0 and no_data_days > 0:
             try:
                 self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'])
                 for symbol in symbolList:

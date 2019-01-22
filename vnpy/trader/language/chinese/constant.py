@@ -117,3 +117,6 @@ GATEWAYTYPE_BTC = 'btc'                         # 比特币
 GATEWAYTYPE_DATA = 'data'                       # 数据（非交易）
 
 VN_SEPARATOR = ':'
+DATETIME_FORMAT = '%Y%m%d %H:%M:%S.%f'
+DATE_FORMAT = '%Y%m%d'
+TIME_FORMAT = '%H:%M:%S.%f'

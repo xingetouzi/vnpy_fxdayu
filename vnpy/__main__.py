@@ -4,6 +4,8 @@ import click
 import pathlib
 import importlib
 
+os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
+
 CONTEXT_SETTINGS = {
     'default_map': {
         'run': {

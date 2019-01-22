@@ -3,13 +3,22 @@ import time
 import json
 import base64
 from threading import Thread
+from io import BytesIO
+import re
 
 import requests
+import pycurl
 
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin, CtaEngine as CtaEngineMetric
 from ..ctaPlugin import CtaEnginePlugin
 from vnpy.trader.vtFunction import getJsonPath
 from vnpy.trader.utils import LoggerMixin
+
+
+class IpError(Exception):
+    def __init__(self, *args):
+        super(IpError, self).__init__(*args)
+
 
 class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     MAX_RETRY = 5
@@ -17,7 +26,6 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     def __init__(self):
         super(CtaStrategyInfoPlugin, self).__init__()
         LoggerMixin.__init__(self)
-        self._falcon_url = os.environ.get("OPEN_FALCON_URL", "http://localhost:1988/v1/push")
         self._etcd_url = os.environ.get("ETCD_URL", "http://localhost:2379/v3beta/kv/put")
         self.ctaEngine = None
 
@@ -47,10 +55,49 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
                 "mailAdd": strategy.mailAdd,
                 "gatewayConfDict": gatewayConfDict,
                 "version": timestamp,
-                "ip": os.popen('curl -s ip.sb').read().strip()
+                "ip": ""
             }
             self.push_falcon(d)
             self.push_etcd(strategy.name, json.dumps(d))
+
+    def is_ip(self, s):
+        pattern = '^(([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.){3}([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])$'
+        r = re.compile(pattern)
+        r = r.match(s)
+        if r is None:
+            return None
+        else:
+            return True
+
+    def get_ip(self):
+        try:
+            buffer = BytesIO()
+            c = pycurl.Curl()
+            c.setopt(c.URL, 'http://ip.sb')
+            c.setopt(c.WRITEDATA, buffer)
+            c.perform()
+            c.close()
+            body = buffer.getvalue()
+            res = body.decode("utf-8").strip()
+            if self.is_ip(res) is True:
+                return res
+            else:
+                return ""
+        except Exception as e:
+            self.error(e)
+            return ""
+
+    def get_ip2(self):
+        try:
+            r = requests.get('http://ip.42.pl/raw')
+            res = r.content.decode("utf8").strip()
+            if self.is_ip(res) is True:
+                return res
+            else:
+                return ""
+        except Exception as e:
+            self.error(e)
+            return ""
 
     def _do_push_falcon(self, data):
         mp = self.ctaEngine.getPlugin(CtaMerticPlugin)
@@ -68,12 +115,20 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     def _do_push_etcd(self, k, v):
         name = k
         k = base64.b64encode(k.encode('utf-8'))
-        v = base64.b64encode(v.encode('utf-8'))
-        self.info(u"推送策略%s的配置信息到etcd", name)
         retry = 0
         wait = 1
         while True:
             try:
+                if isinstance(v, bytes):
+                    v = base64.b64decode(v).decode("utf-8")
+                if not isinstance(v, dict):
+                    v = json.loads(v)
+                v["ip"] = v["ip"] or self.get_ip() or self.get_ip2()
+                if not v['ip']:
+                    raise IpError("ip为空")
+                v = json.dumps(v)
+                v = base64.b64encode(v.encode('utf-8'))
+                self.info(u"推送策略%s的配置信息到etcd", name)
                 r = requests.post(self._etcd_url,
                                 json={"key": str(k, encoding='utf-8'), "value": str(v, encoding='utf-8')})
                 r.raise_for_status()

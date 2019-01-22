@@ -323,6 +323,11 @@ class CtaEngine(CtaEngineWithPlugins):
         plugin = self.getPlugin(CtaMerticPlugin)
         plugin.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=strategy)
 
+    def stopStrategy(self, name):
+        super(CtaEngineWithPlugins, self).stopStrategy(name)
+        plugin = self.getPlugin(CtaMerticPlugin)
+        if plugin.is_enabled():
+            plugin.pushMetrics()
 
 class CtaTemplate(CtaTemplate):
     def addMetric(self, value, metric, tags=None, step=None, counter_type=None):
