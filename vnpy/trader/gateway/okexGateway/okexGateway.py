@@ -68,7 +68,6 @@ granularityMap['720min'] =43200
 granularityMap['1day'] =86400
 granularityMap['1week'] =604800
 
-contractMap = {}
 #----------------------------------------------------------------------
 def generateSignature(msg, apiSecret):
     """签名V3"""
@@ -98,6 +97,7 @@ class OkexGateway(VtGateway):
         self.wsSwapApi = OkexSwapWebsocketApi(self)
         self.restSpotApi = OkexSpotRestApi(self)
         self.wsSpotApi = OkexSpotWebsocketApi(self)
+
         self.contracts = []
         self.swap_contracts = []
         self.currency_pairs = []
@@ -118,7 +118,7 @@ class OkexGateway(VtGateway):
             self.onLog(log)
             return
 
-        # 解析json文件
+        # 解析connect.json文件
         setting = json.load(f)
         f.close()
         
@@ -131,7 +131,7 @@ class OkexGateway(VtGateway):
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
-            log.logContent = u'连接配置缺少字段，请检查'
+            log.logContent = u'%s连接配置缺少字段，请检查'%self.gatewayName
             self.onLog(log)
             return
 
@@ -148,13 +148,13 @@ class OkexGateway(VtGateway):
         swap_leverage = setting.get('swap_leverage', 1)
         margin_token = setting.get('margin_token',3)
 
-        if self.contracts:
+        if len(self.contracts)>0:
             self.restFuturesApi.connect(apiKey, apiSecret, passphrase, future_leverage, sessionCount)
             self.wsFuturesApi.connect(apiKey, apiSecret, passphrase)  
-        if self.swap_contracts:
+        if len(self.swap_contracts)>0:
             self.restSwapApi.connect(apiKey, apiSecret, passphrase, swap_leverage, sessionCount)
             self.wsSwapApi.connect(apiKey, apiSecret, passphrase)
-        if self.currency_pairs:
+        if len(self.currency_pairs):
             self.restSpotApi.connect(apiKey, apiSecret, passphrase, margin_token, sessionCount)
             self.wsSpotApi.connect(apiKey, apiSecret, passphrase)
 
@@ -174,21 +174,26 @@ class OkexGateway(VtGateway):
             self.wsFuturesApi.subscribe(symbol)
         elif symbol in self.swap_contracts:
             self.wsSwapApi.subscribe(symbol)
-        else:
+        elif symbol in self.currency_pairs:
             self.wsSpotApi.subscribe(symbol)
+        else:
+            print(self.gatewayName," does not have this symbol:",symbol)
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
         symbol = orderReq.symbol
         self.orderID += 1
+        orderID = str(self.loginTime + self.orderID)
 
         if symbol in self.contracts:
-            return self.restFuturesApi.sendOrder(orderReq)
+            return self.restFuturesApi.sendOrder(orderReq,orderID)
         elif symbol in self.swap_contracts:
-            return self.restSwapApi.sendOrder(orderReq)
+            return self.restSwapApi.sendOrder(orderReq,orderID)
+        elif symbol in self.currency_pairs:
+            return self.restSpotApi.sendOrder(orderReq,orderID)
         else:
-            return self.restSpotApi.sendOrder(orderReq)
+            print(self.gatewayName," does not have this symbol:",symbol)
 
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
@@ -198,8 +203,10 @@ class OkexGateway(VtGateway):
             self.restFuturesApi.cancelOrder(cancelOrderReq)
         elif symbol in self.swap_contracts:
             self.restSwapApi.cancelOrder(cancelOrderReq)
-        else:
+        elif symbol in self.currency_pairs:
             self.restSpotApi.cancelOrder(cancelOrderReq)
+        else:
+            print(self.gatewayName," does not have this symbol:",symbol)
         
     # ----------------------------------------------------------------------
     def cancelAll(self, symbols=None, orders=None):
@@ -278,24 +285,25 @@ class OkexGateway(VtGateway):
             self.restFuturesApi.queryPosition()
         elif vtSymbol in self.swap_contracts:
             self.restSwapApi.queryPosition()
-        else:
+        elif vtSymbol in self.currency_pairs:
             self.restSpotApi.queryAccount()
+        else:
+            print(self.gatewayName," does not have this symbol:",symbol)
 
     def qryAllOrders(self,vtSymbol,order_id,status=None):
         pass
 
     def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
-        symbol = vtSymbol.split(':')[0]
-        if symbol in self.contracts:
+        if vtSymbol in self.contracts:
             return self.restFuturesApi.loadHistoryBarV1(vtSymbol,type_,size,since,end)
-        elif symbol in self.swap_contracts:
+        elif vtSymbol in self.swap_contracts:
             return self.restSwapApi.loadHistoryBarV3(vtSymbol,type_,size,since,end)
-        elif symbol in self.currency_pairs:
+        elif vtSymbol in self.currency_pairs:
             return self.restSpotApi.loadHistoryBarV3(vtSymbol,type_,size,since,end)
 
 ########################################################################
 class OkexfRestApi(RestClient):
-    """REST API实现"""
+    """Futures REST API实现"""
 
     #----------------------------------------------------------------------
     def __init__(self, gateway):
@@ -314,6 +322,8 @@ class OkexfRestApi(RestClient):
         self.cancelDict = {}
         self.localRemoteDict = gateway.localRemoteDict
         self.orderDict = gateway.orderDict
+        self.contractMap={}
+        self.contractReverseMap={}
     
     #----------------------------------------------------------------------
     def sign(self, request):
@@ -378,7 +388,7 @@ class OkexfRestApi(RestClient):
         
         self.init(REST_HOST)
         self.start(sessionCount)
-        self.writeLog(u'REST API启动成功')
+        self.writeLog(u'FUTURES REST API启动成功')
         self.queryContract()
     
     #----------------------------------------------------------------------
@@ -390,21 +400,14 @@ class OkexfRestApi(RestClient):
         self.gateway.onLog(log)
     
     #----------------------------------------------------------------------
-    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+    def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
         """限速规则：20次/2s"""
-        self.orderID += 1
-        orderID = str(self.gateway.loginTime + self.gateway.orderID)
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
-        
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
-
-        for key,value in contractMap.items():
-            if value == orderReq.symbol: 
-                symbol = key  
 
         data = {
             'client_oid': orderID,
-            'instrument_id': symbol,
+            'instrument_id': self.contractReverseMap[orderReq.symbol],
             'type': type_,
             'price': orderReq.price,
             'size': int(orderReq.volume),
@@ -437,7 +440,6 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
-        #symbol = cancelOrderReq.symbol
         orderID = cancelOrderReq.orderID
         remoteID = self.localRemoteDict.get(orderID, None)
         print("\ncancelorder\n",remoteID,orderID)
@@ -446,10 +448,8 @@ class OkexfRestApi(RestClient):
             self.cancelDict[orderID] = cancelOrderReq
             return
 
-        for key,value in contractMap.items():
-            if value == cancelOrderReq.symbol:
-                symbol = key
-        
+        symbol = self.contractReverseMap[cancelOrderReq.symbol]
+
         req = {
             'instrument_id': symbol,
             'order_id': remoteID
@@ -480,26 +480,16 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryOrder(self):
         """"""
-        self.writeLog('\n\n----------------------start Quary Orders,positions,Accounts-------------------')
-        for symbol in self.gateway.contracts:   #self.contractDict.keys():
-            for key,value in contractMap.items():
-                if value == symbol:
-                    symbol = key
-            # 未成交
+        self.writeLog('\n\n-----------------FUTURES start Quary Orders, positions, Accounts-------------------')
+        for contract in self.gateway.contracts: 
+            symbol = self.contractReverseMap[contract]
+            # 未成交, 部分成交
             req = {
                 'instrument_id': symbol,
-                'status': 0
+                'status': 6
             }
             path = '/api/futures/v3/orders/%s' %symbol
             self.addRequest('GET', path, params=req,
-                            callback=self.onQueryOrder)
-            
-            # 部分成交
-            req2 = {
-                'instrument_id': symbol,
-                'status': 1
-            }
-            self.addRequest('GET', path, params=req2,
                             callback=self.onQueryOrder)
 
     # ----------------------------------------------------------------------
@@ -524,7 +514,7 @@ class OkexfRestApi(RestClient):
         else:
             symbols = self.gateway.contracts
         for symbol in symbols:
-            for key, value in contractMap.items():
+            for key, value in self.contractMap.items():
                 if value == symbol:
                     symbol = key
             # 未完成(包含未成交和部分成交)
@@ -584,7 +574,7 @@ class OkexfRestApi(RestClient):
         vtOrderIDs = []
         symbols = symbols.split(",")
         for symbol in symbols:
-            for key, value in contractMap.items():
+            for key, value in self.contractMap.items():
                 if value == symbol:
                     symbol = key
             req = {
@@ -661,9 +651,7 @@ class OkexfRestApi(RestClient):
             contract.gatewayName = self.gatewayName
             
             contract.symbol = d['instrument_id']
-            contract.exchange = 'OKEX'
-            #contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.exchange])
-            
+            contract.exchange = 'OKEX'            
             contract.name = contract.symbol
             contract.productClass = PRODUCT_FUTURES
             contract.priceTick = float(d['tick_size'])
@@ -671,29 +659,32 @@ class OkexfRestApi(RestClient):
             
             self.contractDict[contract.symbol] = contract
             
-        
-        self.writeLog(u'合约信息查询成功')
+        self.writeLog(u'OKEX 交割合约信息查询成功')
 
         # map v1 symbol to contract
         newcontractDict = {}
         for newcontract in list(self.contractDict.keys()):
+            if 'BTG' in newcontract:
+                break
             sym = newcontract[:7]
             if sym in newcontractDict.keys():
                 newcontractDict[sym].append(newcontract[8:])
             else:
                 newcontractDict[sym] = [newcontract[8:]]
         for key,value in newcontractDict.items():
-            contractMap[key +'-'+ str(max(value))] = str.lower(key[:3])+'_quarter'
-            contractMap[key +'-'+ str(min(value))] = str.lower(key[:3])+'_this_week'
+            print(key,value)
+            self.contractMap[key +'-'+ str(max(value))] = str.lower(key[:3])+'_quarter'
+            self.contractMap[key +'-'+ str(min(value))] = str.lower(key[:3])+'_this_week'
             value.remove(max(value))
             value.remove(min(value))
-            contractMap[key +'-'+ str(value[0])] = str.lower(key[:3])+'_next_week'
+            self.contractMap[key +'-'+ str(value[0])] = str.lower(key[:3])+'_next_week'
 
-        for key,value in contractMap.items():
+        for key,value in self.contractMap.items():
             contract = self.contractDict[key]
             contract.symbol = value
             contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             self.gateway.onContract(contract)
+            self.contractReverseMap.update({value:key})
         
         self.queryOrder()
         self.queryAccount()
@@ -741,7 +732,7 @@ class OkexfRestApi(RestClient):
             for d in holding:
                 longPosition = VtPositionData()
                 longPosition.gatewayName = self.gatewayName
-                longPosition.symbol = contractMap.get(d['instrument_id'],None)
+                longPosition.symbol = self.contractMap.get(d['instrument_id'],None)
                 longPosition.exchange = 'OKEX'
                 longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
                 longPosition.direction = DIRECTION_LONG
@@ -775,12 +766,14 @@ class OkexfRestApi(RestClient):
                 order = VtOrderData()
                 order.gatewayName = self.gatewayName
                 
-                order.symbol = contractMap.get(d['instrument_id'],None)
+                order.symbol = self.contractMap.get(d['instrument_id'],None)
                 order.exchange = 'OKEX'
                 order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-
-                self.orderID += 1
-                order.orderID = str(self.loginTime + self.orderID)
+                if 'client_oid' in data.keys():
+                    order.orderID = data['client_oid']
+                else:
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
                 order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 self.localRemoteDict[order.orderID] = d['order_id']
                 order.tradedVolume = 0
@@ -885,20 +878,6 @@ class OkexfRestApi(RestClient):
             else:
                 error.errorMsg = str(data['order_id']) + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
-
-            # could be risky,just testify
-            # if str(data['error_code']) == '32004':
-            #     order = self.orderDict.get(str(data['order_id']),None)
-            #     if order:
-            #         order.status = STATUS_CANCELLED
-            #         self.gateway.onOrder(order)
-            #         self.writeLog('risky feedback:order %s cancelled'%str(data['order_id']))
-            #         for key,value in list(self.localRemoteDict.items()):
-            #             if value == str(data['order_id']):
-            #                 del self.localRemoteDict[key]
-            #                 del self.orderDict[key]
-            #                 if self.orderDict.get(str(data['order_id']),None):
-            #                     del self.orderDict[str(data['order_id'])]
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -964,7 +943,7 @@ class OkexfRestApi(RestClient):
         """[[1544518800000,3389.44,3405.16,3362.8,3372.46,365950.0,10809.8175776],
         [1544515200000,3374.45,3392.9,3363.01,3389.57,221418.0,6551.58850662]]"""
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
-        for key, value in contractMap.items():
+        for key, value in self.contractMap.items():
                 if value == symbol:
                     instrument_id = key
 
@@ -1015,9 +994,7 @@ class OkexfWebsocketApi(WebsocketClient):
         self.orderDict = gateway.orderDict
         self.localRemoteDict = gateway.localRemoteDict
         
-        
         self.callbackDict = {}
-        self.channelSymbolDict = {}
         self.tickDict = {}
     
     #----------------------------------------------------------------------
@@ -1103,14 +1080,11 @@ class OkexfWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def subscribe(self, symbol):
         """"""
-        for key, value in contractMap.items():
-            if value == symbol:
-                contract = key
+        contract = self.gateway.restFuturesApi.contractReverseMap[symbol]
 
         # 订阅TICKER
         channel1 = 'futures/ticker:%s' %(contract)
         self.callbackDict['futures/ticker'] = self.onFuturesTick
-        self.channelSymbolDict[channel1] = contract
         
         req1 = {
             'op': 'subscribe',
@@ -1121,7 +1095,6 @@ class OkexfWebsocketApi(WebsocketClient):
         # 订阅DEPTH
         channel2 = 'futures/depth5:%s' %(contract)
         self.callbackDict['futures/depth5'] = self.onFuturesDepth
-        self.channelSymbolDict[channel2] = contract
         
         req2 = {
             'op': 'subscribe',
@@ -1132,7 +1105,6 @@ class OkexfWebsocketApi(WebsocketClient):
         # subscribe trade
         channel3 = 'futures/trade:%s' %(contract)
         self.callbackDict['futures/trade'] = self.onFuturesTrades
-        self.channelSymbolDict[channel3] = contract
 
         req3 = {
             'op': 'subscribe',
@@ -1143,7 +1115,6 @@ class OkexfWebsocketApi(WebsocketClient):
         # subscribe price range
         channel4 = 'futures/price_range:%s' %(contract)
         self.callbackDict['futures/price_range'] = self.onFuturesPriceRange
-        self.channelSymbolDict[channel4] = contract
 
         req4 = {
             'op': 'subscribe',
@@ -1151,17 +1122,23 @@ class OkexfWebsocketApi(WebsocketClient):
         }
         self.sendPacket(req4)
 
-        
         # 创建Tick对象
         tick = VtTickData()
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
         tick.exchange = 'OKEX'
         tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick.volumeChange = 0
         self.tickDict[tick.symbol] = tick
+
+        # 订阅交易相关推送
         self.sendPacket({'op': 'subscribe', 'args': 'futures/position:%s'%contract})
         self.sendPacket({'op': 'subscribe', 'args': 'futures/account:%s'%contract[:3]})
         self.sendPacket({'op': 'subscribe', 'args': 'futures/order:%s'%contract})
+                
+        self.callbackDict['futures/order'] = self.onTrade
+        self.callbackDict['futures/account'] = self.onAccount
+        self.callbackDict['futures/position'] = self.onPosition
     
     #----------------------------------------------------------------------
     def onLogin(self, d):
@@ -1169,11 +1146,6 @@ class OkexfWebsocketApi(WebsocketClient):
         if not d['success']:
             return
         
-        # 订阅交易相关推送
-        self.callbackDict['futures/order'] = self.onTrade
-        self.callbackDict['futures/account'] = self.onAccount
-        self.callbackDict['futures/position'] = self.onPosition
-
         for contract in self.gateway.contracts:
             self.subscribe(contract)
             
@@ -1186,7 +1158,7 @@ class OkexfWebsocketApi(WebsocketClient):
          }]}"""
 
         for n, data in enumerate(d):
-            symbol = contractMap[data['instrument_id']]
+            symbol = self.gateway.restFuturesApi.contractMap[data['instrument_id']]
             tick = self.tickDict[symbol]
             
             tick.lastPrice = float(data['last'])
@@ -1195,16 +1167,12 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.volume = float(data['volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            # tick.upperLimit = float(data['limitHigh'])
-            # tick.lowerLimit = float(data['limitLow'])
-            # tick.openInterest = float(data['hold_amount'])
             tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
         
-        if tick.askPrice1:        
+        if tick.askPrice5:        
             tick = copy(tick)
             self.gateway.onTick(tick)
 
@@ -1223,7 +1191,7 @@ class OkexfWebsocketApi(WebsocketClient):
         }]}"""
         # print(d,"depthhhhh\n\n")
         for n, data in enumerate(d):
-            symbol = contractMap[data['instrument_id']]
+            symbol = self.gateway.restFuturesApi.contractMap[data['instrument_id']]
             tick = self.tickDict[symbol]
             
             for n, buf in enumerate(data['bids']):
@@ -1240,7 +1208,6 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             if tick.lastPrice:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
@@ -1251,18 +1218,18 @@ class OkexfWebsocketApi(WebsocketClient):
             'instrument_id': 'EOS-USD-190329', 'timestamp': '2019-01-22T03:40:25.530Z'}]}
         """
         for n, data in enumerate(d):
-            symbol = contractMap[data['instrument_id']]
+            symbol = self.gateway.restFuturesApi.contractMap[data['instrument_id']]
             tick = self.tickDict[symbol]
             tick.lastPrice = float(data['price'])
             tick.lastVolume = float(data['qty'])
             tick.lastTradedTime = data['timestamp']
             tick.type = data['side']
-
             tick.volumeChange = 1
             tick.localTime = datetime.now()
             if tick.askPrice1:
                 tick = copy(tick)
                 self.gateway.onTick(tick)
+
     def onFuturesPriceRange(self,d):
         """{"table": "futures/price_range", "data": [{
                 "highest": "4159.5279", "instrument_id": "BTC-USD-170310",
@@ -1271,7 +1238,7 @@ class OkexfWebsocketApi(WebsocketClient):
         # print(d,"\n\n\nrangerangerngr")
         
         for n, data in enumerate(d):
-            symbol = contractMap[data['instrument_id']]
+            symbol = self.gateway.restFuturesApi.contractMap[data['instrument_id']]
             tick = self.tickDict[symbol]
             tick.upperLimit = data['highest']
             tick.lowerLimit = data['lowest']
@@ -1280,7 +1247,7 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
+            
             if tick.askPrice1:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
@@ -1298,7 +1265,7 @@ class OkexfWebsocketApi(WebsocketClient):
             if not order:
                 order = VtOrderData()
                 order.gatewayName = self.gatewayName
-                order.symbol = contractMap.get(data['instrument_id'],None)
+                order.symbol = self.gateway.restFuturesApi.contractMap.get(data['instrument_id'],None)
                 order.exchange = 'OKEX'
                 order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
@@ -1418,7 +1385,7 @@ class OkexfWebsocketApi(WebsocketClient):
         for n, data in enumerate(d):
             position = VtPositionData()
             position.gatewayName = self.gatewayName
-            position.symbol = contractMap.get(data['instrument_id'],None)
+            position.symbol = self.gateway.restFuturesApi.contractMap.get(data['instrument_id'],None)
             position.exchange = 'OKEX'
             position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
 
@@ -1536,9 +1503,8 @@ class OkexSwapRestApi(RestClient):
         self.gateway.onLog(log)
     
     #----------------------------------------------------------------------
-    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+    def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
         """限速规则：20次/2s"""
-        orderID = str(self.gateway.loginTime + self.gateway.orderID)
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
@@ -1686,7 +1652,7 @@ class OkexSwapRestApi(RestClient):
             # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
             request = Request('POST', path, params=None, callback=None, data=req, headers=None)
 
-            request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+            request = self.sign(request,self.apiKey,self.apiSecret,self.passphrase)
             url = self.makeFullUrl(request.path)
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
@@ -1800,7 +1766,7 @@ class OkexSwapRestApi(RestClient):
             self.contractDict[contract.symbol] = contract
 
             self.gateway.onContract(contract)
-        self.writeLog(u'合约信息查询成功')
+        self.writeLog(u'OKEX 永续合约信息查询成功')
         self.queryOrder()
         self.queryAccount()
         self.queryPosition()
@@ -1864,65 +1830,65 @@ class OkexSwapRestApi(RestClient):
         "instrument_id": "BTC-USD-SWAP", "size": "10", "timestamp": "2018-10-23T20:11:00.443Z", "filled_position": "3", "fee": "0.00434457"
         "order_id": "64-2a-26132f931-3", "price": "20", "price_avg": "17", "status": "1", "type": "1", "contract_val": "100"
         }]}"""
-        for d in data['order_info']:
-            #print(d,"or")
+        if 'order_info' in data.keys():
+            for d in data['order_info']:
+                #print(d,"or")
+                order = self.orderDict.get(str(d['order_id']),None)
 
-            order = self.orderDict.get(str(d['order_id']),None)
+                if not order:
+                    order = VtOrderData()
+                    order.gatewayName = self.gatewayName
+                    
+                    order.symbol = d['instrument_id']
+                    order.exchange = 'OKEX'
+                    order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
-            if not order:
-                order = VtOrderData()
-                order.gatewayName = self.gatewayName
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+                    order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+                    self.localRemoteDict[order.orderID] = d['order_id']
+                    order.tradedVolume = 0
+                    self.writeLog('order by other source, id: %s'%d['order_id'])
                 
-                order.symbol = d['instrument_id']
-                order.exchange = 'OKEX'
-                order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+                order.price = float(d['price'])
+                order.price_avg = float(d['price_avg'])
+                order.totalVolume = int(d['size'])
+                order.thisTradedVolume = int(d['filled_qty']) - order.tradedVolume
+                order.tradedVolume = int(d['filled_qty'])
+                order.status = statusMapReverse[d['status']]
+                order.direction, order.offset = typeMapReverse[d['type']]
+                
+                dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
+                order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
+                order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
+                order.deliveryTime = datetime.now()
+                
+                self.gateway.onOrder(order)
+                self.orderDict[d['order_id']] = order
 
-                self.gateway.orderID += 1
-                order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
-                order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-                self.localRemoteDict[order.orderID] = d['order_id']
-                order.tradedVolume = 0
-                self.writeLog('order by other source, id: %s'%d['order_id'])
-            
-            order.price = float(d['price'])
-            order.price_avg = float(d['price_avg'])
-            order.totalVolume = int(d['size'])
-            order.thisTradedVolume = int(d['filled_qty']) - order.tradedVolume
-            order.tradedVolume = int(d['filled_qty'])
-            order.status = statusMapReverse[d['status']]
-            order.direction, order.offset = typeMapReverse[d['type']]
-            
-            dt = datetime.strptime(d['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
-            order.orderTime = dt.strftime('%Y%m%d %H:%M:%S')
-            order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
-            order.deliveryTime = datetime.now()
-            
-            self.gateway.onOrder(order)
-            self.orderDict[d['order_id']] = order
+                if order.thisTradedVolume:
 
-            if order.thisTradedVolume:
-
-                self.gateway.tradeID += 1
-                
-                trade = VtTradeData()
-                trade.gatewayName = order.gatewayName
-                trade.symbol = order.symbol
-                trade.exchange = order.exchange
-                trade.vtSymbol = order.vtSymbol
-                
-                trade.orderID = order.orderID
-                trade.vtOrderID = order.vtOrderID
-                trade.tradeID = str(self.gateway.tradeID)
-                trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
-                
-                trade.direction = order.direction
-                trade.offset = order.offset
-                trade.volume = order.thisTradedVolume
-                trade.price = float(data['price_avg'])
-                trade.tradeDatetime = datetime.now()
-                trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
-                
-                self.gateway.onTrade(trade)
+                    self.gateway.tradeID += 1
+                    
+                    trade = VtTradeData()
+                    trade.gatewayName = order.gatewayName
+                    trade.symbol = order.symbol
+                    trade.exchange = order.exchange
+                    trade.vtSymbol = order.vtSymbol
+                    
+                    trade.orderID = order.orderID
+                    trade.vtOrderID = order.vtOrderID
+                    trade.tradeID = str(self.gateway.tradeID)
+                    trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+                    
+                    trade.direction = order.direction
+                    trade.offset = order.offset
+                    trade.volume = order.thisTradedVolume
+                    trade.price = float(data['price_avg'])
+                    trade.tradeDatetime = datetime.now()
+                    trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+                    
+                    self.gateway.onTrade(trade)
     
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
@@ -2010,13 +1976,14 @@ class OkexSwapRestApi(RestClient):
         self.gateway.onError(e)
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
+
     def loadHistoryBarV3(self,vtSymbol,type_,size=None,since=None,end=None):
         """[["2018-12-21T09:00:00.000Z","4022.6","4027","3940","3975.6","9001","225.7652"],
         ["2018-12-21T08:00:00.000Z","3994.8","4065.2","3994.8","4033","16403","407.4138"]]"""
         
         instrument_id = vtSymbol.split(VN_SEPARATOR)[0]
         params = {'granularity':granularityMap[type_]}
-        url = REST_HOST +'/api/futures/v3/instruments/'+instrument_id+'/candles?'
+        url = REST_HOST +'/api/swap/v3/instruments/'+instrument_id+'/candles?'
         if size:
             s = datetime.now()-timedelta(seconds = (size*granularityMap[type_]))
             params['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
@@ -2060,7 +2027,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
         self.localRemoteDict = gateway.localRemoteDict
         
         self.callbackDict = {}
-        self.channelSymbolDict = {}
         self.tickDict = {}
     
     #----------------------------------------------------------------------
@@ -2092,7 +2058,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onPacket(self, packet):
         """数据回调"""
-        # print(packet,"*********************")
         if 'event' in packet.keys():
             if packet['event'] == 'login':
                 callback = self.callbackDict['login']
@@ -2150,7 +2115,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
         # 订阅TICKER
         channel1 = 'swap/ticker:%s' %(symbol)
         self.callbackDict['swap/ticker'] = self.onSwapTick
-        self.channelSymbolDict[channel1] = symbol
         
         req1 = {
             'op': 'subscribe',
@@ -2161,7 +2125,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
         # 订阅DEPTH
         channel2 = 'swap/depth5:%s' %(symbol)
         self.callbackDict['swap/depth5'] = self.onSwapDepth
-        self.channelSymbolDict[channel2] = symbol
         
         req2 = {
             'op': 'subscribe',
@@ -2172,7 +2135,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
         # subscribe trade
         channel3 = 'swap/trade:%s' %(symbol)
         self.callbackDict['swap/trade'] = self.onSwapTrades
-        self.channelSymbolDict[channel3] = symbol
 
         req3 = {
             'op': 'subscribe',
@@ -2183,7 +2145,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
         # subscribe price range
         channel4 = 'swap/price_range:%s' %(symbol)
         self.callbackDict['swap/price_range'] = self.onSwapPriceRange
-        self.channelSymbolDict[channel4] = symbol
 
         req4 = {
             'op': 'subscribe',
@@ -2197,6 +2158,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
         tick.symbol = symbol
         tick.exchange = 'OKEX'
         tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick.volumeChange = 0
         self.tickDict[tick.symbol] = tick
     
     #----------------------------------------------------------------------
@@ -2232,14 +2194,10 @@ class OkexSwapWebsocketApi(WebsocketClient):
             tick.volume = float(data['volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            # tick.upperLimit = float(data['limitHigh'])
-            # tick.lowerLimit = float(data['limitLow'])
-            # tick.openInterest = float(data['hold_amount'])
             tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             
             if tick.askPrice5:    
                 tick=copy(tick)    
@@ -2275,7 +2233,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             if tick.lastPrice:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
@@ -2293,7 +2250,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
             tick.lastVolume = float(data['size'])
             tick.lastTradedTime = data['timestamp']
             tick.type = data['side']
-
             tick.volumeChange = 1
             tick.localTime = datetime.now()
             if tick.askPrice1:
@@ -2314,7 +2270,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             if tick.askPrice1:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
@@ -2349,7 +2304,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
                 order.totalVolume = int(data['size'])
                 order.tradedVolume = 0
                 order.direction, order.offset = typeMapReverse[str(data['type'])]
-
             
             order.orderDatetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
             order.price_avg = data['price_avg']
@@ -2447,7 +2401,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
                 position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
                 self.gateway.onPosition(position)
 
-
 #############################################################################################################
 class OkexSpotRestApi(RestClient):
     """SPOT REST API实现"""
@@ -2543,9 +2496,8 @@ class OkexSpotRestApi(RestClient):
         self.gateway.onLog(log)
     
     #----------------------------------------------------------------------
-    def sendOrder(self, orderReq):# type: (VtOrderReq)->str
+    def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
         """限速规则：20次/2s"""
-        orderID = str(self.gateway.loginTime + self.gateway.orderID)
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
@@ -2590,7 +2542,6 @@ class OkexSpotRestApi(RestClient):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
-        #symbol = cancelOrderReq.symbol
         orderID = cancelOrderReq.orderID
         remoteID = self.localRemoteDict.get(orderID, None)
         print("\ncancel_spot_order\n",remoteID,orderID)
@@ -2627,9 +2578,9 @@ class OkexSpotRestApi(RestClient):
             # 未成交
             req = {
                 'instrument_id': symbol,
-                'status': 'part_filled%7Copen'
+                'status': 'part_filled|open'
             }
-            path = '/api/spot/v3/orders/%s' %symbol
+            path = '/api/spot/v3/orders'
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
@@ -2651,29 +2602,29 @@ class OkexSpotRestApi(RestClient):
         包含本次所有撤销的订单ID的列表
         """
         vtOrderIDs = []
-        if symbols:
-            symbols = symbols.split(",")
-        else:
-            symbols = self.gateway.currency_pairs
-        for symbol in symbols:
-            # 未完成(包含未成交和部分成交)
-            req = {
-                'instrument_id': symbol,
-                'status': 6
-            }
-            path = '/api/spot/v3/orders/%s' % symbol
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
-            request = self.sign2(request)
-            request.extra = orders
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['order_info']:
-                data = self.onCancelAll(data, request)
-                if data['result']:
-                    vtOrderIDs += data['order_ids']
-                    self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
-        print("全部撤单结果", vtOrderIDs)
+        # if symbols:
+        #     symbols = symbols.split(",")
+        # else:
+        #     symbols = self.gateway.currency_pairs
+        # for symbol in symbols:
+        #     # 未完成(包含未成交和部分成交)
+        #     req = {
+        #         'instrument_id': symbol,
+        #         'status': 6
+        #     }
+        #     path = '/api/spot/v3/orders/%s' % symbol
+        #     request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        #     request = self.sign2(request)
+        #     request.extra = orders
+        #     url = self.makeFullUrl(request.path)
+        #     response = requests.get(url, headers=request.headers, params=request.params)
+        #     data = response.json()
+        #     if data['result'] and data['order_info']:
+        #         data = self.onCancelAll(data, request)
+        #         if data['result']:
+        #             vtOrderIDs += data['order_ids']
+        #             self.writeLog(u'交易所返回%s撤单成功: ids: %s' % (data['instrument_id'], str(data['order_ids'])))
+        # print("全部撤单结果", vtOrderIDs)
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
@@ -2692,7 +2643,7 @@ class OkexSpotRestApi(RestClient):
             # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
             request = Request('POST', path, params=None, callback=None, data=req, headers=None)
 
-            request = sign(request,self.apiKey,self.apiSecret,self.passphrase)
+            request = self.sign(request,self.apiKey,self.apiSecret,self.passphrase)
             url = self.makeFullUrl(request.path)
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
@@ -2806,7 +2757,7 @@ class OkexSpotRestApi(RestClient):
             self.contractDict[contract.symbol] = contract
 
             self.gateway.onContract(contract)
-        self.writeLog(u'合约信息查询成功')
+        self.writeLog(u'OKEX 现货信息查询成功')
         self.queryOrder()
         self.queryAccount()
         
@@ -2837,9 +2788,8 @@ class OkexSpotRestApi(RestClient):
             "side": "buy", "type": "market", "timestamp": "2016-12-08T20:09:05.508Z",
             "filled_size": "0.1291771", "filled_notional": "10000.0000", "status": "filled"
         }"""
-        for d in data['order_info']:
+        for d in data:
             #print(d,"or")
-
             order = self.orderDict.get(str(d['order_id']),None)
 
             if not order:
@@ -2850,8 +2800,11 @@ class OkexSpotRestApi(RestClient):
                 order.exchange = 'OKEX'
                 order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
-                self.gateway.orderID += 1
-                order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
+                if 'client_oid' in data.keys():
+                    order.orderID = data['client_oid']
+                else:
+                    self.gateway.orderID += 1
+                    order.orderID = str(self.gateway.loginTime + self.gateway.orderID)
                 order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 self.localRemoteDict[order.orderID] = d['order_id']
                 order.tradedVolume = 0
@@ -3035,7 +2988,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
         self.localRemoteDict = gateway.localRemoteDict
         
         self.callbackDict = {}
-        self.channelSymbolDict = {}
         self.tickDict = {}
     
     #----------------------------------------------------------------------
@@ -3067,7 +3019,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onPacket(self, packet):
         """数据回调"""
-        #print(packet,"*********************")
         if 'event' in packet.keys():
             if packet['event'] == 'login':
                 callback = self.callbackDict['login']
@@ -3125,7 +3076,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
         # 订阅TICKER
         channel1 = 'spot/ticker:%s' %(symbol)
         self.callbackDict['spot/ticker'] = self.onSpotTick
-        self.channelSymbolDict[channel1] = symbol
         
         req1 = {
             'op': 'subscribe',
@@ -3136,7 +3086,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
         # 订阅DEPTH
         channel2 = 'spot/depth5:%s' %(symbol)
         self.callbackDict['spot/depth5'] = self.onSpotDepth
-        self.channelSymbolDict[channel2] = symbol
         
         req2 = {
             'op': 'subscribe',
@@ -3147,7 +3096,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
         # subscribe trade
         channel3 = 'spot/trade:%s' %(symbol)
         self.callbackDict['spot/trade'] = self.onSpotTrades
-        self.channelSymbolDict[channel3] = symbol
 
         req3 = {
             'op': 'subscribe',
@@ -3161,6 +3109,8 @@ class OkexSpotWebsocketApi(WebsocketClient):
         tick.symbol = symbol
         tick.exchange = 'OKEX'
         tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick.volumeChange = 0
+
         self.tickDict[tick.symbol] = tick
     
     #----------------------------------------------------------------------
@@ -3193,14 +3143,10 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.volume = float(data['quote_volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            # tick.upperLimit = float(data['limitHigh'])
-            # tick.lowerLimit = float(data['limitLow'])
-            # tick.openInterest = float(data['hold_amount'])
             tick.datetime = datetime.strptime(data['timestamp'],"%Y-%m-%dT%H:%M:%S.%fZ")
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             
             if tick.askPrice5:    
                 tick=copy(tick)    
@@ -3232,7 +3178,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.date = tick.datetime.strftime('%Y%m%d')
             tick.time = tick.datetime.strftime('%H:%M:%S.%f')
             tick.localTime = datetime.now()
-            tick.volumeChange = 0
             if tick.lastPrice:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
@@ -3247,7 +3192,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.lastVolume = float(data['size'])
             tick.lastTradedTime = data['timestamp']
             tick.type = data['side']
-
             tick.volumeChange = 1
             tick.localTime = datetime.now()
             if tick.askPrice1:
@@ -3338,7 +3282,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
         for n, data in enumerate(d):
             account = VtAccountData()
             account.gatewayName = self.gatewayName
-            account.accountID = data['currency']+'_SPOT'
+            account.accountID = data['currency']+'-SPOT'
             account.vtAccountID = VN_SEPARATOR.join([self.gatewayName, account.accountID])
             
             account.balance = data['balance']
