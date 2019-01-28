@@ -2299,12 +2299,14 @@ class OkexSwapWebsocketApi(WebsocketClient):
             if tick.askPrice1:
                 tick=copy(tick)
                 self.gateway.onTick(tick)
+
     def onSwapPriceRange(self,d):
         """{"table": "swap/price_range", "data": [{
                 "highest": "22391.96", "instrument_id": "BTC-USD-SWAP",
                 "lowest": "20583.40", "timestamp": "2018-11-22T08:46:45.016Z"
         }]}"""
         # print(d,"\n\n\nrangerangerngr")
+        # print(d)
         for n, data in enumerate(d):
             tick = self.tickDict[data['instrument_id']]
             tick.upperLimit = data['highest']
@@ -2328,7 +2330,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
             "instrument_id":"LTC-USD-SWAP", "order_id":"65-6e-2e904c43d-0",
             "status":"0", "timestamp":"2018-11-26T08:02:18.618Z"
             }]} """
-        # print(d)
+        
         for n, data in enumerate(d):
             order = self.orderDict.get(str(data['order_id']), None)
             if not order:

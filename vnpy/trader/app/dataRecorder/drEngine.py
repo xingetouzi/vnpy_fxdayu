@@ -76,7 +76,7 @@ class DrEngine(object):
         """加载配置"""
         with open(self.settingFilePath) as f:
             drSetting = json.load(f)
-
+            
             # 如果working设为False则不启动行情记录功能
             working = drSetting['working']
             if not working:
@@ -89,7 +89,7 @@ class DrEngine(object):
                 for setting in l:
                     symbol = setting[0]
                     gateway = setting[1]
-                    vtSymbol = symbol
+                    vtSymbol = "%s:%s" % (setting[0], setting[1])
 
                     req = VtSubscribeReq()
                     req.symbol = setting[0]
