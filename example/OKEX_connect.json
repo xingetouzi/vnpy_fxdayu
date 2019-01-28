@@ -1,0 +1,14 @@
+{
+    "apiKey": "",
+    "apiSecret": "",
+    "passphrase":"",
+    "future_leverage": 10,
+    "swap_leverage": 1,
+    "margin_token": 3,
+    "sessionCount": 3,
+    "trace": false,
+    "contracts":["EOS-USD-SWAP","BTC-USDT","eth_quarter"],
+    "setQryEnabled":false,
+    "setQryFreq":60,
+    "note":""
+}
