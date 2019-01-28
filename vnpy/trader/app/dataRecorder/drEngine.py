@@ -76,7 +76,7 @@ class DrEngine(object):
         """加载配置"""
         with open(self.settingFilePath) as f:
             drSetting = json.load(f)
-
+            
             # 如果working设为False则不启动行情记录功能
             working = drSetting['working']
             if not working:
