@@ -712,6 +712,8 @@ class OkexfRestApi(RestClient):
         # map v1 symbol to contract
         newcontractDict = {}
         for newcontract in list(self.contractDict.keys()):
+            if 'BTG' in newcontract:
+                break
             sym = newcontract[:7]
             if sym in newcontractDict.keys():
                 newcontractDict[sym].append(newcontract[8:])
@@ -1223,7 +1225,7 @@ class OkexfWebsocketApi(WebsocketClient):
 
         for n,buf in enumerate(data):
             tick.lastPrice = float(buf[1])
-            tick.lastVolume = float(buf[2])
+            tick.lastVolume = int(float(buf[2])/2)
             tick.lastTradedTime = buf[3]
             tick.type = buf[4]
 
