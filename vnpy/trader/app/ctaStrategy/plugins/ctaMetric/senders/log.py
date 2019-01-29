@@ -6,9 +6,8 @@ from six import with_metaclass
 from vnpy.trader.utils import Singleton
 from vnpy.trader.vtFunction import getTempPath
 
-from .base import set_sender, MetricSender
+from ..base import MetricSender
 
-@set_sender
 class LogfileMetricSender(with_metaclass(Singleton, MetricSender)):
     def __init__(self):
         super(LogfileMetricSender, self).__init__()

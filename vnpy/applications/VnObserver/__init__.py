@@ -1,5 +1,5 @@
 import click
-from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observer import run_observer
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observers import run_observer
 
 app_name="observer"
 

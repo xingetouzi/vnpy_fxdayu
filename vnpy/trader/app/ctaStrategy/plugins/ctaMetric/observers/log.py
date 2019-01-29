@@ -93,7 +93,7 @@ class FileEventHandler(RegexMatchingEventHandler):
         self.merge_data(handler)
 
 
-class MetricFileObserver(object):
+class LogFileMetricObserver(object):
     interval = 10
     reg = r".*ctaMetric.log.*"  # 监控的文件
 
@@ -136,10 +136,7 @@ class MetricFileObserver(object):
         logging.info("推送%s个指标，response:%s" % (len(payload), r.content))
 
 
-def run_observer(path, url=None):
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
-    MetricFileObserver(path, url).run()
-
-
 if __name__ == "__main__":
-    run_observer(".")
+    from utils import run_observer
+
+    run_observer(LogFileMetricObserver, ".")
