@@ -265,8 +265,8 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
 
     def _update_with_bar(self, bar, freq):
         current_bar = self._current_bars.get(freq, None)
-        dt = bar.datetime
         bt = self._bar_timers[freq]
+        dt = bt.get_current_dt(bar.datetime)
         finished_bar = None
         if current_bar:
             if bt.is_new_bar(current_bar.datetime, dt):
