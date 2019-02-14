@@ -20,10 +20,10 @@ def showTransaction(engine, frequency="1m", filename=None):
     if not filename:
         filename = os.path.join(engine.logPath, "transaction.html")
 
-    core.makePlot(
+    plot = core.makePlot(
         bars, 
         trades,
-        filename,
         frequency
     )
-
+    core.output_file(filename)
+    core.show(plot)

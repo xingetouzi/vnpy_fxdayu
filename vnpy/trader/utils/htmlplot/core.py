@@ -41,8 +41,8 @@ hover = HoverTool(
     }
 )
 
-
-TOOLS.append(hover)
+MAINTOOLS = list(TOOLS)
+MAINTOOLS.append(hover)
 
 
 def plotCandle(bar, plot, freq=timedelta(minutes=1)):
@@ -103,6 +103,31 @@ def plotTradesLine(trades, plot, **kwargs):
     plot.segment("entryDt", "entryPrice", "exitDt", "exitPrice", source=source, line_dash="dashed", **kwargs)
 
 
+def plotLine(data, plot, colors=None, index="datetime"):
+    assert isinstance(plot, Figure)
+    if isinstance(data, pd.Series):
+        name = data.name if data.name else "untitled"
+        data = pd.DataFrame({name: data})
+    assert isinstance(data, pd.DataFrame)
+    if not isinstance(colors, dict):
+        colors = {}
+    if index not in data.columns:
+        if data.index.name != index:
+            data.index.name = index
+        data = data.reset_index()
+    source = ColumnDataSource(
+        data=data.to_dict("list")
+    )
+    columns = list(data.columns)
+    columns.remove(index)
+    for name in columns:
+        plot.line(
+            index, name, legend=" %s " % name, color=colors.get(name, None),
+            source=source
+        )
+    return plot
+        
+
 def plotTradesTriangle(plot, trades, x, y, size=10, angle_units="deg", **kwargs):
     assert isinstance(plot, Figure)
     assert isinstance(trades, pd.DataFrame)
@@ -151,12 +176,18 @@ def resample(data, freq):
 
 
 def makeFigure(title="candle"):
-    plot = figure(x_axis_type="datetime", tools=TOOLS, plot_width=1600, plot_height=800, title=title)
+    plot = figure(x_axis_type="datetime", tools=MAINTOOLS, plot_width=1600, plot_height=800, title=title)
     plot.background_fill_color = properties.background
     return plot
 
 
-def makePlot(bars, trades, filename="transacton.html", freq=None):
+def makeSubFigure(main_plot, title="", tools=TOOLS, plot_width=1600, plot_height=400):
+    plot = figure(x_axis_type="datetime", tools=tools, plot_width=plot_width, plot_height=plot_height, x_range=main_plot.x_range)
+    plot.background_fill_color = properties.background
+    return plot
+
+
+def makePlot(bars, trades, freq=None, plot=None):
     if isinstance(freq, timedelta):
         bars = resample(bars.set_index("datetime"), freq).reset_index()
         freq_name = " ".join(iter_freq(freq))
@@ -164,13 +195,12 @@ def makePlot(bars, trades, filename="transacton.html", freq=None):
         freq = timedelta(minutes=1)
         freq_name = "1m"
 
-    plot = makeFigure("Transaction | frequency: %s" % freq_name)
+    if not isinstance(plot, bokeh.plotting.Figure):
+        plot = makeFigure("Transaction | frequency: %s" % freq_name)
 
     plotCandle(bars, plot, freq)
     plotTrades(trades, plot)
-
-    output_file(filename)
-    show(plot)
+    return plot
 
 
 
@@ -215,3 +245,93 @@ def freq2timedelta(freq=""):
     return timedelta(seconds=seconds)
 
 
+import os
+
+
+class PlotHolder(object):
+
+    def __init__(self, **figure_config):
+        self.figure_config = figure_config
+        self.members = []
+        self.plot = None
+        self.tooltips={
+            "datetime": "@datetime{%Y-%m-%d %H:%M:%S}",
+        }
+        self.formatters={
+            "datetime": "datetime",
+        }
+    
+    def add_member(self, _type, params):
+        if _type == "main":
+            self.formatters.update({
+                "datetime": "datetime",
+                "entryDt": "datetime",
+                "exitDt": "datetime"
+            })
+            self.tooltips.update(dict([
+                ("datetime", "@datetime{%Y-%m-%d %H:%M:%S}"),
+                ("open", "@open{0.4f}"),
+                ("high", "@high{0.4f}"),
+                ("low", "@low{0.4f}"),
+                ("close", "@close{0.4f}"),
+                ("entryDt", "@entryDt{%Y-%m-%d %H:%M:%S}"),
+                ("entryPrice", "@entryPrice{0.4f}"),
+                ("exitDt", "@exitDt{%Y-%m-%d %H:%M:%S}"),
+                ("exitPrice", "@exitPrice{0.4f}"),
+                ("tradeVolume", "@tradeVolume{0.4f}")
+            ]))
+            return
+        data = params["data"]
+
+
+class MultiPlot(object):
+
+    def __init__(self, filename="BacktestResult.html"):
+        self.plot_configs = []
+        self.plots = []
+        self.filename = filename
+        self.logPath = ""
+        self._main = None
+        self.plot_methods = {
+            "main": self.plot_main
+        }
+
+    def has_main(self):
+        return self._main is not None
+    
+    def set_main(self, engine, frequency="1m", pos=0):
+        if isinstance(frequency, str):
+            frequency = freq2timedelta(frequency)
+        if not isinstance(frequency, timedelta):
+            raise TypeError("Type of frequency should be str or datetime.timedelta, not %s" % type(frequency))
+
+        trade_file = os.path.join(engine.logPath, "交割单.csv")
+        if not os.path.isfile(trade_file):
+            raise IOError("Transaction file: %s not exists" % trade_file)
+        self.logPath = engine.logPath
+
+        trades = read_transaction_file(trade_file) 
+        bars = pd.DataFrame([bar.__dict__ for bar in engine.backtestData])
+        frequency = frequency
+        self.add_plot(pos, "main", trades=trades, bars=bars, frequency=frequency)
+
+    def add_plot(self, pos, _type, **kwargs):
+        if pos < len(self.plot_configs):
+            plot_conf = self.plot_configs[pos]
+        else:
+            if (len(self.plot_configs)) == 0 and (_type != "main"):
+                raise ValueError("Should set main plot first.")
+            plot_conf = []
+            self.plot_configs.append(plot_conf)
+        plot_conf.append({"_type": _type, "params": kwargs})
+    
+    def plot_main(self, bars, trades, frequency=None, plot=None):
+        plot = makePlot(bars, trades, frequency, plot=plot)
+        if not self.has_main():
+            self._main = plot
+        return plot
+    
+    def plot_line(self, data, colors, plot):
+        plot =  plotLine(data, plot, colors)
+        return plot
+    
