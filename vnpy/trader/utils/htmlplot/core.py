@@ -248,90 +248,285 @@ def freq2timedelta(freq=""):
 import os
 
 
+DEFAULT_TOOLTIPS = {
+    "candle": {
+        "datetime": "@datetime{%Y-%m-%d %H:%M:%S}",
+        "open": "@open{0.4f}",
+        "high": "@high{0.4f}",
+        "low": "@low{0.4f}",
+        "close": "@close{0.4f}"
+    },
+    "trade": {
+        "datetime": "@datetime{%Y-%m-%d %H:%M:%S}",
+        "entryDt": "@entryDt{%Y-%m-%d %H:%M:%S}",
+        "entryPrice": "@entryPrice{0.4f}",
+        "exitDt": "@exitDt{%Y-%m-%d %H:%M:%S}",
+        "exitPrice": "@exitPrice{0.4f}",
+        "tradeVolume": "@tradeVolume{0.4f}"
+    }
+}
+
+DEFAULT_FORMATER = {
+    "trade": {
+        "entryDt": "datetime",
+        "exitDt": "datetime"
+    }
+}
+
+KIND_FORMAT = {
+    "M": "{%Y-%m-%d %H:%M:%S}",
+    "f": "{0.4f}",
+    "O": "",
+    "i": ""
+} 
+
+
+PLOT_TYPE = {
+    "candle": plotCandle,
+    "line": plotLine,
+    "trade": plotTrades
+}
+
+
+def type2format(dtype):
+    return KIND_FORMAT.get(dtype.kind, "")
+
+
+import numpy as np
+
+def random_color(minimum=0):
+    rbg = [np.random.randint(0, 256) for i in range(3)]
+    while sum(rbg)<minimum:
+        i = np.random.randint(0, 3)
+        rbg[i] += np.random.randint(0, 256-rbg[i])
+    return "#%s%s%s" % (
+        hex(rbg[0])[2:].upper(),
+        hex(rbg[1])[2:].upper(),
+        hex(rbg[2])[2:].upper()
+    )
+
 class PlotHolder(object):
 
     def __init__(self, **figure_config):
         self.figure_config = figure_config
         self.members = []
-        self.plot = None
+        self._plot = None
         self.tooltips={
             "datetime": "@datetime{%Y-%m-%d %H:%M:%S}",
         }
         self.formatters={
             "datetime": "datetime",
         }
+        self.untitled_count = 0
+        self.color_count = 0
+        self.colors = set(properties.default_colors)
     
-    def add_member(self, _type, params):
-        if _type == "main":
-            self.formatters.update({
-                "datetime": "datetime",
-                "entryDt": "datetime",
-                "exitDt": "datetime"
-            })
-            self.tooltips.update(dict([
-                ("datetime", "@datetime{%Y-%m-%d %H:%M:%S}"),
-                ("open", "@open{0.4f}"),
-                ("high", "@high{0.4f}"),
-                ("low", "@low{0.4f}"),
-                ("close", "@close{0.4f}"),
-                ("entryDt", "@entryDt{%Y-%m-%d %H:%M:%S}"),
-                ("entryPrice", "@entryPrice{0.4f}"),
-                ("exitDt", "@exitDt{%Y-%m-%d %H:%M:%S}"),
-                ("exitPrice", "@exitPrice{0.4f}"),
-                ("tradeVolume", "@tradeVolume{0.4f}")
-            ]))
-            return
-        data = params["data"]
+    def set_figure(self, **kwargs):
+        self.figure_config.update(kwargs)
 
+    @classmethod
+    def main(cls, title="Main Figure"):
+        return cls(
+            x_axis_type="datetime", 
+            plot_width=1600, 
+            plot_height=600, 
+            title=title
+        )
+    
+    @classmethod
+    def sub(cls, title="Sub Figure"):
+        return cls(
+            x_axis_type="datetime", 
+            plot_width=1600, 
+            plot_height=300,
+            title=title,
+        )
+    
+    @property
+    def plot(self):
+        return self._plot
+
+    def add_member(self, _type, data, **params):
+        if isinstance(data, pd.Series):
+            data = self.adjust_series(data)
+        assert isinstance(data, pd.DataFrame)
+        tooltips = DEFAULT_TOOLTIPS.get(_type, None)
+        if tooltips:
+            self.tooltips.update(tooltips)
+        else:
+            for key, value in data.dtypes.apply(type2format).items():
+                self.tooltips[key] = "@%s%s" % (key, value)
+        self.formatters.update(DEFAULT_FORMATER.get(_type, {}))
+        self.members.append(dict(
+            _type=_type,
+            data=data.copy(),
+            **params
+        ))        
+    
+    def adjust_series(self, data):
+        data = data.copy()
+        if not data.name:
+            data.name = "untitled%d" % self.untitled_count
+            self.untitled_count += 1
+        if data.index.name != "datetime":
+            data.index.name = "datetime"
+        return data.reset_index()
+
+    def add_main_member(self, candle, trade, freq="1m"):
+        self.add_member("candle", candle, freq=freq)
+        self.add_member("trade", trade)        
+
+    def add_line_member(self, line, colors=None):
+        if isinstance(line, pd.Series):
+            line = self.adjust_series(line)
+        assert isinstance(line, pd.DataFrame)
+        
+        if not isinstance(colors, dict):
+            colors = {}
+        
+        for name in line.columns:
+            if name == "datetime":
+                continue
+            if name not in colors:
+                if len(self.colors):
+                    color = self.colors.pop()
+                else:
+                    color = random_color()
+                colors[name] = color
+        self.add_member("line", line, colors=colors)
+
+
+    def make_figure(self, **params):
+        self.figure_config.setdefault(
+            "tools", TOOLS.copy()
+        ).append(self.make_hover())
+        params.update(self.figure_config)
+        self._plot = figure(**params)
+        return self._plot
+    
+    def make_hover(self):
+        return HoverTool(
+            tooltips=list(self.tooltips.items()),
+            formatters=self.formatters
+        )
+
+    def draw_plot(self, **figure_options):
+        plot = self.make_figure(**figure_options)
+        for doc in self.members:
+            doc = doc.copy()
+            _type = doc.pop("_type")
+            data = doc.pop("data")
+            assert _type in PLOT_TYPE, "Invalid type: %s" % _type
+            method = PLOT_TYPE[_type]
+            method(data, plot=plot, **doc)
+        return plot
+    
+    
 
 class MultiPlot(object):
 
-    def __init__(self, filename="BacktestResult.html"):
-        self.plot_configs = []
+    def __init__(self, filename="BacktestResult.html", auto_adjust=True):
+        self.holders = []
         self.plots = []
         self.filename = filename
         self.logPath = ""
+        self.auto_adjust = auto_adjust
         self._main = None
-        self.plot_methods = {
-            "main": self.plot_main
-        }
-
-    def has_main(self):
-        return self._main is not None
     
-    def set_main(self, engine, frequency="1m", pos=0):
-        if isinstance(frequency, str):
-            frequency = freq2timedelta(frequency)
-        if not isinstance(frequency, timedelta):
-            raise TypeError("Type of frequency should be str or datetime.timedelta, not %s" % type(frequency))
+    def adjust_figures(self):
+        if len(self.holders)>1:
+            holder = self.holders[0]
+            for i in range(len(self.holders)-1):
+                if holder.figure_config["plot_height"] > 400:
+                    holder.figure_config["plot_height"] -= 100
 
+    def add_holder(self, holder):
+        assert isinstance(holder, PlotHolder)
+        self.holders.append(holder)
+        return len(self.holders) - 1
+
+    def set_main(self, candle, trade, freq="1m", do_resample=True, pos=0):
+        if pos < len(self.holders):
+            holder = self.holders[pos]
+        else:
+            holder = PlotHolder.main()
+            pos = self.add_holder(holder)
+
+        if isinstance(freq, str):
+            freq = freq2timedelta(freq)
+
+        if isinstance(freq, timedelta):
+            if do_resample:
+                candle = resample(candle.set_index("datetime"), freq).reset_index()
+        else:
+            freq = timedelta(minutes=1)
+
+        holder.add_main_member(candle, trade, freq)
+
+        return pos
+
+    def set_engine(self, engine, freq="1m", do_resample=True, pos=0):
         trade_file = os.path.join(engine.logPath, "交割单.csv")
         if not os.path.isfile(trade_file):
             raise IOError("Transaction file: %s not exists" % trade_file)
-        self.logPath = engine.logPath
-
         trades = read_transaction_file(trade_file) 
-        bars = pd.DataFrame([bar.__dict__ for bar in engine.backtestData])
-        frequency = frequency
-        self.add_plot(pos, "main", trades=trades, bars=bars, frequency=frequency)
+        candle = pd.DataFrame([bar.__dict__ for bar in engine.backtestData])
+        return self.set_main(candle, trades, freq, do_resample, pos)
 
-    def add_plot(self, pos, _type, **kwargs):
-        if pos < len(self.plot_configs):
-            plot_conf = self.plot_configs[pos]
+    @classmethod
+    def from_engine(cls, engine, freq="1m", do_resample=True, filename=None):
+        if not filename:
+            filename = os.path.join(engine.logPath, "transaction.html")
+        mp = cls(filename)
+        mp.set_engine(engine, freq, do_resample)
+        return mp
+
+    def set_line(self, line, colors=None, pos=None):
+        return self.set_plot("line", line, pos, colors=colors)
+    
+    def set_candle(self, candle, freq="1m", do_resample=True, pos=None):
+        if isinstance(freq, str):
+            freq = freq2timedelta(freq)
+        
+        if isinstance(freq, timedelta):
+            if do_resample:
+                candle = resample(candle.set_index("datetime"), freq).reset_index()
         else:
-            if (len(self.plot_configs)) == 0 and (_type != "main"):
-                raise ValueError("Should set main plot first.")
-            plot_conf = []
-            self.plot_configs.append(plot_conf)
-        plot_conf.append({"_type": _type, "params": kwargs})
+            freq = timedelta(minutes=1)
+        
+        return self.set_plot("candle", candle, pos, freq=freq)
     
-    def plot_main(self, bars, trades, frequency=None, plot=None):
-        plot = makePlot(bars, trades, frequency, plot=plot)
-        if not self.has_main():
-            self._main = plot
-        return plot
+    def set_plot(self, _type, data, pos=None, **params):
+        if not isinstance(pos, int):
+            pos = len(self.holders)
+        if pos < len(self.holders):
+            holder = self.holders[pos]
+        else:
+            holder = PlotHolder.sub()
+            pos = self.add_holder(holder)
+        holder.add_member(_type, data, **params)
+        return pos
+        
+    def draw_plots(self):
+        if self.auto_adjust:
+            self.adjust_figures()
+        plots = []
+        for holder in self.holders:
+            if self._main:
+                plot = holder.draw_plot(x_range=self._main.x_range)
+            else:
+                plot = holder.draw_plot()
+                self._main = plot
+            plots.append(plot)
+        return plots
     
-    def plot_line(self, data, colors, plot):
-        plot =  plotLine(data, plot, colors)
-        return plot
+    def show(self):
+        plots = self.draw_plots()
+        output_file(self.filename)
+        show(column(plots))
+    
+    def get_data(self, pos, index):
+        holder = self.holders[pos]
+        return holder.members[index]["data"].copy()
+
     
