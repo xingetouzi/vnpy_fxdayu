@@ -12,6 +12,12 @@ class Property(object):
         self.long_trade_tri = dict()
         self.short_trade_tri = dict()
         self.trade_close_tri = dict()
+        self.default_colors=[
+            "#FFFF00", "#FF00FF", "#00FFFF",
+            "#FF0000", "#00FF00", "#0000FF",
+            "#C04000", "#C00040", "#00C040",
+            "#40C000", "#4000C0", "#00f0C0",
+        ]
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -104,3 +110,4 @@ MT4Property = Property(
 
 
 # MT4Property ---------------------------------------------------------
+

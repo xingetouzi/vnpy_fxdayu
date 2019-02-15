@@ -1,29 +1,16 @@
 from datetime import timedelta
+from vnpy.trader.utils.htmlplot.core import MultiPlot, read_transaction_file
+
 import pandas as pd
 import os
 
 
-def showTransaction(engine, frequency="1m", filename=None):
-    from vnpy.trader.utils.htmlplot import core 
-    if isinstance(frequency, str):
-        frequency = core.freq2timedelta(frequency)
-    if not isinstance(frequency, timedelta):
-        raise TypeError("Type of frequency should be str or datetime.timedelta, not %s" % type(frequency))
+def showTransaction(engine, frequency="1m", do_resampe=True, filename=None):
+    mp = MultiPlot.from_engine(engine, frequency, filename=filename)
+    mp.show()
 
-    trade_file = os.path.join(engine.logPath, "交割单.csv")
-    if not os.path.isfile(trade_file):
-        raise IOError("Transaction file: %s not exists" % trade_file)
 
-    trades = core.read_transaction_file(trade_file) 
-    bars = pd.DataFrame([bar.__dict__ for bar in engine.backtestData])
+def getMultiPlot(engine, freq="1m", do_resampe=True, filename=None):
+    return MultiPlot.from_engine(engine, freq, do_resampe, filename)
 
-    if not filename:
-        filename = os.path.join(engine.logPath, "transaction.html")
-
-    core.makePlot(
-        bars, 
-        trades,
-        filename,
-        frequency
-    )
 
