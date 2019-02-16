@@ -126,7 +126,29 @@ def plotLine(data, plot, colors=None, index="datetime"):
             source=source
         )
     return plot
-        
+
+
+def plotVbar(data, plot, colors=None, index="datetime"):
+    assert isinstance(plot, Figure)
+    if isinstance(data, pd.Series):
+        name = data.name if data.name else "untitled"
+        data = pd.DataFrame({name: data})
+    assert isinstance(data, pd.DataFrame)
+    if not isinstance(colors, dict):
+        colors = {}
+    if index not in data.columns:
+        if data.index.name != index:
+            data.index.name = index
+        data = data.reset_index()
+    data["bottom"] = 0
+    source = ColumnDataSource(data=data.to_dict("list"))
+    for name in data.columns:
+        if name != index:
+            plot.vbar(
+                x="datetime", bottom="bottom", top=name, 
+                legend=" %s " % name, color=colors.get(name, None),
+                source=source
+            )
 
 def plotTradesTriangle(plot, trades, x, y, size=10, angle_units="deg", **kwargs):
     assert isinstance(plot, Figure)
@@ -284,7 +306,8 @@ KIND_FORMAT = {
 PLOT_TYPE = {
     "candle": plotCandle,
     "line": plotLine,
-    "trade": plotTrades
+    "trade": plotTrades,
+    "vbar": plotVbar
 }
 
 
