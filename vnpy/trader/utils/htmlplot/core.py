@@ -505,7 +505,9 @@ class MultiPlot(object):
         return mp
 
     def set_line(self, line, colors=None, pos=None):
-        return self.set_plot("line", line, pos, colors=colors)
+        holder, pos = self.get_holder(pos)
+        holder.add_line_member(line, colors)
+        return pos
     
     def set_candle(self, candle, freq="1m", do_resample=True, pos=None):
         if isinstance(freq, str):
@@ -520,6 +522,11 @@ class MultiPlot(object):
         return self.set_plot("candle", candle, pos, freq=freq)
     
     def set_plot(self, _type, data, pos=None, **params):
+        holder, pos = self.get_holder(pos)
+        holder.add_member(_type, data, **params)
+        return pos
+        
+    def get_holder(self, pos):
         if not isinstance(pos, int):
             pos = len(self.holders)
         if pos < len(self.holders):
@@ -527,9 +534,9 @@ class MultiPlot(object):
         else:
             holder = PlotHolder.sub()
             pos = self.add_holder(holder)
-        holder.add_member(_type, data, **params)
-        return pos
-        
+        return holder, pos
+
+
     def draw_plots(self):
         if self.auto_adjust:
             self.adjust_figures()

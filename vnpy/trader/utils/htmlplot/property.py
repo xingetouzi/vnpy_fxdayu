@@ -12,11 +12,29 @@ class Property(object):
         self.long_trade_tri = dict()
         self.short_trade_tri = dict()
         self.trade_close_tri = dict()
-        self.default_colors=[
-            "#FFFF00", "#FF00FF", "#00FFFF",
-            "#FF0000", "#00FF00", "#0000FF",
-            "#C04000", "#C00040", "#00C040",
-            "#40C000", "#4000C0", "#00f0C0",
+        self.default_colors = [
+            '#fa8072',
+            '#f08080',
+            '#ff0000',
+            '#ff4500',
+            '#a52a2a',
+            '#dc143c',
+            '#8b0000',
+            '#c71585',
+            '#9932cc',
+            '#800080',
+            '#4b0082',
+            '#483d8b',
+            '#191970',
+            '#008b8b',
+            '#2f4f4f',
+            '#2e8b57',
+            '#6b8e23',
+            '#556b2f',
+            '#ff8c00',
+            '#a0522d',
+            '#4682b4',
+            '#696969'
         ]
         for key, value in kwargs.items():
             setattr(self, key, value)
