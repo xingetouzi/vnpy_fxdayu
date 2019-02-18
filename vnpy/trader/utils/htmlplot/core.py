@@ -45,7 +45,7 @@ MAINTOOLS = list(TOOLS)
 MAINTOOLS.append(hover)
 
 
-def plotCandle(bar, plot, freq=timedelta(minutes=1)):
+def plotCandle(bar, plot, freq=None):
     assert isinstance(bar, pd.DataFrame)
     assert isinstance(plot, Figure)
 
@@ -60,6 +60,8 @@ def plotCandle(bar, plot, freq=timedelta(minutes=1)):
     ))
     plot.segment("datetime", "high", "datetime", "low", source=hlsource, **properties.candle_hl)
 
+    if not isinstance(freq, timedelta):
+        freq = bar.datetime.diff().min()
     width = int(1000*freq.total_seconds()*2/3)
 
     incsource = ColumnDataSource(data=dict(
@@ -128,7 +130,7 @@ def plotLine(data, plot, colors=None, index="datetime"):
     return plot
 
 
-def plotVbar(data, plot, colors=None, index="datetime"):
+def plotVbar(data, plot, freq=None, colors=None, index="datetime"):
     assert isinstance(plot, Figure)
     if isinstance(data, pd.Series):
         name = data.name if data.name else "untitled"
@@ -140,15 +142,22 @@ def plotVbar(data, plot, colors=None, index="datetime"):
         if data.index.name != index:
             data.index.name = index
         data = data.reset_index()
-    data["bottom"] = 0
-    source = ColumnDataSource(data=data.to_dict("list"))
+    bottom=pd.Series(0, data.index).values
+    dct = data.to_dict("list")
+    dct["_bottom"] = [0] * len(data)
+    source = ColumnDataSource(data=dct)
+    if not isinstance(freq, timedelta):
+        freq = data.datetime.diff().min()
+    if isinstance(freq, timedelta):
+        width = int(1000*freq.total_seconds()*2/3)
     for name in data.columns:
         if name != index:
             plot.vbar(
-                x="datetime", bottom="bottom", top=name, 
-                legend=" %s " % name, color=colors.get(name, None),
+                x="datetime", bottom="_bottom", top=name, width=width,
+                legend=" %s " % name, color=colors.get(name, None), alpha=0.5,
                 source=source
             )
+
 
 def plotTradesTriangle(plot, trades, x, y, size=10, angle_units="deg", **kwargs):
     assert isinstance(plot, Figure)
@@ -163,7 +172,6 @@ def plotTradesTriangle(plot, trades, x, y, size=10, angle_units="deg", **kwargs)
     )
 
     plot.triangle(x, y, source=source, size=size, angle_units=angle_units, **kwargs)
-
 
 
 def plotTrades(trades, plot=None):
@@ -209,23 +217,6 @@ def makeSubFigure(main_plot, title="", tools=TOOLS, plot_width=1600, plot_height
     return plot
 
 
-def makePlot(bars, trades, freq=None, plot=None):
-    if isinstance(freq, timedelta):
-        bars = resample(bars.set_index("datetime"), freq).reset_index()
-        freq_name = " ".join(iter_freq(freq))
-    else:
-        freq = timedelta(minutes=1)
-        freq_name = "1m"
-
-    if not isinstance(plot, bokeh.plotting.Figure):
-        plot = makeFigure("Transaction | frequency: %s" % freq_name)
-
-    plotCandle(bars, plot, freq)
-    plotTrades(trades, plot)
-    return plot
-
-
-
 def read_transaction_file(filename):
     trades = pd.read_csv(filename, engine="python")
     trades["entryDt"] = trades["entryDt"].apply(pd.to_datetime)
@@ -240,6 +231,7 @@ freq_pair = [
     ("m", 60),
     ("s", 1)
 ]
+
 
 def iter_freq(delta):
     assert isinstance(delta, timedelta)
@@ -394,20 +386,31 @@ class PlotHolder(object):
         if data.index.name != "datetime":
             data.index.name = "datetime"
         return data.reset_index()
+    
+    def adjust_data(self, data):
+        if isinstance(data, pd.Series):
+            data = self.adjust_series(data)
+        assert isinstance(data, pd.DataFrame)
+        return data
 
-    def add_main_member(self, candle, trade, freq="1m"):
+    def add_main_member(self, candle, trade, freq=None):
         self.add_member("candle", candle, freq=freq)
         self.add_member("trade", trade)        
 
     def add_line_member(self, line, colors=None):
-        if isinstance(line, pd.Series):
-            line = self.adjust_series(line)
-        assert isinstance(line, pd.DataFrame)
-        
+        line = self.adjust_data(line)
+        colors = self.fill_color(colors, line.columns)
+        self.add_member("line", line, colors=colors)
+
+    def add_vbar_member(self, vbar, freq=None, colors=None):
+        vbar = self.adjust_data(vbar)
+        colors = self.fill_color(colors, vbar.columns)
+        self.add_member("vbar", vbar, colors=colors, freq=freq)
+
+    def fill_color(self, colors, columns):
         if not isinstance(colors, dict):
             colors = {}
-        
-        for name in line.columns:
+        for name in columns:
             if name == "datetime":
                 continue
             if name not in colors:
@@ -416,8 +419,7 @@ class PlotHolder(object):
                 else:
                     color = random_color()
                 colors[name] = color
-        self.add_member("line", line, colors=colors)
-
+        return colors
 
     def make_figure(self, **params):
         self.figure_config.setdefault(
@@ -481,8 +483,6 @@ class MultiPlot(object):
         if isinstance(freq, timedelta):
             if do_resample:
                 candle = resample(candle.set_index("datetime"), freq).reset_index()
-        else:
-            freq = timedelta(minutes=1)
 
         holder.add_main_member(candle, trade, freq)
 
@@ -509,6 +509,10 @@ class MultiPlot(object):
         holder.add_line_member(line, colors)
         return pos
     
+    def set_vbar(self, data, freq=None, colors=None, pos=None):
+        holder, pos = self.get_holder(pos)
+        holder.add_vbar_member(data, freq, colors)
+
     def set_candle(self, candle, freq="1m", do_resample=True, pos=None):
         if isinstance(freq, str):
             freq = freq2timedelta(freq)
@@ -516,9 +520,6 @@ class MultiPlot(object):
         if isinstance(freq, timedelta):
             if do_resample:
                 candle = resample(candle.set_index("datetime"), freq).reset_index()
-        else:
-            freq = timedelta(minutes=1)
-        
         return self.set_plot("candle", candle, pos, freq=freq)
     
     def set_plot(self, _type, data, pos=None, **params):
