@@ -1139,7 +1139,7 @@ class BacktestingEngine(object):
                 targetValue = d[targetName]
             except KeyError:
                 targetValue = 0
-            resultList.append(([str(setting)], targetValue, d))
+            resultList.append((setting, targetValue, d))
 
         # 显示结果
         resultList.sort(reverse=True, key=lambda result: result[1])
