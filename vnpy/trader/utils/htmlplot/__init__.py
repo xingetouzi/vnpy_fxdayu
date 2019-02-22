@@ -5,12 +5,12 @@ import pandas as pd
 import os
 
 
-def showTransaction(engine, frequency="1m", do_resampe=True, filename=None):
+def showTransaction(engine, frequency=None, filename=None):
     mp = MultiPlot.from_engine(engine, frequency, filename=filename)
     mp.show()
 
 
-def getMultiPlot(engine, freq="1m", do_resampe=True, filename=None):
-    return MultiPlot.from_engine(engine, freq, do_resampe, filename)
+def getMultiPlot(engine, freq=None, filename=None):
+    return MultiPlot.from_engine(engine, freq, filename)
 
 

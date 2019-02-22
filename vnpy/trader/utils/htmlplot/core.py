@@ -470,7 +470,7 @@ class MultiPlot(object):
         self.holders.append(holder)
         return len(self.holders) - 1
 
-    def set_main(self, candle, trade, freq="1m", do_resample=True, pos=0):
+    def set_main(self, candle, trade, freq=None, pos=0):
         if pos < len(self.holders):
             holder = self.holders[pos]
         else:
@@ -481,27 +481,26 @@ class MultiPlot(object):
             freq = freq2timedelta(freq)
 
         if isinstance(freq, timedelta):
-            if do_resample:
-                candle = resample(candle.set_index("datetime"), freq).reset_index()
+            candle = resample(candle.set_index("datetime"), freq).reset_index()
 
         holder.add_main_member(candle, trade, freq)
 
         return pos
 
-    def set_engine(self, engine, freq="1m", do_resample=True, pos=0):
+    def set_engine(self, engine, freq=None, pos=0):
         trade_file = os.path.join(engine.logPath, "交割单.csv")
         if not os.path.isfile(trade_file):
             raise IOError("Transaction file: %s not exists" % trade_file)
         trades = read_transaction_file(trade_file) 
         candle = pd.DataFrame([bar.__dict__ for bar in engine.backtestData])
-        return self.set_main(candle, trades, freq, do_resample, pos)
+        return self.set_main(candle, trades, freq, pos)
 
     @classmethod
-    def from_engine(cls, engine, freq="1m", do_resample=True, filename=None):
+    def from_engine(cls, engine, freq=None, filename=None):
         if not filename:
             filename = os.path.join(engine.logPath, "transaction.html")
         mp = cls(filename)
-        mp.set_engine(engine, freq, do_resample)
+        mp.set_engine(engine, freq)
         return mp
 
     def set_line(self, line, colors=None, pos=None):
@@ -513,13 +512,12 @@ class MultiPlot(object):
         holder, pos = self.get_holder(pos)
         holder.add_vbar_member(data, freq, colors)
 
-    def set_candle(self, candle, freq="1m", do_resample=True, pos=None):
+    def set_candle(self, candle, freq=None, pos=None):
         if isinstance(freq, str):
             freq = freq2timedelta(freq)
         
         if isinstance(freq, timedelta):
-            if do_resample:
-                candle = resample(candle.set_index("datetime"), freq).reset_index()
+            candle = resample(candle.set_index("datetime"), freq).reset_index()
         return self.set_plot("candle", candle, pos, freq=freq)
     
     def set_plot(self, _type, data, pos=None, **params):
