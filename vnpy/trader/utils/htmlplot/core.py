@@ -511,6 +511,7 @@ class MultiPlot(object):
     def set_vbar(self, data, freq=None, colors=None, pos=None):
         holder, pos = self.get_holder(pos)
         holder.add_vbar_member(data, freq, colors)
+        return pos
 
     def set_candle(self, candle, freq=None, pos=None):
         if isinstance(freq, str):
