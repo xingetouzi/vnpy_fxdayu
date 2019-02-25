@@ -431,6 +431,9 @@ class OkexfRestApi(RestClient):
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
         
+        self.localRemoteDict[orderID] = orderID
+        self.orderDict[orderID] = order
+
         self.addRequest('POST', '/api/futures/v3/order', 
                         callback=self.onSendOrder, 
                         data=data, 
@@ -438,8 +441,6 @@ class OkexfRestApi(RestClient):
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.localRemoteDict[orderID] = orderID
-        self.orderDict[orderID] = order
         return vtOrderID
     
     #----------------------------------------------------------------------
