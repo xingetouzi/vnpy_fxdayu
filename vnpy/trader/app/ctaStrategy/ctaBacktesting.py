@@ -1139,7 +1139,7 @@ class BacktestingEngine(object):
                 targetValue = d[targetName]
             except KeyError:
                 targetValue = 0
-            resultList.append(([str(setting)], targetValue, d))
+            resultList.append((setting, targetValue, d))
 
         # 显示结果
         resultList.sort(reverse=True, key=lambda result: result[1])
@@ -1523,6 +1523,11 @@ class OptimizationSetting(object):
 
         self.paramDict[name] = l
 
+    def addParams(self, name, params):
+        if isinstance(params, str):
+            params = eval(params)
+        self.paramDict[name] = list(params)
+
     # ----------------------------------------------------------------------
     def generateSetting(self):
         """生成优化参数组合"""
@@ -1634,7 +1639,8 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
         targetValue = d[targetName]
     except KeyError:
         targetValue = 0
-    return (str(setting), targetValue, d)
+    # return (str(setting), targetValue, d)
+    return (setting, targetValue, d)
 
 
 def gen_dates(b_date, days):
