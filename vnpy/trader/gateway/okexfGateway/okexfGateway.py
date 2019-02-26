@@ -323,6 +323,10 @@ class OkexfRestApi(RestClient):
         self.cancelledOrders = OrderedDict()
     
     #----------------------------------------------------------------------
+    def getOrderID(self):
+        return "FUTURE" + str(self.loginTime + self.orderID)
+
+    #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
         # 生成签名
@@ -401,7 +405,7 @@ class OkexfRestApi(RestClient):
     def sendOrder(self, orderReq):# type: (VtOrderReq)->str
         """限速规则：20次/2s"""
         self.orderID += 1
-        orderID = str(self.loginTime + self.orderID)
+        orderID = self.getOrderID()
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
@@ -818,7 +822,7 @@ class OkexfRestApi(RestClient):
                 order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
                 self.orderID += 1
-                order.orderID = str(self.loginTime + self.orderID)
+                order.orderID = self.getOrderID()
                 order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
                 self.localRemoteDict[order.orderID] = d['order_id']
                 order.tradedVolume = 0
@@ -1262,7 +1266,7 @@ class OkexfWebsocketApi(WebsocketClient):
             else:
                 restApi = self.gateway.restApi
                 restApi.orderID += 1
-                order.orderID = str(restApi.loginTime + restApi.orderID)
+                order.orderID = restApi.getOrderID()
 
             order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
             order.price = data['price']
