@@ -6,6 +6,7 @@ import traceback
 from queue import Empty, Queue
 from datetime import datetime
 from multiprocessing.dummy import Pool
+from collections import deque
 
 import requests
 from enum import Enum
@@ -81,7 +82,9 @@ class RestClient(object):
 
         self._queue = Queue()
         self._pool = None  # type: Pool
-    
+        self._queueing_times = deque(maxlen=100)
+        self._response_times = deque(maxlen=100)
+
     #----------------------------------------------------------------------
     def init(self, urlBase):
         """
@@ -153,6 +156,9 @@ class RestClient(object):
         request.extra = extra
         request.onFailed = onFailed
         request.onError = onError
+        request.createDatetime = datetime.now()
+        request.deliverDatetime = None
+        request.responseDatetime = None
         self._queue.put(request)
         return request
     
@@ -234,14 +240,20 @@ class RestClient(object):
             request = self.sign(request)
     
             url = self.makeFullUrl(request.path)
-    
+
+            request.deliverDatetime = datetime.now()
+            self._queueing_times.append((request.deliverDatetime - request.createDatetime).total_seconds())
+
             response = session.request(request.method,
                                        url,
                                        headers=request.headers,
                                        params=request.params,
                                        data=request.data)
             request.response = response
-    
+            request.responseDatetime = datetime.now()
+            
+            self._response_times.append((request.responseDatetime - request.deliverDatetime).total_seconds())
+
             httpStatusCode = response.status_code
             if httpStatusCode / 100 == 2:                               # 2xx都算成功，尽管交易所都用200
                 jsonBody = response.json()
@@ -273,3 +285,12 @@ class RestClient(object):
         url = self.urlBase + path
         return url
 
+    def getStatus(self):
+        """
+        获取此时client的一些运行时基本信息
+        """
+        return {
+            "queueing_number": self._queue.qsize(),
+            "avg_queueing_time": sum(self._queueing_times) / len(self._queueing_times) if len(self._queueing_times) else 0,
+            "avg_response_time": sum(self._response_times) / len(self._response_times) if len(self._response_times) else 0
+        }
