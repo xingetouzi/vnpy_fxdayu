@@ -1,7 +1,33 @@
+import hmac
+import base64
+
+ISO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+#----------------------------------------------------------------------
+def generateSignature(msg, apiSecret):
+    """签名V3"""
+    mac = hmac.new(bytes(apiSecret, encoding='utf-8'), bytes(msg,encoding='utf-8'), digestmod='sha256')
+    d= mac.digest()
+    return base64.b64encode(d)
+
+# K线频率映射
+granularityMap = {}
+granularityMap['1min'] =60
+granularityMap['3min'] =180
+granularityMap['5min'] =300
+granularityMap['10min'] =600
+granularityMap['15min'] =900
+granularityMap['30min'] =1800
+granularityMap['60min'] =3600
+granularityMap['120min'] =7200
+granularityMap['240min'] =14400
+granularityMap['360min'] =21600
+granularityMap['720min'] =43200
+granularityMap['1day'] =86400
+granularityMap['1week'] =604800
+
 # 公共错误码（30000-31000）
 # v3API将使用统一30000开头的错误码
 # 公共错误码包括签名以及各个业务线统一的错误码
-
 ERRORCODE = {}
 ERRORCODE['30001'] = u'请求头"OK_ACCESS_KEY"不能为空'
 ERRORCODE['30002'] = u'请求头"OK_ACCESS_SIGN"不能为空'

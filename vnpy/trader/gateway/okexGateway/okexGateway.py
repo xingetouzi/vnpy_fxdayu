@@ -1,61 +1,20 @@
-# encoding: UTF-8
-'''
-'''
-from __future__ import print_function
-
-import logging
 import os
 import json
-import sys
 import time
-import uuid
-from datetime import datetime, timedelta
-from copy import copy
-import pandas as pd
+from datetime import datetime
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-from .futures import OkexfRestApi, OkexfWebsocketApi
+from .future import OkexfRestApi, OkexfWebsocketApi 
 from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
 from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
+from .util import ISO_DATETIME_FORMAT, granularityMap
 
 REST_HOST = 'https://www.okex.com'
-WEBSOCKET_HOST_V3 = 'wss://real.okex.com:10442/ws/v3'
-
-# 委托状态类型映射
-statusMapReverse = {}
-statusMapReverse['0'] = STATUS_NOTTRADED    # futures
-statusMapReverse['1'] = STATUS_PARTTRADED
-statusMapReverse['2'] = STATUS_ALLTRADED
-statusMapReverse['-1'] = STATUS_CANCELLED
-statusMapReverse['-2'] = STATUS_REJECTED
-
-# 方向和开平映射
-typeMap = {}
-typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = '1'
-typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = '2'
-typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = '4'  # cover
-typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = '3' # sell
-typeMapReverse = {v:k for k,v in typeMap.items()}
-
-# K线频率映射
-granularityMap = {}
-granularityMap['1min'] =60
-granularityMap['3min'] =180
-granularityMap['5min'] =300
-granularityMap['10min'] =600
-granularityMap['15min'] =900
-granularityMap['30min'] =1800
-granularityMap['60min'] =3600
-granularityMap['120min'] =7200
-granularityMap['240min'] =14400
-granularityMap['360min'] =21600
-granularityMap['720min'] =43200
-granularityMap['1day'] =86400
-granularityMap['1week'] =604800
+WEBSOCKET_HOST = 'wss://real.okex.com:10442/ws/v3'
 
 ########################################################################
 class OkexGateway(VtGateway):
@@ -67,26 +26,20 @@ class OkexGateway(VtGateway):
         super(OkexGateway, self).__init__(eventEngine, gatewayName)
         
         self.qryEnabled = False     # 是否要启动循环查询
-        self.localRemoteDict = {}   # localID:remoteID
-        self.orderDict = {}         # remoteID:order
 
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
-        
-        self.restFuturesApi = None
-        self.wsFuturesApi = None
-        self.restSwapApi = None
-        self.wsSwapApi = None
-        self.restSpotApi = None
-        self.wsSpotApi = None
 
-        self.contracts = []
-        self.swap_contracts = []
-        self.currency_pairs = []
+        self.apiKey = ''
+        self.apiSecret = ''
+        self.passphrase = ''
+
+        self.symbolTypeMap = {}
+        self.gatewayMap = {}
 
         self.orderID = 10000
         self.tradeID = 0
-        self.loginTime = 0
+        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * 100000
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -94,10 +47,7 @@ class OkexGateway(VtGateway):
         try:
             f = open(self.filePath)
         except IOError:
-            log = VtLogData()
-            log.gatewayName = self.gatewayName
-            log.logContent = u'读取连接配置出错，请检查'
-            self.onLog(log)
+            self.writeLog(u"读取连接配置出错，请检查")
             return
 
         # 解析connect.json文件
@@ -105,48 +55,51 @@ class OkexGateway(VtGateway):
         f.close()
         
         try:
-            apiKey = str(setting['apiKey'])
-            apiSecret = str(setting['apiSecret'])
-            passphrase = str(setting['passphrase'])
+            self.apiKey = str(setting['apiKey'])
+            self.apiSecret = str(setting['apiSecret'])
+            self.passphrase = str(setting['passphrase'])
             sessionCount = int(setting['sessionCount'])
-            subscrib_symbols = setting['contracts']
+            subscrib_symbols = setting['symbols']
         except KeyError:
-            log = VtLogData()
-            log.gatewayName = self.gatewayName
-            log.logContent = u'%s连接配置缺少字段，请检查'%self.gatewayName
-            self.onLog(log)
+            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查")
             return
 
         # 记录订阅的交易品种类型
+        contract_list = []
+        swap_list = []
+        spot_list = []
         for symbol in subscrib_symbols:
-            if "week" in symbol or "quarter" in symbol:
-                self.contracts.append(symbol)                 
+            if "WEEK" in symbol or "QUARTER" in symbol:
+                self.symbolTypeMap[symbol] = "FUTURE"
+                contract_list.append(symbol)
             elif "SWAP" in symbol:
-                self.swap_contracts.append(symbol)
+                self.symbolTypeMap[symbol] = "SWAP"
+                swap_list.append(symbol)
             else:
-                self.currency_pairs.append(symbol)
+                self.symbolTypeMap[symbol] = "SPOT"
+                spot_list.append(symbol)
+
         # 创建行情和交易接口对象
         future_leverage = setting.get('future_leverage', 10)
         swap_leverage = setting.get('swap_leverage', 1)
-        margin_token = setting.get('margin_token',3)
+        margin_token = setting.get('margin_token', 3)
 
-        if len(self.contracts)>0:
-            self.restFuturesApi = OkexfRestApi(self)
-            self.restFuturesApi.connect(apiKey, apiSecret, passphrase, future_leverage, sessionCount)
-            self.wsFuturesApi = OkexfWebsocketApi(self)     
-            self.wsFuturesApi.connect(apiKey, apiSecret, passphrase)  
-        if len(self.swap_contracts)>0:
-            self.restSwapApi = OkexSwapRestApi(self)
-            self.restSwapApi.connect(apiKey, apiSecret, passphrase, swap_leverage, sessionCount)
-            self.wsSwapApi = OkexSwapWebsocketApi(self)
-            self.wsSwapApi.connect(apiKey, apiSecret, passphrase)
-        if len(self.currency_pairs):
-            self.restSpotApi = OkexSpotRestApi(self)
-            self.restSpotApi.connect(apiKey, apiSecret, passphrase, margin_token, sessionCount)
-            self.wsSpotApi = OkexSpotWebsocketApi(self)
-            self.wsSpotApi.connect(apiKey, apiSecret, passphrase)
+        # 实例化对应品种类别的API
+        gateway_type = set(self.symbolTypeMap.values())
+        if "FUTURE" in gateway_type:
+            restfutureApi = OkexfRestApi(self)
+            wsfutureApi = OkexfWebsocketApi(self)     
+            self.gatewayMap['FUTURE'] = {"REST":restfutureApi, "WS":wsfutureApi, "leverage":future_leverage, "symbols":contract_list}
+        if "SWAP" in gateway_type:
+            restSwapApi = OkexSwapRestApi(self)
+            wsSwapApi = OkexSwapWebsocketApi(self)
+            self.gatewayMap['SWAP'] = {"REST":restSwapApi, "WS":wsSwapApi, "leverage":swap_leverage, "symbols":swap_list}
+        if "SPOT" in gateway_type:
+            restSpotApi = OkexSpotRestApi(self)
+            wsSpotApi = OkexSpotWebsocketApi(self)
+            self.gatewayMap['SPOT'] = {"REST":restSpotApi, "WS":wsSpotApi, "leverage":margin_token, "symbols":spot_list}
 
-        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * self.orderID
+        self.connectSubGateway(sessionCount)
 
         setQryEnabled = setting.get('setQryEnabled', None)
         self.setQryEnabled(setQryEnabled)
@@ -155,71 +108,55 @@ class OkexGateway(VtGateway):
         self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
+    def connectSubGateway(self, sessionCount):
+        for subGateway in self.gatewayMap.values():
+            subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
+            subGateway["WS"].connect(WEBSOCKET_HOST)
+
     def subscribe(self, subscribeReq):
         """订阅行情"""
-        symbol = subscribeReq.symbol
-        if symbol in self.contracts:
-            self.wsFuturesApi.subscribe(symbol)
-        elif symbol in self.swap_contracts:
-            self.wsSwapApi.subscribe(symbol)
-        elif symbol in self.currency_pairs:
-            self.wsSpotApi.subscribe(symbol)
-        else:
-            print(self.gatewayName," does not have this symbol:",symbol)
-
+        # symbolType = self.symbolTypeMap.get(subscribeReq.symbol, None)
+        # if not symbolType:
+        #     self.writeLog(f"{self.gatewayName} does not have this symbol:{subscribeReq.symbol}")
+        # else:
+        #     self.gatewayMap[symbolType]["WS"].subscribe(subscribeReq.symbol)
+    
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
-        symbol = orderReq.symbol
-        self.orderID += 1
-        orderID = str(self.loginTime + self.orderID)
-        orderID = str(uuid.uuid5(uuid.NAMESPACE_DNS,orderID)).replace("-","")
-
-        if symbol in self.contracts:
-            return self.restFuturesApi.sendOrder(orderReq,orderID)
-        elif symbol in self.swap_contracts:
-            return self.restSwapApi.sendOrder(orderReq,orderID)
-        elif symbol in self.currency_pairs:
-            return self.restSpotApi.sendOrder(orderReq,orderID)
+        symbolType = self.symbolTypeMap.get(orderReq.symbol, None)
+        if not symbolType:
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}")
         else:
-            print(self.gatewayName," does not have this symbol:",symbol)
+            self.orderID += 1
+            order_id = symbolType + str(self.loginTime + self.orderID)
+            return self.gatewayMap[symbolType]["REST"].sendOrder(orderReq, order_id)
 
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
-        symbol = cancelOrderReq.symbol
-        print(symbol,"********************")
-        if symbol in self.contracts:
-            self.restFuturesApi.cancelOrder(cancelOrderReq)
-        elif symbol in self.swap_contracts:
-            self.restSwapApi.cancelOrder(cancelOrderReq)
-        elif symbol in self.currency_pairs:
-            self.restSpotApi.cancelOrder(cancelOrderReq)
+        symbolType = self.symbolTypeMap.get(cancelOrderReq.symbol, None)
+        if not symbolType:
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{cancelOrderReq.symbol}")
         else:
-            print(self.gatewayName," does not have this symbol:",symbol)
+            self.gatewayMap[symbolType]["REST"].cancelOrder(cancelOrderReq)
         
     # ----------------------------------------------------------------------
     def cancelAll(self, symbols=None, orders=None):
         """发单"""
-        return self.restFuturesApi.cancelAll(symbols=symbols, orders=orders)
+        return self.gatewayMap["FUTURE"]["REST"].cancelAll(symbols=symbols, orders=orders)
 
     # ----------------------------------------------------------------------
     def closeAll(self, symbols, direction=None):
         """撤单"""
-        return self.restFuturesApi.closeAll(symbols, direction=direction)
+        return self.gatewayMap["FUTURE"]["REST"].closeAll(symbols, direction=direction)
 
     #----------------------------------------------------------------------
     def close(self):
         """关闭"""
-        if self.contracts:
-            self.restFuturesApi.stop()
-            self.wsFuturesApi.stop()
-        elif self.swap_contracts:
-            self.restSwapApi.stop()
-            self.wsSwapApi.stop()
-        elif self.currency_pairs:
-            self.restSpotApi.stop()
-            self.wsSpotApi.stop()
+        for gateway in self.gatewayMap.values():
+            gateway["REST"].stop()
+            gateway["WS"].stop()
     #----------------------------------------------------------------------
     def initQuery(self, freq = 60):
         """初始化连续查询"""
@@ -264,36 +201,77 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def queryInfo(self):
         """"""
-        if self.contracts:
-            self.restFuturesApi.queryAccount()
-            self.restFuturesApi.queryPosition()
-            self.restFuturesApi.queryOrder() 
-        if self.swap_contracts:
-            self.restSwapApi.queryAccount()
-            self.restSwapApi.queryPosition()
-            self.restSwapApi.queryOrder() 
-        if self.currency_pairs:
-            self.restSpotApi.queryAccount()
-            self.restSpotApi.queryOrder() 
+        for subGateway in self.gatewayMap.values():
+            subGateway["REST"].queryAccount()
+            subGateway["REST"].queryPosition()
+            subGateway["REST"].queryOrder()
 
     def initPosition(self,vtSymbol):
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
-        if symbol in self.contracts:
-            self.restFuturesApi.queryPosition()
-        elif symbol in self.swap_contracts:
-            self.restSwapApi.queryPosition()
-        elif symbol in self.currency_pairs:
-            self.restSpotApi.queryAccount()
+        symbolType = self.symbolTypeMap.get(symbol, None)
+        if not symbolType:
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
         else:
-            print(self.gatewayName," does not have this symbol:", symbol)
+            self.gatewayMap[symbolType]["REST"].queryMonoPosition(symbol)
+            self.gatewayMap[symbolType]["REST"].queryMonoAccount(symbol)
 
-    def qryAllOrders(self,vtSymbol,order_id,status=None):
+    def qryAllOrders(self, vtSymbol, order_id, status=None):
         pass
 
-    def loadHistoryBar(self,vtSymbol,type_,size=None,since=None,end=None):
-        if vtSymbol in self.contracts:
-            return self.restFuturesApi.loadHistoryBarV1(vtSymbol,type_,size,since,end)
-        elif vtSymbol in self.swap_contracts:
-            return self.restSwapApi.loadHistoryBarV3(vtSymbol,granularityMap[type_],size,since,end)
-        elif vtSymbol in self.currency_pairs:
-            return self.restSpotApi.loadHistoryBarV3(vtSymbol,granularityMap[type_],size,since,end)
+    def loadHistoryBar(self, vtSymbol, type_, size=None, since=None, end=None):
+        symbol = vtSymbol.split(VN_SEPARATOR)[0]
+        symbolType = self.symbolTypeMap.get(symbol, None)
+        if not symbolType:
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
+            return []
+        else:
+            subGateway = self.gatewayMap[symbolType]["REST"]
+            return subGateway.loadHistoryBar(REST_HOST, symbol, granularityMap[type_], size, since, end)
+
+    def writeLog(self, content):
+        """发出日志"""
+        log = VtLogData()
+        log.gatewayName = self.gatewayName
+        log.logContent = content
+        self.onLog(log)
+    
+    def newOrderObject(self, data):
+        order = VtOrderData()
+        order.gatewayName = self.gatewayName
+        order.symbol = data['instrument_id']
+        order.exchange = 'OKEX'
+        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+
+        if data['client_oid']:
+            order.orderID = data['client_oid']
+        else:
+            order.orderID = str(data['order_id'])
+            self.writeLog(f"order by other source, symbol:{order.symbol}, exchange_id: {order.orderID}")
+
+        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+        order.price = data['price']
+        order.tradedVolume = 0
+        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+        return order
+
+    def newTradeObject(self, order):
+        self.tradeID += 1
+        trade = VtTradeData()
+        trade.gatewayName = order.gatewayName
+        trade.symbol = order.symbol
+        trade.exchange = order.exchange
+        trade.vtSymbol = order.vtSymbol
+        
+        trade.orderID = order.orderID
+        trade.vtOrderID = order.vtOrderID
+        trade.tradeID = str(self.tradeID)
+        trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+        
+        trade.direction = order.direction
+        trade.offset = order.offset
+        trade.volume = order.thisTradedVolume
+        trade.price = order.price_avg
+        trade.tradeDatetime = datetime.now()
+        trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
+        self.onTrade(trade)

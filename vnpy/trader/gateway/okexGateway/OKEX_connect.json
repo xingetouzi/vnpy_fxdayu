@@ -1,14 +1,14 @@
 {
     "apiKey": "",
     "apiSecret": "",
-    "passphrase": "",
+    "passphrase":"",
     "future_leverage": 10,
     "swap_leverage": 1,
     "margin_token": 3,
-    "contracts":["eos_this_week","EOS-USD-SWAP","EOS-USDT"],
     "sessionCount": 3,
-    "setQryEnabled": false,
-    "setQryFreq": 60,
     "trace": false,
+    "contracts":["ETH-USDT","ETH-USD-SWAP","ETH-QUARTER"],
+    "setQryEnabled":false,
+    "setQryFreq":60,
     "note":""
 }
