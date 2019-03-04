@@ -126,7 +126,7 @@ class Optimization(object):
         self.strategySettings.index.name=INDEX_NAME
 
     def fill_index(self, keys):
-        self.strategySettings.loc[keys] = 1
+        self.strategySettings.loc[keys, STATUS] = 1
 
     def _callback(self, result):
         index = result.pop(INDEX_NAME)
@@ -184,13 +184,13 @@ class Optimization(object):
         
         return self
     
-    def runParallel(self):
+    def runParallel(self, processes=None):
         if not self.ready:
             return self
 
         import multiprocessing
         
-        pool = multiprocessing.Pool()
+        pool = multiprocessing.Pool(processes)
         for index, strategySetting in self.iter_settings():
             pool.apply_async(
                 runPerformanceParallel, 
