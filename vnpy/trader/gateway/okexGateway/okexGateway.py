@@ -1,7 +1,7 @@
 import os
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
@@ -10,7 +10,7 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .future import OkexfRestApi, OkexfWebsocketApi 
 from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
-from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
+# from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
 
 REST_HOST = 'https://www.okex.com'
@@ -219,14 +219,43 @@ class OkexGateway(VtGateway):
         pass
 
     def loadHistoryBar(self, vtSymbol, type_, size=None, since=None, end=None):
+        import pandas as pd
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
+        granularity = granularityMap[type_]
         if not symbolType:
             self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
             return []
         else:
             subGateway = self.gatewayMap[symbolType]["REST"]
-            return subGateway.loadHistoryBar(REST_HOST, symbol, granularityMap[type_], size, since, end)
+
+        req = {"granularity":granularity}
+
+        if end:
+            end = datetime.utcfromtimestamp(datetime.timestamp(datetime.strptime(end,'%Y%m%d')))
+        else:
+            end = datetime.utcnow()
+
+        if since:
+            start = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+
+        if size:
+            start = datetime.utcnow()-timedelta(seconds = (size * granularity))
+
+        datetime_range = ((end -start).total_seconds()/ granularity) // 200 + 1
+        result = pd.DataFrame([])
+        for i in range(min(10, int(datetime_range))):
+            rotate_end = end.isoformat().split('.')[0]+'Z'
+            rotate_start = end - timedelta(seconds = granularity*200)
+            rotate_start = rotate_start.isoformat().split('.')[0]+'Z'
+
+            req.update({"start":rotate_start,"end":rotate_end})
+            data = subGateway.loadHistoryBar(REST_HOST, symbol, req)
+
+            end = datetime.strptime(rotate_start,"%Y-%m-%dT%H:%M:%SZ")
+            result = pd.concat([result, data])
+        result.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+        return result
 
     def writeLog(self, content):
         """发出日志"""
@@ -275,3 +304,11 @@ class OkexGateway(VtGateway):
         trade.tradeDatetime = datetime.now()
         trade.tradeTime = trade.tradeDatetime.strftime('%Y%m%d %H:%M:%S')
         self.onTrade(trade)
+
+    def convertDatetime(self, timestring):
+        dt = datetime.strptime(timestring, ISO_DATETIME_FORMAT)
+        dt = dt.replace(tzinfo=timezone(timedelta()))
+        local_dt = datetime.fromtimestamp(dt.timestamp())
+        date_string = local_dt.strftime('%Y%m%d')
+        time_string = local_dt.strftime('%H:%M:%S.%f')
+        return local_dt, date_string, time_string

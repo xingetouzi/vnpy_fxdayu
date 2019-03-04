@@ -5,7 +5,7 @@ import sys
 import time
 import traceback
 import zlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
@@ -119,19 +119,24 @@ class OkexSpotRestApi(RestClient):
         """限速规则：20次/2s"""
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
-        if self.leverage > 0:
-            margin_trading = 2
-        else:
-            margin_trading = 1
-
         data = {
             'client_oid': orderID,
             'instrument_id': orderReq.symbol,
             'side': type_,
-            'price': orderReq.price,
-            'size': float(orderReq.volume),
-            'margin_trading': margin_trading,
+            'size': float(orderReq.volume)
         }
+        if orderReq.priceType == PRICETYPE_LIMITPRICE:
+            data["type"] = "limit"
+            data["price"] = orderReq.price
+        elif orderReq.priceType == PRICETYPE_MARKETPRICE:
+            data["type"] = "market"
+            data["notional"] = orderReq.price
+
+        if self.leverage > 0:
+            data["margin_trading"] = 2
+        else:
+            data["margin_trading"] = 1
+        
         
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -298,7 +303,7 @@ class OkexSpotRestApi(RestClient):
             path = '/api/spot/v3/{symbol}/position/'
             request = Request('GET', path, params=req, callback=None, data=None, headers=None)
 
-            request = sign2(request)
+            request = self.sign2(request)
             request.extra = direction
             url = self.makeFullUrl(request.path)
             response = requests.get(url, headers=request.headers, params=request.params)
@@ -315,7 +320,7 @@ class OkexSpotRestApi(RestClient):
     def onCloseAll(self, data, request):
         l = []
         def _response(request, l):
-            request = sign(request)
+            request = self.sign(request)
             url = self.makeFullUrl(request.path)
             response = requests.post(url, headers=request.headers, data=request.data)
             l.append(response.json())
@@ -534,37 +539,22 @@ class OkexSpotRestApi(RestClient):
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
 
-    def loadHistoryBar(self, REST_HOST, symbol, type_, size=None, since=None, end=None):
+    def loadHistoryBar(self, REST_HOST, symbol, req):
         """[{"close":"3417.0365","high":"3444.0271","low":"3412.535","open":"3432.194",
         "time":"2018-12-11T09:00:00.000Z","volume":"1215.46194777"}]"""
-        req = {
-            'granularity': type_
-        }
-        if size:
-            s = datetime.now()-timedelta(seconds = (size * type_))
-            req['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
 
-        if since:
-            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
-            req['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
-            
-        if end:
-            req['end'] = end
-        else:
-            req['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
         url = f'{REST_HOST}/api/spot/v3/instruments/{symbol}/candles'
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req,timeout=10)
         text = eval(r.text)
         df = pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume"])
-        df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT))
+        df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
         df['volume']= df["volume"].map(lambda x: float(x))
         df['open'] = df["open"].map(lambda x: float(x))
         df['high'] = df["high"].map(lambda x: float(x))
         df['low'] = df["low"].map(lambda x: float(x))
         df['close'] = df["close"].map(lambda x: float(x))
-        # delta = timedelta(hours=8)
-        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
-        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+        df = df[["datetime", "open", "high", "low", "close", "volume"]]
         return df
 
 class OkexSpotWebsocketApi(WebsocketClient):

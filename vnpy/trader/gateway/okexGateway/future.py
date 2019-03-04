@@ -5,7 +5,7 @@ import sys
 import time
 import traceback
 import zlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
@@ -660,38 +660,23 @@ class OkexfRestApi(RestClient):
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
 
     #----------------------------------------------------------------------
-    def loadHistoryBar(self, REST_HOST, symbol, type_, size=None, since=None, end=None):
+    def loadHistoryBar(self, REST_HOST, symbol, req):
         """[["2018-12-09T08:40:00.000Z","5.425","5.426","5.423","5.424","3364.0","6201.95008788"],
         ["2018-12-09T08:40:00.000Z","5.424","5.424","5.421","5.422","3152.0","5812.78855111"]]"""
         instrument_id = self.contractMapReverse[symbol]
-        req = {
-            'granularity': type_
-        }
-        if size:
-            s = datetime.now()-timedelta(seconds = (size * type_))
-            req['start'] = datetime.utcfromtimestamp(datetime.timestamp(s)).isoformat().split('.')[0]+'Z'
-
-        if since:
-            since = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
-            req['start'] = datetime.utcfromtimestamp(since).isoformat().split('.')[0]+'Z'
-            
-        if end:
-            req['end'] = end
-        else:
-            req['end'] = datetime.utcfromtimestamp(datetime.timestamp(datetime.now())).isoformat().split('.')[0]+'Z'
         url = f'{REST_HOST}/api/futures/v3/instruments/{instrument_id}/candles'
+
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req,timeout=10)
         text = eval(r.text)
         df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume",f"{symbol[:3]}_volume"])
-        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT))
+        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
         df['volume']= df["volume"].map(lambda x: float(x))
         df['open'] = df["open"].map(lambda x: float(x))
         df['high'] = df["high"].map(lambda x: float(x))
         df['low'] = df["low"].map(lambda x: float(x))
         df['close'] = df["close"].map(lambda x: float(x))
-        # delta = timedelta(hours=8)
-        # df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x,"%Y-%m-%d %H:%M:%S")-delta)# Alter TimeZone 
-        df.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
+        df = df[["datetime", "open", "high", "low", "close", "volume"]]
         return df
 
 ########################################################################
@@ -862,9 +847,7 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.volume = float(data['volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-            tick.date = tick.datetime.strftime('%Y%m%d')
-            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -899,9 +882,7 @@ class OkexfWebsocketApi(WebsocketClient):
                 tick.__setattr__(f'askPrice{(10-idx)}', float(price))
                 tick.__setattr__(f'askVolume{(10-idx)}', int(volume))
             
-            tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-            tick.date = tick.datetime.strftime('%Y%m%d')
-            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -919,9 +900,9 @@ class OkexfWebsocketApi(WebsocketClient):
             tick = self.tickDict[data['instrument_id']]
             tick.lastPrice = float(data['price'])
             tick.lastVolume = int(data['qty']/2)
-            tick.lastTradedTime = data['timestamp']
             tick.type = data['side']
             tick.volumeChange = 1
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             if tick.askPrice5:
                 tick = copy(tick)
@@ -937,9 +918,7 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.upperLimit = data['highest']
             tick.lowerLimit = data['lowest']
 
-            tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-            tick.date = tick.datetime.strftime('%Y%m%d')
-            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
