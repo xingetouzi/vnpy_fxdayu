@@ -303,16 +303,18 @@ class OptMemory(object):
                 self.optimization.fill_index(index)
         self.flush_index()
     
-    def save_report(self):
+    def save_report(self, cover=False):
         report = self.optimization.report()
 
-        report = pd.concat([report, self.read_result()])
+        if cover:
+            index_numbers = self.optimization.strategySettings.index
+        else:
+            index_numbers = self.optimization.strategySettings[self.optimization.strategySettings[STATUS]==0].index
 
         results = []
-        for index in self.optimization.strategySettings[self.optimization.strategySettings[STATUS]==0].index:
+        for index in index_numbers:
             filename = os.path.join(self.results_cache, "%d.json" % index)
             self.add_result(filename, results)
-
         if results:
             cr = pd.DataFrame(results).set_index(INDEX_NAME)
             self.optimization.fill_index(cr.index)
@@ -324,7 +326,7 @@ class OptMemory(object):
                 report,
                 df
             ])
-        self.flush_result(report)
+        report = self.flush_result(report)
         self.flush_index()
         return report
     
@@ -340,6 +342,7 @@ class OptMemory(object):
             )
             result = result[~result.index.duplicated(keep="last")]
         self.flush(self.result_file, result)
+        return result
 
     def read_result(self):
         if os.path.isfile(self.result_file):
