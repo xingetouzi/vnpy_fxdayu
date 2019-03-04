@@ -326,8 +326,7 @@ class OptMemory(object):
                 report,
                 df
             ])
-        if len(report):
-            report = self.flush_result(report)
+        report = self.flush_result(report)
         self.flush_index()
         return report
     
