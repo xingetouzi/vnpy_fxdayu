@@ -326,7 +326,8 @@ class OptMemory(object):
                 report,
                 df
             ])
-        report = self.flush_result(report)
+        if len(report):
+            report = self.flush_result(report)
         self.flush_index()
         return report
     
@@ -341,7 +342,8 @@ class OptMemory(object):
                 [table, result]
             )
             result = result[~result.index.duplicated(keep="last")]
-        self.flush(self.result_file, result)
+        if len(result):
+            self.flush(self.result_file, result)
         return result
 
     def read_result(self):
