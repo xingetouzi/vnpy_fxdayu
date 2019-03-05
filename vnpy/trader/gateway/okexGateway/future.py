@@ -61,7 +61,6 @@ class OkexfRestApi(RestClient):
         
         self.contractDict = {}    # store contract info
         self.cancelDict = {}      # store cancel order info
-        self.localRemoteDict = {} # { localID : remoteID }
         self.orderDict = {}       # store order info
 
         self.contractMap= {}
@@ -163,7 +162,6 @@ class OkexfRestApi(RestClient):
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.localRemoteDict[orderID] = orderID
         self.orderDict[orderID] = order
         return vtOrderID
     
@@ -171,23 +169,14 @@ class OkexfRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
         orderID = cancelOrderReq.orderID
-        remoteID = self.localRemoteDict.get(orderID, None)
-        print("\ncancelorder\n",remoteID,orderID)
-
-        if not remoteID:
-            self.cancelDict[orderID] = cancelOrderReq
+        if not orderID:
             return
 
         symbol = self.contractMapReverse[cancelOrderReq.symbol]
 
-        req = {
-            'instrument_id': symbol,
-            'order_id': remoteID
-        }
-        path = f'/api/futures/v3/cancel_order/{symbol}/{remoteID}'
+        path = f'/api/futures/v3/cancel_order/{symbol}/{orderID}'
         self.addRequest('POST', path, 
-                        callback=self.onCancelOrder,
-                        data=req)
+                        callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -539,7 +528,6 @@ class OkexfRestApi(RestClient):
             order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
             order.totalVolume = int(data['size'])
             order.direction, order.offset = typeMapReverse[str(data['type'])]
-            self.localRemoteDict[order.orderID] = exchange_order_id
                         
         order.price_avg = float(data['price_avg'])
         order.deliveryTime = datetime.now()
@@ -555,8 +543,6 @@ class OkexfRestApi(RestClient):
             self.gateway.newTradeObject(order)
 
         if order.status in STATUS_FINISHED:
-            if order.orderID in self.localRemoteDict:
-                del self.localRemoteDict[order.orderID]
             if order.orderID in self.orderDict:
                 del self.orderDict[order.orderID]
             if exchange_order_id in self.orderDict:
@@ -575,6 +561,7 @@ class OkexfRestApi(RestClient):
     def onSendOrderFailed(self, data, request):
         """
         下单失败回调：服务器明确告知下单失败
+        {"code":32015,"message":"Risk rate lower than 100% before opening position"}
         """
         self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}")
         order = request.extra
@@ -601,7 +588,6 @@ class OkexfRestApi(RestClient):
         oid = str(data['client_oid'])
         exchange_id = str(data['order_id'])
 
-        self.localRemoteDict[oid] = exchange_id
         self.orderDict[exchange_id] = self.orderDict[oid]# request.extra
         
         if oid in self.cancelDict:
@@ -610,8 +596,6 @@ class OkexfRestApi(RestClient):
 
         if data['error_code']:
             self.gateway.writeLog(f"WARNING: sendorder error, oid:{oid},code:{data['error_code']},{data['error_message']}")
-
-        self.gateway.writeLog(f"localID:{oid},--,exchangeID:{exchange_id}")
     
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
@@ -619,13 +603,13 @@ class OkexfRestApi(RestClient):
         2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
         'error_code': '32004', 'order_id': '1882519016480768'} 
         """
-        exchange_id =  str(data['order_id'])
         if data['result']:
-            self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: id: {exchange_id}")
+            self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: oid: {str(data['client_oid'])}")
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName
             error.errorID = data['error_code']
+            exchange_id =  str(data['order_id'])
             if 'error_message' in data.keys():
                 error.errorMsg = exchange_id + ' ' + data['error_message']
             else:
@@ -666,18 +650,9 @@ class OkexfRestApi(RestClient):
         instrument_id = self.contractMapReverse[symbol]
         url = f'{REST_HOST}/api/futures/v3/instruments/{instrument_id}/candles'
 
-        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req,timeout=10)
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
         text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume",f"{symbol[:3]}_volume"])
-        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
-        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
-        df['volume']= df["volume"].map(lambda x: float(x))
-        df['open'] = df["open"].map(lambda x: float(x))
-        df['high'] = df["high"].map(lambda x: float(x))
-        df['low'] = df["low"].map(lambda x: float(x))
-        df['close'] = df["close"].map(lambda x: float(x))
-        df = df[["datetime", "open", "high", "low", "close", "volume"]]
-        return df
+        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
 
 ########################################################################
 class OkexfWebsocketApi(WebsocketClient):

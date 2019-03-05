@@ -50,7 +50,6 @@ class OkexSpotRestApi(RestClient):
         
         self.contractDict = {}  # store contract info
         self.cancelDict = {}  # store cancel order info
-        self.localRemoteDict = {} # { localID : remoteID }
         self.orderDict = {} # store order info
     
     #----------------------------------------------------------------------
@@ -121,7 +120,7 @@ class OkexSpotRestApi(RestClient):
 
         data = {
             'client_oid': orderID,
-            'instrument_id': orderReq.symbol,
+            'instrument_id': str.lower(orderReq.symbol),
             'side': type_,
             'size': float(orderReq.volume)
         }
@@ -150,14 +149,13 @@ class OkexSpotRestApi(RestClient):
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
         
-        self.addRequest('POST', '/api/spot/v3/order', 
+        self.addRequest('POST', '/api/spot/v3/orders', 
                         callback=self.onSendOrder, 
                         data=data, 
                         extra=order,
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.localRemoteDict[orderID] = orderID
         self.orderDict[orderID] = order
         return order.vtOrderID
     
@@ -165,20 +163,18 @@ class OkexSpotRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
         orderID = cancelOrderReq.orderID
-        remoteID = self.localRemoteDict.get(orderID, None)
-        print("\ncancel_spot_order\n",remoteID,orderID)
 
-        if not remoteID:
-            self.cancelDict[orderID] = cancelOrderReq
+        if not orderID:
+            # self.cancelDict[orderID] = cancelOrderReq
             return
 
         req = {
-            'client_oid': orderID,
             'instrument_id': cancelOrderReq.symbol,
         }
-        path = f'/api/spot/v3/cancel_orders/{remoteID}'
-        self.addRequest('POST', path, params=req,
-                        callback=self.onCancelOrder)
+        path = f'/api/spot/v3/cancel_orders/{orderID}'
+        self.addRequest('POST', path, 
+                        callback=self.onCancelOrder,
+                        data=req)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -198,9 +194,11 @@ class OkexSpotRestApi(RestClient):
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
     def queryMonoPosition(self, symbol):
-        """"""
+        """占位"""
+        pass
     def queryPosition(self):
-        """"""
+        """占位"""
+        pass
     #----------------------------------------------------------------------
     def queryOrder(self):
         """"""
@@ -418,19 +416,25 @@ class OkexSpotRestApi(RestClient):
     def processOrderData(self, data):
         exchange_order_id = str(data['order_id'])
         order = self.orderDict.get(exchange_order_id, None)
+        if "client_oid" in data.keys():
+            if data["client_oid"] == "0":
+                data["client_oid"] = ""
         if not order:
             order = self.gateway.newOrderObject(data)
             order.totalVolume = float(data['size'])
             order.tradedVolume = 0.0
-            order.direction, order.offset = typeMapReverse[str(data['type'])]
-            self.localRemoteDict[order.orderID] = exchange_order_id
+            order.direction, order.offset = typeMapReverse[str(data['side'])]
         
         # update order info
-        order.price_avg = float(data['filled_notional'])/float(data['filled_size'])
+        incremental_filled_size = float(data['filled_size'])
+        if incremental_filled_size:
+            order.price_avg = float(data['filled_notional'])/incremental_filled_size
+        else:
+            order.price_avg = 0.0
         order.deliveryTime = datetime.now()
-        order.thisTradedVolume = float(data['filled_size']) - order.tradedVolume
+        order.thisTradedVolume = incremental_filled_size - order.tradedVolume
         order.status = statusMapReverse[str(data['status'])]
-        order.tradedVolume = float(data['filled_size'])
+        order.tradedVolume = incremental_filled_size
 
         self.gateway.onOrder(copy(order))
         self.orderDict[exchange_order_id] = order
@@ -439,8 +443,6 @@ class OkexSpotRestApi(RestClient):
             self.gateway.newTradeObject(order)
             
         if order.status in STATUS_FINISHED:
-            if order.orderID in self.localRemoteDict:
-                del self.localRemoteDict[order.orderID]
             if order.orderID in self.orderDict:
                 del self.orderDict[order.orderID]
             if exchange_order_id in self.orderDict:
@@ -480,38 +482,36 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
-        """{'result': True,'client_oid': '181129173533', 'order_id': '1878377147147264'}"""
-
+        """{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}"""
         oid = str(data['client_oid'])
         exchange_id = str(data['order_id'])
 
-        self.localRemoteDict[oid] = exchange_id
         self.orderDict[exchange_id] = self.orderDict[oid]# request.extra
         
         if oid in self.cancelDict:
             req = self.cancelDict.pop(oid)
             self.cancelOrder(req)
-
-        self.gateway.writeLog(f"localID:{oid},--,exchangeID:{exchange_id}")
     
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
-        """1:{'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
-        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
-        'error_code': '32004', 'order_id': '1882519016480768'} 
+        """ 1: {'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
+            2: failed cancel order: http400
         """
-        exchange_id =  str(data['order_id'])
+        rsp = eval(request.data)
+        oid = request.path.split("/")[-1]
         if data['result']:
-            self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: id: {exchange_id}")
+            self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid: {oid}")
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName
             error.errorID = data['error_code']
+            exchange_id =  str(data['order_id'])
             if 'error_message' in data.keys():
                 error.errorMsg = exchange_id + ' ' + data['error_message']
             else:
                 error.errorMsg = exchange_id + ' ' + ERRORCODE[str(error.errorID)]
             self.gateway.onError(error)
+
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
         """
@@ -544,18 +544,9 @@ class OkexSpotRestApi(RestClient):
         "time":"2018-12-11T09:00:00.000Z","volume":"1215.46194777"}]"""
 
         url = f'{REST_HOST}/api/spot/v3/instruments/{symbol}/candles'
-        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req,timeout=10)
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
         text = eval(r.text)
-        df = pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume"])
-        df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
-        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
-        df['volume']= df["volume"].map(lambda x: float(x))
-        df['open'] = df["open"].map(lambda x: float(x))
-        df['high'] = df["high"].map(lambda x: float(x))
-        df['low'] = df["low"].map(lambda x: float(x))
-        df['close'] = df["close"].map(lambda x: float(x))
-        df = df[["datetime", "open", "high", "low", "close", "volume"]]
-        return df
+        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume"])
 
 class OkexSpotWebsocketApi(WebsocketClient):
     """SPOT WS API"""
@@ -583,7 +574,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
         self.init(WEBSOCKET_HOST)
         self.start()
         
-    
     #----------------------------------------------------------------------
     def onConnected(self):
         """连接回调"""
@@ -696,7 +686,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
             self.sendPacket({'op': 'subscribe', 'args': f'spot/order:{currency}'})
     #----------------------------------------------------------------------
     def onSpotTick(self, d):
-        # print(d,"tickerrrrrrrrrrrrrrrrrrrr\n\n")
         """{'table': 'spot/ticker', 'data': [{
             'instrument_id': 'ETH-USDT', 'last': '120.2243', 'best_bid': '120.1841', 'best_ask': '120.2242', 
             'open_24h': '121.1132', 'high_24h': '121.7449', 'low_24h': '117.5606', 'base_volume_24h': '386475.880496', 
@@ -729,7 +718,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
             'bids': [['120.1868', '0.12', 1], ['120.1732', '0.354665', 1], ['120.1679', '21.15', 1], 
             ['120.1678', '23.25', 1], ['120.1677', '18.760982', 1]], 
             'instrument_id': 'ETH-USDT', 'timestamp': '2019-01-19T08:50:41.422Z'}]} """
-        # print(d,"depthhhhh\n\n")
         for data in d:
             tick = self.tickDict[data['instrument_id']]
             
@@ -756,7 +744,6 @@ class OkexSpotWebsocketApi(WebsocketClient):
     def onSpotTrades(self,d):
         """[{'instrument_id': 'ETH-USDT', 'price': '120.32', 'side': 'buy', 'size': '1.628', 
         'timestamp': '2019-01-19T08:56:48.669Z', 'trade_id': '782430504'}]"""
-        # print(d,"tradessss\n\n\n\n\n")
         for idx, data in enumerate(d):
             tick = self.tickDict[data['instrument_id']]
             tick.lastPrice = float(data['price'])
@@ -772,13 +759,10 @@ class OkexSpotWebsocketApi(WebsocketClient):
     def onTrade(self, d):
         """{
             "table": "spot/order",
-            "data": [{
-                "filled_notional": "0", "filled_size": "0",
-                "instrument_id": "LTC-USDT", "margin_trading": "2",
-                "notional": "", "order_id": "1997224323070976",
-                "price": "1", "side": "buy", "size": "1", "status": "open",
-                "timestamp": "2018-12-19T09:20:24.608Z", "type": "limit"
-            }]
+            "data": [{'client_oid': 'SPOT19030511282010001', 'filled_notional': '0', 'filled_size': '0', 
+            'instrument_id': 'ETH-USDT', 'margin_trading': '1', 'notional': '', 'order_id': '2426182069529600', 
+            'order_type': '0', 'price': '252.0066', 'side': 'sell', 'size': '0.01', 'status': 'open', 
+            'timestamp': '2019-03-05T03:30:00.000Z', 'type': 'limit'}]
         }"""
         for idx, data in enumerate(d):
             self.restGateway.processOrderData(data)

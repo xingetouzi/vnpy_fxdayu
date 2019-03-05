@@ -10,7 +10,7 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .future import OkexfRestApi, OkexfWebsocketApi 
 from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
-# from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
+from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
 
 REST_HOST = 'https://www.okex.com'
@@ -223,13 +223,12 @@ class OkexGateway(VtGateway):
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
         granularity = granularityMap[type_]
+
         if not symbolType:
             self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
             return []
         else:
             subGateway = self.gatewayMap[symbolType]["REST"]
-
-        req = {"granularity":granularity}
 
         if end:
             end = datetime.utcfromtimestamp(datetime.timestamp(datetime.strptime(end,'%Y%m%d')))
@@ -242,6 +241,7 @@ class OkexGateway(VtGateway):
         if size:
             start = datetime.utcnow()-timedelta(seconds = (size * granularity))
 
+        req = {"granularity":granularity}
         datetime_range = ((end -start).total_seconds()/ granularity) // 200 + 1
         result = pd.DataFrame([])
         for i in range(min(10, int(datetime_range))):
@@ -249,13 +249,19 @@ class OkexGateway(VtGateway):
             rotate_start = end - timedelta(seconds = granularity*200)
             rotate_start = rotate_start.isoformat().split('.')[0]+'Z'
 
-            req.update({"start":rotate_start,"end":rotate_end})
+            req["start"] = rotate_start
+            req["end"] = rotate_end
             data = subGateway.loadHistoryBar(REST_HOST, symbol, req)
 
-            end = datetime.strptime(rotate_start,"%Y-%m-%dT%H:%M:%SZ")
-            result = pd.concat([result, data])
-        result.sort_values(by=['datetime'],axis = 0,ascending =True,inplace = True)
-        return result
+            end = datetime.strptime(rotate_start, "%Y-%m-%dT%H:%M:%SZ")
+            df = pd.concat([result, data])
+
+        df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
+        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
+        df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].applymap(lambda x: float(x))
+        df = df[["datetime", "open", "high", "low", "close", "volume"]]
+        df.sort_values(by=['datetime'], axis = 0, ascending =True, inplace = True)
+        return df
 
     def writeLog(self, content):
         """发出日志"""

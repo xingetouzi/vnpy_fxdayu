@@ -7,7 +7,7 @@
     "margin_token": 3,
     "sessionCount": 3,
     "trace": false,
-    "contracts":["ETH-USDT","ETH-USD-SWAP","ETH-QUARTER"],
+    "symbols":["ETH-USDT","ETH-USD-SWAP","ETH-QUARTER"],
     "setQryEnabled":false,
     "setQryFreq":60,
     "note":""

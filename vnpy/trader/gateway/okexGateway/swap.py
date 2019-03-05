@@ -62,7 +62,6 @@ class OkexSwapRestApi(RestClient):
         
         self.contractDict = {}  # store contract info
         self.cancelDict = {}  # store cancel order info
-        self.localRemoteDict = {} # { localID : remoteID }
         self.orderDict = {} # store order info
     
     #----------------------------------------------------------------------
@@ -160,7 +159,6 @@ class OkexSwapRestApi(RestClient):
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.localRemoteDict[orderID] = orderID
         self.orderDict[orderID] = order
         return vtOrderID
     
@@ -169,21 +167,18 @@ class OkexSwapRestApi(RestClient):
         """限速规则：10次/2s"""
         symbol = cancelOrderReq.symbol
         orderID = cancelOrderReq.orderID
-        remoteID = self.localRemoteDict.get(orderID, None)
-        print("\ncancelorder\n",remoteID,orderID)
 
-        if not remoteID:
-            self.cancelDict[orderID] = cancelOrderReq
+        if not orderID:
+            # self.cancelDict[orderID] = cancelOrderReq
             return
 
-        req = {
-            'instrument_id': symbol,
-            'order_id': remoteID
-        }
-        path = f'/api/swap/v3/cancel_order/{symbol}/{remoteID}'
+        # req = {
+        #     'instrument_id': symbol,
+        #     'order_id': orderID
+        # }
+        path = f'/api/swap/v3/cancel_order/{symbol}/{orderID}'
         self.addRequest('POST', path, 
-                        callback=self.onCancelOrder, 
-                        data=req)
+                        callback=self.onCancelOrder)#, data=req)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -463,9 +458,7 @@ class OkexSwapRestApi(RestClient):
              {'avail_position': '0', 'avg_cost': '0', 'instrument_id': 'ETH-USD-SWAP', 'leverage': '0', 'liquidation_price': '0', 
              'margin': '0', 'position': '0', 'realized_pnl': '0', 'settlement_price': '0', 'side': '2', 'timestamp': '2019-03-01T03:01:54.363Z'}]}
         """
-        direction_map = {"1":"long","2":"short"}
         for data in d['holding']:
-            data['side'] = direction_map[data['side']]
             self.processPositionData(data)
     
     def onQueryPosition(self, d, request):
@@ -489,7 +482,6 @@ class OkexSwapRestApi(RestClient):
             order = self.gateway.newOrderObject(data)
             order.totalVolume = int(float(data['size']))
             order.direction, order.offset = typeMapReverse[data['type']]
-            self.localRemoteDict[order.orderID] = exchange_order_id
         
         order.price_avg = float(data['price_avg'])
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
@@ -505,8 +497,6 @@ class OkexSwapRestApi(RestClient):
             self.gateway.newTradeObject(order)
 
         if order.status in STATUS_FINISHED:
-            if order.orderID in self.localRemoteDict:
-                del self.localRemoteDict[order.orderID]
             if order.orderID in self.orderDict:
                 del self.orderDict[order.orderID]
             if exchange_order_id in self.orderDict:
@@ -550,39 +540,36 @@ class OkexSwapRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
-        """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
-        'order_id': '1878377147147264'}"""
-        """{'error_message': '', 'result': 'true', 'error_code': '0', 
+        """if rejected: {'error_message': 'Risk ratio too high', 'result': 'true', 
+        'error_code': '35008', 'order_id': '-1'}"""
+        """response correctly: {'error_message': '', 'result': 'true', 'error_code': '0', 
         'client_oid': '2863f51b555f55e292095090a3ac51a3', 'order_id': '66-b-422071e28-0'}"""
+        if int(data['error_code']):
+            self.gateway.writeLog(f"WARNING: sendorder error,,code:{data['error_code']},{data['error_message']}")
+            return
+
         oid = str(data['client_oid'])
         exchange_id = str(data['order_id'])
 
-        self.localRemoteDict[oid] = exchange_id
         self.orderDict[exchange_id] = self.orderDict[oid]# request.extra
         
         if oid in self.cancelDict:
             req = self.cancelDict.pop(oid)
             self.cancelOrder(req)
-
-        if data['error_code'] is not '0':
-            self.gateway.writeLog(f"WARNING: sendorder error, oid:{oid},code:{data['error_code']},{data['error_message']}")
-
-        self.gateway.writeLog(f"localID:{oid},--,exchangeID:{exchange_id}")
     
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
-        """1:{"result":"true","order_id":"66-4-422019def-0"} 
-        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
-        'error_code': '32004', 'order_id': '1882519016480768'} 
+        """1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
+        2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
         """
-        exchange_id =  str(data['order_id'])
-        instrument_id = request.path[26:29]
-        if data['result'] and (data['order_id'] is not "-1"):
-            self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: id: {exchange_id}")
+        instrument_id = request.path[26:38]
+        if "-1" not in data['order_id']:
+            self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid: {str(data['client_oid'])}")
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName
             error.errorID = data['error_code']
+            exchange_id =  str(data['order_id'])
             if 'error_message' in data.keys():
                 error.errorMsg = exchange_id + ' ' + data['error_message']
             else:
@@ -621,18 +608,9 @@ class OkexSwapRestApi(RestClient):
         ["2018-12-21T08:00:00.000Z","3994.8","4065.2","3994.8","4033","16403","407.4138"]]"""
 
         url = f'{REST_HOST}/api/swap/v3/instruments/{symbol}/candles'
-        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req,timeout=10)
+        r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
         text = eval(r.text)
-        df = pd.DataFrame(text, columns=["datetime", "open", "high", "low", "close", "volume",f"{symbol[:3]}_volume"])
-        df["datetime"] = df["datetime"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
-        df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
-        df['volume']= df["volume"].map(lambda x: float(x))
-        df['open'] = df["open"].map(lambda x: float(x))
-        df['high'] = df["high"].map(lambda x: float(x))
-        df['low'] = df["low"].map(lambda x: float(x))
-        df['close'] = df["close"].map(lambda x: float(x))
-        df = df[["datetime", "open", "high", "low", "close", "volume"]]
-        return df
+        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
 
 class OkexSwapWebsocketApi(WebsocketClient):
     """永续合约 WS API"""
