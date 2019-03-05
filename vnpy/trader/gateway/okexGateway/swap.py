@@ -61,7 +61,6 @@ class OkexSwapRestApi(RestClient):
         self.leverage = 0
         
         self.contractDict = {}  # store contract info
-        self.cancelDict = {}  # store cancel order info
         self.orderDict = {} # store order info
     
     #----------------------------------------------------------------------
@@ -165,20 +164,9 @@ class OkexSwapRestApi(RestClient):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
-        symbol = cancelOrderReq.symbol
-        orderID = cancelOrderReq.orderID
-
-        if not orderID:
-            # self.cancelDict[orderID] = cancelOrderReq
-            return
-
-        # req = {
-        #     'instrument_id': symbol,
-        #     'order_id': orderID
-        # }
-        path = f'/api/swap/v3/cancel_order/{symbol}/{orderID}'
+        path = f'/api/swap/v3/cancel_order/{cancelOrderReq.symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
-                        callback=self.onCancelOrder)#, data=req)
+                        callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -544,27 +532,19 @@ class OkexSwapRestApi(RestClient):
         'error_code': '35008', 'order_id': '-1'}"""
         """response correctly: {'error_message': '', 'result': 'true', 'error_code': '0', 
         'client_oid': '2863f51b555f55e292095090a3ac51a3', 'order_id': '66-b-422071e28-0'}"""
-        if int(data['error_code']):
-            self.gateway.writeLog(f"WARNING: sendorder error,,code:{data['error_code']},{data['error_message']}")
-            return
+        if data['error_message']:
+            return self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
+        else:
+            self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
 
-        oid = str(data['client_oid'])
-        exchange_id = str(data['order_id'])
-
-        self.orderDict[exchange_id] = self.orderDict[oid]# request.extra
-        
-        if oid in self.cancelDict:
-            req = self.cancelDict.pop(oid)
-            self.cancelOrder(req)
-    
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
         """1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
         2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
         """
         instrument_id = request.path[26:38]
-        if "-1" not in data['order_id']:
-            self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid: {str(data['client_oid'])}")
+        if not (data['order_id'] == "-1"):
+            self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName

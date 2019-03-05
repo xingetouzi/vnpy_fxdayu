@@ -49,7 +49,6 @@ class OkexSpotRestApi(RestClient):
         self.leverage = 0
         
         self.contractDict = {}  # store contract info
-        self.cancelDict = {}  # store cancel order info
         self.orderDict = {} # store order info
     
     #----------------------------------------------------------------------
@@ -163,10 +162,6 @@ class OkexSpotRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
         orderID = cancelOrderReq.orderID
-
-        if not orderID:
-            # self.cancelDict[orderID] = cancelOrderReq
-            return
 
         req = {
             'instrument_id': cancelOrderReq.symbol,
@@ -414,11 +409,11 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def processOrderData(self, data):
-        exchange_order_id = str(data['order_id'])
-        order = self.orderDict.get(exchange_order_id, None)
-        if "client_oid" in data.keys():
-            if data["client_oid"] == "0":
-                data["client_oid"] = ""
+        if data["client_oid"] == "0":
+            data["client_oid"] = ""
+        oid = str(data['client_oid'])
+        order = self.orderDict.get(oid, None)
+        
         if not order:
             order = self.gateway.newOrderObject(data)
             order.totalVolume = float(data['size'])
@@ -437,16 +432,14 @@ class OkexSpotRestApi(RestClient):
         order.tradedVolume = incremental_filled_size
 
         self.gateway.onOrder(copy(order))
-        self.orderDict[exchange_order_id] = order
+        self.orderDict[oid] = order
 
         if order.thisTradedVolume:
             self.gateway.newTradeObject(order)
             
         if order.status in STATUS_FINISHED:
-            if order.orderID in self.orderDict:
-                del self.orderDict[order.orderID]
-            if exchange_order_id in self.orderDict:
-                del self.orderDict[exchange_order_id]
+            if oid in self.orderDict:
+                del self.orderDict[oid]
 
     def onQueryOrder(self, d, request):
         """{
@@ -482,16 +475,11 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
-        """{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}"""
-        oid = str(data['client_oid'])
-        exchange_id = str(data['order_id'])
+        """1:{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}
+           2: http400 if rejected
+        """
+        self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
 
-        self.orderDict[exchange_id] = self.orderDict[oid]# request.extra
-        
-        if oid in self.cancelDict:
-            req = self.cancelDict.pop(oid)
-            self.cancelOrder(req)
-    
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
         """ 1: {'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
@@ -500,7 +488,7 @@ class OkexSpotRestApi(RestClient):
         rsp = eval(request.data)
         oid = request.path.split("/")[-1]
         if data['result']:
-            self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid: {oid}")
+            self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid-{oid}")
         else:
             error = VtErrorData()
             error.gatewayName = self.gatewayName

@@ -144,12 +144,26 @@ class OkexGateway(VtGateway):
     # ----------------------------------------------------------------------
     def cancelAll(self, symbols=None, orders=None):
         """发单"""
-        return self.gatewayMap["FUTURE"]["REST"].cancelAll(symbols=symbols, orders=orders)
+        ids = []
+        if not symbols:
+            symbols = list(self.symbolTypeMap.keys())
+        for sym in symbols:
+            symbolType = self.symbolTypeMap.get(sym, None)
+            vtOrderIDs = self.gatewayMap[symbolType]["REST"].cancelAll(symbols=symbols, orders=orders)
+            ids.extend(vtOrderIDs)
+        return ids
 
     # ----------------------------------------------------------------------
     def closeAll(self, symbols, direction=None):
         """撤单"""
-        return self.gatewayMap["FUTURE"]["REST"].closeAll(symbols, direction=direction)
+        ids = []
+        if not symbols:
+            symbols = list(self.symbolTypeMap.keys())
+        for sym in symbols:
+            symbolType = self.symbolTypeMap.get(sym, None)
+            vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbols=symbols, direction=direction)
+            ids.extend(vtOrderIDs)
+        return ids
 
     #----------------------------------------------------------------------
     def close(self):
