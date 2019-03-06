@@ -44,8 +44,9 @@ class OkexSpotRestApi(RestClient):
         self.gatewayName = gateway.gatewayName  # gateway对象名称
         self.leverage = 0
         
-        self.contractDict = {}  # store contract info
-        self.orderDict = {} # store order info
+        self.contractDict = {}    # store contract info
+        self.orderDict = {}       # store order info
+        self.okexIDMap = {}       # store okexID <-> OID
     
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
@@ -386,9 +387,13 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def processOrderData(self, data):
-        if data["client_oid"] == "0":
-            data["client_oid"] = ""
-        oid = str(data['client_oid'])
+        okexID = data['order_id']
+        if "client_oid" not in data.keys():
+            oid = self.okexIDMap.get(okexID, "not_exist")
+        else:
+            if data["client_oid"] == "0":
+                data["client_oid"] = ""
+            oid = str(data['client_oid'])
         order = self.orderDict.get(oid, None)
         
         if not order:
@@ -415,7 +420,11 @@ class OkexSpotRestApi(RestClient):
             self.gateway.newTradeObject(order)
             
         if order.status in STATUS_FINISHED:
-            if oid in self.orderDict:
+            finish_id = self.okexIDMap.get(okexID, None)
+            if finish_id:
+                del self.okexIDMap[okexID]
+            finish_order = self.orderDict.get(oid, None)
+            if finish_order:
                 del self.orderDict[oid]
 
     def onQueryOrder(self, d, request):
@@ -455,6 +464,7 @@ class OkexSpotRestApi(RestClient):
         """1:{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}
            2: http400 if rejected
         """
+        self.okexIDMap[data['order_id']] = data['client_oid']
         self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
 
     #----------------------------------------------------------------------

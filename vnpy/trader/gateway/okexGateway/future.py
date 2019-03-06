@@ -59,6 +59,7 @@ class OkexfRestApi(RestClient):
         
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
+        self.okexIDMap = {}       # store okexID <-> OID
 
         self.contractMap= {}
         self.contractMapReverse = {}
@@ -506,7 +507,11 @@ class OkexfRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def processOrderData(self, data):
-        oid = str(data['client_oid'])
+        okexID = data['order_id']
+        if "client_oid" not in data.keys():
+            oid = self.okexIDMap.get(okexID, "not_exist")
+        else:
+            oid = str(data['client_oid'])
         order = self.orderDict.get(oid, None)
 
         if not order:
@@ -530,8 +535,12 @@ class OkexfRestApi(RestClient):
             self.gateway.newTradeObject(order)
 
         if order.status in STATUS_FINISHED:
-            if oid in self.orderDict:
-                del self.orderDict[order.orderID]
+            finish_id = self.okexIDMap.get(okexID, None)
+            if finish_id:
+                del self.okexIDMap[okexID]
+            finish_order = self.orderDict.get(oid, None)
+            if finish_order:
+                del self.orderDict[oid]
 
     def onQueryOrder(self, d, request):
         """{'result': True, 'order_info': [
@@ -573,6 +582,7 @@ class OkexfRestApi(RestClient):
         if data['error_message']:
             self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
         else:
+            self.okexIDMap[data['order_id']] = data['client_oid']
             self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
