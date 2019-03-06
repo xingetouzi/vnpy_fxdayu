@@ -62,7 +62,16 @@ class OkexfRestApi(RestClient):
 
         self.contractMap= {}
         self.contractMapReverse = {}
-    
+
+    #----------------------------------------------------------------------
+    def connect(self, REST_HOST, leverage, sessionCount):
+        """连接服务器"""
+        self.leverage = leverage
+        
+        self.init(REST_HOST)
+        self.start(sessionCount)
+        self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
+        self.queryContract()
     # #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -115,18 +124,8 @@ class OkexfRestApi(RestClient):
         return request
     
     #----------------------------------------------------------------------
-    def connect(self, REST_HOST, leverage, sessionCount):
-        """连接服务器"""
-        self.leverage = leverage
-        
-        self.init(REST_HOST)
-        self.start(sessionCount)
-        self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
-        self.queryContract()
-    
-    #----------------------------------------------------------------------
     def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
-        """限速规则：20次/2s"""
+        """限速规则：40次/2s"""
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
@@ -164,7 +163,7 @@ class OkexfRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
-        """限速规则：10次/2s"""
+        """限速规则：40次/2s"""
         symbol = self.contractMapReverse[cancelOrderReq.symbol]
 
         path = f'/api/futures/v3/cancel_order/{symbol}/{cancelOrderReq.orderID}'
@@ -173,36 +172,36 @@ class OkexfRestApi(RestClient):
 
     #----------------------------------------------------------------------
     def queryContract(self):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', '/api/futures/v3/instruments', 
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbol):
-        """"""
+        """限速规则：20次/2s"""
         sym = str.lower(symbol.split("-")[0])
         self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
                         callback=self.onQueryMonoAccount)
 
     def queryAccount(self):
-        """"""
+        """限速规则：1次/10s"""
         self.addRequest('GET', '/api/futures/v3/accounts', 
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
     def queryMonoPosition(self, symbol):
-        """"""
+        """限速规则：20次/2s"""
         sym = self.contractMapReverse[symbol]
         self.addRequest('GET', f'/api/futures/v3/{sym}/position', 
                         callback=self.onQueryMonoPosition)
     
     def queryPosition(self):
-        """"""
+        """限速规则：5次/2s"""
         self.addRequest('GET', '/api/futures/v3/position', 
                         callback=self.onQueryPosition)
     
     #----------------------------------------------------------------------
     def queryOrder(self):
-        """"""
+        """限速规则：20次/2s"""
         self.gateway.writeLog('\n\n----------FUTURE start Quary Orders,positions,Accounts---------------')
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]: 
             symbol = self.contractMapReverse[contract]
@@ -316,9 +315,11 @@ class OkexfRestApi(RestClient):
             response = requests.post(url, headers=request.headers, data=request.data)
             l.append(response.json())
             return l
+            
         for holding in data['holding']:
             path = '/api/futures/v3/order'
             req_long = {
+                'client_oid': None,
                 'instrument_id': holding['instrument_id'],
                 'type': '3',
                 'price': holding['long_avg_cost'],
@@ -327,6 +328,7 @@ class OkexfRestApi(RestClient):
                 'leverage': self.leverage,
             }
             req_short = {
+                'client_oid': None,
                 'instrument_id': holding['instrument_id'],
                 'type': '4',
                 'price': holding['short_avg_cost'],
@@ -434,7 +436,7 @@ class OkexfRestApi(RestClient):
             currency = str.upper(request.path.split("/")[-1])
         elif data['margin_mode'] =='fixed':
             for contracts in data['contracts']:
-                currency = contracts['instrument_id'][:3]
+                currency = contracts['instrument_id'].split("-")[0]
         self.processAccountData(data, currency)
 
     def onQueryAccount(self, d, request):
@@ -761,7 +763,7 @@ class OkexfWebsocketApi(WebsocketClient):
         self.callbackDict['futures/account'] = self.onAccount
         self.callbackDict['futures/position'] = self.onPosition
         self.sendPacket({'op': 'subscribe', 'args': f'futures/position:{contract}'})
-        self.sendPacket({'op': 'subscribe', 'args': f'futures/account:{contract[:3]}'})
+        self.sendPacket({'op': 'subscribe', 'args': f'futures/account:{contract.split("-")[0]}'})
         self.sendPacket({'op': 'subscribe', 'args': f'futures/order:{contract}'})
     
     #----------------------------------------------------------------------

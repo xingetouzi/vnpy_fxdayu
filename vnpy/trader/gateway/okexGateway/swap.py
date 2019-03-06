@@ -43,6 +43,11 @@ priceTypeMap[PRICETYPE_MARKETPRICE] = 1
 priceTypeMap[PRICETYPE_FAK] = 'fak'
 priceTypeMap[PRICETYPE_FOK] = 'fok'
 
+directionMap = {
+    "long": DIRECTION_LONG,
+    "short" :DIRECTION_SHORT
+}
+
 SUBGATEWAY_NAME = "SWAP"
 ####################################################################################################
 class OkexSwapRestApi(RestClient):
@@ -55,7 +60,6 @@ class OkexSwapRestApi(RestClient):
 
         self.gateway = gateway                  # type: okexGateway # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
-        
         self.leverage = 0
         
         self.contractDict = {}  # store contract info
@@ -123,7 +127,7 @@ class OkexSwapRestApi(RestClient):
         
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
-        """限速规则：20次/2s"""
+        """限速规则：40次/2s"""
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
@@ -161,41 +165,41 @@ class OkexSwapRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
-        """限速规则：10次/2s"""
+        """限速规则：40次/2s"""
         path = f'/api/swap/v3/cancel_order/{cancelOrderReq.symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
     def queryContract(self):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', '/api/swap/v3/instruments', 
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbol):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', f'/api/swap/v3/{symbol}/accounts', 
                         callback=self.onQueryMonoAccount)
 
     def queryAccount(self):
-        """"""
+        """限速规则：1次/10s"""
         self.addRequest('GET', '/api/swap/v3/accounts', 
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
     def queryMonoPosition(self, symbol):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', f'/api/swap/v3/{symbol}/position', 
                         callback=self.onQueryMonoPosition)
     
     def queryPosition(self):
-        """"""
+        """限速规则：1次/10s"""
         self.addRequest('GET', '/api/swap/v3/position', 
                         callback=self.onQueryPosition)
     
     #----------------------------------------------------------------------
     def queryOrder(self):
-        """"""
+        """限速规则：20次/2s"""
         self.gateway.writeLog('\n\n----------start Quary SWAP Orders,positions,Accounts---------------')
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 6 = 未成交, 部分成交
@@ -302,47 +306,27 @@ class OkexSwapRestApi(RestClient):
 
     def onCloseAll(self, data, request):
         l = []
+
         def _response(request, l):
             request = self.sign(request)
             url = self.makeFullUrl(request.path)
             response = requests.post(url, headers=request.headers, data=request.data)
             l.append(response.json())
             return l
+
         for holding in data['holding']:
             path = '/api/swap/v3/order'
-            req_long = {
-                'instrument_id': holding['instrument_id'],
-                'type': '3',
-                'price': holding['long_avg_cost'],
-                'size': str(holding['long_avail_qty']),
-                'match_price': '1',
-                'leverage': self.leverage,
-            }
-            req_short = {
-                'instrument_id': holding['instrument_id'],
-                'type': '4',
-                'price': holding['short_avg_cost'],
-                'size': str(holding['short_avail_qty']),
-                'match_price': '1',
-                'leverage': self.leverage,
-            }
-            if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
-                # 多仓可平
-                request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
-                l = _response(request, l)
-            elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
-                # 空仓可平
-                request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
-                l = _response(request, l)
-            elif request.extra is None:
-                if int(holding['long_avail_qty']) > 0:
-                    # 多仓可平
-                    request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
-                    l = _response(request, l)
-                if int(holding['short_avail_qty']) > 0:
-                    # 空仓可平
-                    request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
-                    l = _response(request, l)
+
+            req = { 'client_oid': None,
+                    'instrument_id': holding['instrument_id'],
+                    'type': typeMap[(directionMap[holding['side']], OFFSET_CLOSE)],
+                    'price': holding['avg_cost'],
+                    'size': holding['avail_position'],
+                    'match_price': '1'
+                }
+
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+            l = _response(request, l)
         return l
 
     #----------------------------------------------------------------------
@@ -380,7 +364,7 @@ class OkexSwapRestApi(RestClient):
     def processAccountData(self, data):
         account = VtAccountData()
         account.gatewayName = self.gatewayName
-        account.accountID = "_".join([data['instrument_id'][:3], SUBGATEWAY_NAME])
+        account.accountID = "_".join([data['instrument_id'].split("-")[0], SUBGATEWAY_NAME])
         account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
 
         account.balance = float(data['equity'])
@@ -420,11 +404,8 @@ class OkexSwapRestApi(RestClient):
         position.frozen = int(data['position']) - int(data['avail_position'])
         position.available = int(data['avail_position'])
         position.price = float(data['avg_cost'])
-        
-        if data['side'] == "long":
-            position.direction = DIRECTION_LONG
-        else:
-            position.direction = DIRECTION_SHORT
+        position.direction = directionMap[data['side']]
+
         position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
         self.gateway.onPosition(position)
 

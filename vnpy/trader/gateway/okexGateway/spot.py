@@ -42,7 +42,6 @@ class OkexSpotRestApi(RestClient):
 
         self.gateway = gateway                  # type: okexGateway # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
-
         self.leverage = 0
         
         self.contractDict = {}  # store contract info
@@ -111,7 +110,7 @@ class OkexSpotRestApi(RestClient):
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
-        """限速规则：20次/2s"""
+        """限速规则：100次/2s"""
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
         data = {
@@ -157,7 +156,7 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
-        """限速规则：10次/2s"""
+        """限速规则：100次/2s"""
         req = {
             'instrument_id': cancelOrderReq.symbol,
         }
@@ -168,18 +167,18 @@ class OkexSpotRestApi(RestClient):
 
     #----------------------------------------------------------------------
     def queryContract(self):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', '/api/spot/v3/instruments', 
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbol):
-        """"""
+        """限速规则：20次/2s"""
         sym = str.lower(symbol.split("-")[0])
         self.addRequest('GET', f'/api/spot/v3/accounts/{sym}', 
                         callback=self.onQueryMonoAccount)
     def queryAccount(self):
-        """"""
+        """限速规则：20次/2s"""
         self.addRequest('GET', '/api/spot/v3/accounts', 
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
@@ -191,7 +190,7 @@ class OkexSpotRestApi(RestClient):
         pass
     #----------------------------------------------------------------------
     def queryOrder(self):
-        """"""
+        """限速规则：20次/2s"""
         self.gateway.writeLog('\n\n----------start Quary SPOT Orders,positions,Accounts---------------')
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 未成交
@@ -270,7 +269,7 @@ class OkexSpotRestApi(RestClient):
         symbols : str
             所要平仓的合约代码,多个合约代码用逗号分隔开。
         direction : str, optional
-            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
+            账户统一到某个币本位上
 
         Return
         ------
@@ -278,69 +277,59 @@ class OkexSpotRestApi(RestClient):
         包含平仓操作发送的所有订单ID的列表
         """
         vtOrderIDs = []
-        req = {
-            'instrument_id': symbol,
-        }
-        path = f'/api/spot/v3/{symbol}/position/'
-        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        quote_currency, base_currency = symbol.split("-")
+        if quote_currency == direction:
+            path = f'/api/spot/v3/accounts/{base_currency}'
+        elif base_currency == direction:
+            path = f'/api/spot/v3/accounts/{quote_currency}'
+        else:
+            pass # 币对都不是币本位
+        request = Request('GET', path, params=None, callback=None, data=None, headers=None)
 
         request = self.sign2(request)
         request.extra = direction
         url = self.makeFullUrl(request.path)
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
-        if data['result'] and data['holding']:
-            data = self.onCloseAll(data, request)
-            for i in data:
+        for account_info in data:
+            result = self.onCloseAll(account_info, request)
+            for i in result:
                 if i['result']:
                     vtOrderIDs.append(i['order_id'])
-                    self.gateway.writeLog(f'平仓成功:{i}')
+                    self.gateway.writeLog(f'换币成功:{i}')
         
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
         l = []
+        
         def _response(request, l):
             request = self.sign(request)
             url = self.makeFullUrl(request.path)
             response = requests.post(url, headers=request.headers, data=request.data)
             l.append(response.json())
             return l
-        for holding in data['holding']:
-            path = '/api/spot/v3/order'
-            req_long = {
-                'instrument_id': holding['instrument_id'],
-                'type': '3',
-                'price': holding['long_avg_cost'],
-                'size': str(holding['long_avail_qty']),
-                'match_price': '1',
-                'leverage': self.leverage,
+
+        for account_info in data:
+            path = '/api/spot/v3/orders'
+            currency = account_info['currency']
+            instrument_id = "-".join([currency, request.extra])
+            req = {
+                'client_oid': None,
+                'instrument_id': instrument_id,
+                'type': "market",
+                'side': "sell",
+                'notional': account_info['available'],
+                'size': account_info['available']
             }
-            req_short = {
-                'instrument_id': holding['instrument_id'],
-                'type': '4',
-                'price': holding['short_avg_cost'],
-                'size': str(holding['short_avail_qty']),
-                'match_price': '1',
-                'leverage': self.leverage,
-            }
-            if request.extra and request.extra==DIRECTION_LONG and int(holding['long_avail_qty']) > 0:
-                # 多仓可平
-                request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
-                l = _response(request, l)
-            elif request.extra and request.extra==DIRECTION_SHORT and int(holding['short_avail_qty']) > 0:
-                # 空仓可平
-                request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
-                l = _response(request, l)
-            elif request.extra is None:
-                if int(holding['long_avail_qty']) > 0:
-                    # 多仓可平
-                    request = Request('POST', path, params=None, callback=None, data=req_long, headers=None)
-                    l = _response(request, l)
-                if int(holding['short_avail_qty']) > 0:
-                    # 空仓可平
-                    request = Request('POST', path, params=None, callback=None, data=req_short, headers=None)
-                    l = _response(request, l)
+
+            if self.leverage > 0:
+                req["margin_trading"] = 2
+            else:
+                req["margin_trading"] = 1
+
+            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+            l = _response(request, l)
         return l
 
     #----------------------------------------------------------------------
