@@ -196,10 +196,9 @@ class OkexSpotRestApi(RestClient):
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 未成交
             req = {
-                'instrument_id': symbol,
-                'status': 'part_filled|open'
+                'instrument_id': symbol
             }
-            path = '/api/spot/v3/orders'
+            path = f'/api/spot/v3/orders_pending'
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
@@ -224,36 +223,43 @@ class OkexSpotRestApi(RestClient):
         # 未完成(未成交和部分成交)
         req = {
             'instrument_id': symbol,
-            'status': 'part_filled|open'
         }
-        path = f'/api/spot/v3/orders/{symbol}'
+        path = f'/api/spot/v3/orders_pending'
         request = Request('GET', path, params=req, callback=None, data=None, headers=None)
         request = self.sign2(request)
         request.extra = orders
         url = self.makeFullUrl(request.path)
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
-        if data['result'] and data['order_info']:
-            data = self.onCancelAll(data, request)
-            if data['result']:
-                vtOrderIDs += data['order_ids']
-                self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
-        
+
+        if data:
+            rsp = self.onCancelAll(data, request)
+            # failed rsp: {'code': 33027, 'message': 'Order has been revoked or revoked'}
+            if "code" in rsp.keys():
+                self.gateway.writeLog(f"交易所返回{symbol}撤单失败:{rsp['message']}")
+                return []
+            # rsp: {'eth-usdt': 
+            # {'result': True, 'client_oid': '', 
+            # 'order_id': ['2432470701654016', '2432470087389184', '2432469715472384']}}
+            for sym, result in rsp.items():
+                if result['result']:
+                    vtOrderIDs += result['order_id']
+                    self.gateway.writeLog(f"交易所返回{sym}撤单成功: ids: {result['order_id']}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
-        orderids = [str(order['order_id']) for order in data['order_info'] if
-                    order['status'] == '0' or order['status'] == '1']
+        orderids = [str(order['order_id']) for order in data if
+                   order['status'] == 'open' or order['status'] == 'part_filled']
         if request.extra:
             orderids = list(set(orderids).intersection(set(request.extra.split(","))))
-        for i in range(len(orderids) // 20 + 1):
-            orderid = orderids[i * 20:(i + 1) * 20]
+        for i in range(len(orderids) // 10 + 1):
+            orderid = orderids[i * 10:(i + 1) * 10]
 
-            req = {
-                'instrument_id': request.params['instrument_id'],
+            req = [{
+                'instrument_id': str.lower(request.params['instrument_id']),
                 'order_ids': orderid
-            }
-            path = f"/api/spot/v3/cancel_batch_orders/{request.params['instrument_id']}"
+            }]
+            path = "/api/spot/v3/cancel_batch_orders"
             # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
             request = Request('POST', path, params=None, callback=None, data=req, headers=None)
 
@@ -262,7 +268,7 @@ class OkexSpotRestApi(RestClient):
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
 
-    def closeAll(self, symbol, direction=None):
+    def closeAll(self, symbol, standard_token = None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
 
         Parameters
@@ -277,27 +283,36 @@ class OkexSpotRestApi(RestClient):
         vtOrderIDs: list of str
         包含平仓操作发送的所有订单ID的列表
         """
+        if not standard_token:
+            return []
         vtOrderIDs = []
-        quote_currency, base_currency = symbol.split("-")
-        if quote_currency == direction:
-            path = f'/api/spot/v3/accounts/{base_currency}'
-        elif base_currency == direction:
-            path = f'/api/spot/v3/accounts/{quote_currency}'
+        base_currency, quote_currency = symbol.split("-")
+        if base_currency == standard_token:
+            path = f'/api/spot/v3/accounts/{str.lower(quote_currency)}'
+            side = 'buy'
+        elif quote_currency == standard_token:
+            path = f'/api/spot/v3/accounts/{str.lower(base_currency)}'
+            side = 'sell'
         else:
-            pass # 币对都不是币本位
+            return []  # 币对双方都不是指定的本位
         request = Request('GET', path, params=None, callback=None, data=None, headers=None)
 
         request = self.sign2(request)
-        request.extra = direction
+        request.extra = {"instrument_id": symbol, 
+                         "side": side }
         url = self.makeFullUrl(request.path)
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
-        for account_info in data:
-            result = self.onCloseAll(account_info, request)
-            for i in result:
-                if i['result']:
-                    vtOrderIDs.append(i['order_id'])
-                    self.gateway.writeLog(f'换币成功:{i}')
+        rsp = self.onCloseAll(data, request)
+        # rsp: [{'client_oid': '', 'order_id': '2433076975049728', 'result': True}]
+        # failed: [{'code': 30024, 'message': 'Parameter value filling error'}]
+        for result in rsp:
+            if "code" in result.keys():
+                self.gateway.writeLog(f'换币失败:{result}')
+            elif "result" in result.keys():
+                if result['result']:
+                    vtOrderIDs.append(result['order_id'])
+                    self.gateway.writeLog(f'换币成功:{result}')
         
         return vtOrderIDs
 
@@ -311,26 +326,22 @@ class OkexSpotRestApi(RestClient):
             l.append(response.json())
             return l
 
-        for account_info in data:
-            path = '/api/spot/v3/orders'
-            currency = account_info['currency']
-            instrument_id = "-".join([currency, request.extra])
-            req = {
-                'client_oid': None,
-                'instrument_id': instrument_id,
-                'type': "market",
-                'side': "sell",
-                'notional': account_info['available'],
-                'size': account_info['available']
-            }
+        req = {
+            'client_oid': None,
+            'instrument_id': request.extra['instrument_id'],
+            'type': "market",
+            'side': request.extra['side'], 
+            'notional': data['available'],  # buy amount
+            'size': data['available']       # sell quantity
+        }
 
-            if self.leverage > 0:
-                req["margin_trading"] = 2
-            else:
-                req["margin_trading"] = 1
-
-            request = Request('POST', path, params=None, callback=None, data=req, headers=None)
-            l = _response(request, l)
+        if self.leverage > 0:
+            req["margin_trading"] = 2
+        else:
+            req["margin_trading"] = 1
+        path = '/api/spot/v3/orders'
+        request = Request('POST', path, params=None, callback=None, data=req, headers=None)
+        l = _response(request, l)
         return l
 
     #----------------------------------------------------------------------

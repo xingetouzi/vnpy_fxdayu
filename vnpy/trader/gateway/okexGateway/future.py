@@ -246,14 +246,17 @@ class OkexfRestApi(RestClient):
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
         if data['result'] and data['order_info']:
-            data = self.onCancelAll(data, request)
+            data = self.onCancelAll(data['order_info'], request)
+            #{'result': True, 
+            # 'order_ids': ['2432685818596352', '2432686510479360'], 
+            # 'instrument_id': 'ETH-USD-190329'}
             if data['result']:
                 vtOrderIDs += data['order_ids']
                 self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
-        orderids = [str(order['order_id']) for order in data['order_info'] if
+        orderids = [str(order['order_id']) for order in data if
                     order['status'] == '0' or order['status'] == '1']
         if request.extra:
             orderids = list(set(orderids).intersection(set(request.extra.split(","))))
@@ -301,10 +304,10 @@ class OkexfRestApi(RestClient):
         data = response.json()
         if data['result'] and data['holding']:
             data = self.onCloseAll(data, request)
-            for i in data:
-                if i['result']:
-                    vtOrderIDs.append(i['order_id'])
-                    self.gateway.writeLog(f'平仓成功:{i}')
+            for result in data:
+                if result['result']:
+                    vtOrderIDs.append(result['order_id'])
+                    self.gateway.writeLog(f'平仓成功:{result}')
         return vtOrderIDs
 
     def onCloseAll(self, data, request):

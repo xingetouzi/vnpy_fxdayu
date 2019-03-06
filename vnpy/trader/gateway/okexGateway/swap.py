@@ -232,7 +232,6 @@ class OkexSwapRestApi(RestClient):
         vtOrderIDs = []
         # 未完成(包含未成交和部分成交)
         req = {
-            'instrument_id': symbol,
             'status': 6
         }
         path = f'/api/swap/v3/orders/{symbol}'
@@ -242,26 +241,28 @@ class OkexSwapRestApi(RestClient):
         url = self.makeFullUrl(request.path)
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
-        if data['result'] and data['order_info']:
-            data = self.onCancelAll(data, request)
-            if data['result']:
-                vtOrderIDs += data['order_ids']
-                self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: ids: {str(data['order_ids'])}")
+        if data['order_info']:
+            data = self.onCancelAll(data['order_info'], request)
+            # {'client_oids': [], 
+            # 'ids': ['66-7-4ebc9281f-0', '66-8-4ebc91cfa-0'], 
+            # 'instrument_id': 'ETH-USD-SWAP', 'result': 'true'}
+            if data['result'] == 'true':
+                vtOrderIDs += data['ids']
+                self.gateway.writeLog(f"交易所返回{symbol}撤单成功: ids: {data['ids']}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
-        orderids = [str(order['order_id']) for order in data['order_info'] if
+        orderids = [str(order['order_id']) for order in data if
                     order['status'] == '0' or order['status'] == '1']
         if request.extra:
             orderids = list(set(orderids).intersection(set(request.extra.split(","))))
-        for i in range(len(orderids) // 20 + 1):
-            orderid = orderids[i * 20:(i + 1) * 20]
+        for i in range(len(orderids) // 10 + 1):
+            orderid = orderids[i * 10:(i + 1) * 10]
 
             req = {
-                'instrument_id': request.params['instrument_id'],
-                'order_ids': orderid
+                'ids': orderid
             }
-            path = f'/api/swap/v3/cancel_batch_orders/{request.params["instrument_id"]}'
+            path = f'/api/swap/v3/cancel_batch_orders/{request.path.split("/")[-1]}'
             # self.addRequest('POST', path, data=req, callback=self.onCancelAll)
             request = Request('POST', path, params=None, callback=None, data=req, headers=None)
 
@@ -297,12 +298,18 @@ class OkexSwapRestApi(RestClient):
         url = self.makeFullUrl(request.path)
         response = requests.get(url, headers=request.headers, params=request.params)
         data = response.json()
-        if data['result'] and data['holding']:
-            data = self.onCloseAll(data, request)
-            for i in data:
-                if i['result']:
-                    vtOrderIDs.append(i['order_id'])
-                    self.gateway.writeLog(f'平仓成功:{i}')
+        if data['holding']:
+            rsp = self.onCloseAll(data, request)
+            # failed:{'error_message': 'Incorrect order size', 'result': 'true', 
+            #      'error_code': '35012', 'order_id': '-1'}
+            # rsp: {'error_message': '', 'result': 'true', 'error_code': '0', 
+            #  'order_id': '66-a-4ec048f15-0'}
+            for result in rsp:
+                if not result['error_message']:
+                    vtOrderIDs.append(result['order_id'])
+                    self.gateway.writeLog(f'平仓成功:{result}')
+                else:
+                    self.gateway.writeLog(f'平仓失败:{result}')
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -317,10 +324,12 @@ class OkexSwapRestApi(RestClient):
 
         for holding in data['holding']:
             path = '/api/swap/v3/order'
+            closeDirectionMap = { "long": 3,
+                                  "short": 4 }
 
             req = { 'client_oid': None,
                     'instrument_id': holding['instrument_id'],
-                    'type': typeMap[(directionMap[holding['side']], OFFSET_CLOSE)],
+                    'type': closeDirectionMap[holding['side']],
                     'price': holding['avg_cost'],
                     'size': holding['avail_position'],
                     'match_price': '1'

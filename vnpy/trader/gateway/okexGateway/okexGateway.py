@@ -156,14 +156,17 @@ class OkexGateway(VtGateway):
         return ids
 
     # ----------------------------------------------------------------------
-    def closeAll(self, symbols, direction=None):
+    def closeAll(self, symbols, direction=None, standard_token = "USDT"):
         """撤单"""
         ids = []
         if not symbols:
             symbols = list(self.symbolTypeMap.keys())
         for sym in symbols:
             symbolType = self.symbolTypeMap.get(sym, None)
-            vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbol = sym, direction=direction)
+            if symbolType == "SPOT":
+                vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbol = sym, standard_token = standard_token)
+            else:
+                vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbol = sym, direction = direction)
             ids.extend(vtOrderIDs)
 
         print("全部平仓结果", ids)
@@ -299,9 +302,8 @@ class OkexGateway(VtGateway):
         order.exchange = 'OKEX'
         order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
-        if data['client_oid']:
-            order.orderID = data['client_oid']
-        else:
+        order.orderID = data.get("client_oid", None)
+        if not order.orderID:
             order.orderID = str(data['order_id'])
             self.writeLog(f"order by other source, symbol:{order.symbol}, exchange_id: {order.orderID}")
 
