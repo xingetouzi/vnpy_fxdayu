@@ -1,4 +1,3 @@
-import logging
 import os
 import json
 import sys
@@ -17,7 +16,6 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
@@ -210,7 +208,7 @@ class OkexSwapRestApi(RestClient):
                             callback=self.onQueryOrder)
 
     # ----------------------------------------------------------------------
-    def cancelAll(self, symbols=None, orders=None):
+    def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
 
         Parameters
@@ -227,29 +225,23 @@ class OkexSwapRestApi(RestClient):
         包含本次所有撤销的订单ID的列表
         """
         vtOrderIDs = []
-        if symbols:
-            symbols = symbols.split(",")
-        else:
-            symbols = self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]
-        for symbol in symbols:
-            # 未完成(包含未成交和部分成交)
-            req = {
-                'instrument_id': symbol,
-                'status': 6
-            }
-            path = f'/api/swap/v3/orders/{symbol}'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
-            request = self.sign2(request)
-            request.extra = orders
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['order_info']:
-                data = self.onCancelAll(data, request)
-                if data['result']:
-                    vtOrderIDs += data['order_ids']
-                    self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: ids: {str(data['order_ids'])}")
-        print("全部撤单结果", vtOrderIDs)
+        # 未完成(包含未成交和部分成交)
+        req = {
+            'instrument_id': symbol,
+            'status': 6
+        }
+        path = f'/api/swap/v3/orders/{symbol}'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        request = self.sign2(request)
+        request.extra = orders
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['order_info']:
+            data = self.onCancelAll(data, request)
+            if data['result']:
+                vtOrderIDs += data['order_ids']
+                self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: ids: {str(data['order_ids'])}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
@@ -273,7 +265,7 @@ class OkexSwapRestApi(RestClient):
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
 
-    def closeAll(self, symbols, direction=None):
+    def closeAll(self, symbol, direction=None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
 
         Parameters
@@ -289,26 +281,23 @@ class OkexSwapRestApi(RestClient):
         包含平仓操作发送的所有订单ID的列表
         """
         vtOrderIDs = []
-        symbols = symbols.split(",")
-        for symbol in symbols:
-            req = {
-                'instrument_id': symbol,
-            }
-            path = f'/api/swap/v3/{symbol}/position/'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        req = {
+            'instrument_id': symbol,
+        }
+        path = f'/api/swap/v3/{symbol}/position/'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
 
-            request = self.sign2(request)
-            request.extra = direction
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['holding']:
-                data = self.onCloseAll(data, request)
-                for i in data:
-                    if i['result']:
-                        vtOrderIDs.append(i['order_id'])
-                        self.gateway.writeLog(f'平仓成功:{i}')
-        print("全部平仓结果", vtOrderIDs)
+        request = self.sign2(request)
+        request.extra = direction
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['holding']:
+            data = self.onCloseAll(data, request)
+            for i in data:
+                if i['result']:
+                    vtOrderIDs.append(i['order_id'])
+                    self.gateway.writeLog(f'平仓成功:{i}')
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -463,12 +452,12 @@ class OkexSwapRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def processOrderData(self, data):
-        exchange_order_id = str(data['order_id'])
-        order = self.orderDict.get(exchange_order_id,None)
+        oid = str(data['client_oid'])
+        order = self.orderDict.get(oid, None)
 
         if not order:
             order = self.gateway.newOrderObject(data)
-            order.totalVolume = int(float(data['size']))
+            order.totalVolume = int(data['size'])
             order.direction, order.offset = typeMapReverse[data['type']]
         
         order.price_avg = float(data['price_avg'])
@@ -479,28 +468,24 @@ class OkexSwapRestApi(RestClient):
         order.fee = float(data['fee'])
 
         self.gateway.onOrder(order)
-        self.orderDict[exchange_order_id] = order
+        self.orderDict[oid] = order
 
         if order.thisTradedVolume:
             self.gateway.newTradeObject(order)
 
         if order.status in STATUS_FINISHED:
-            if order.orderID in self.orderDict:
-                del self.orderDict[order.orderID]
-            if exchange_order_id in self.orderDict:
-                del self.orderDict[exchange_order_id]
+            if oid in self.orderDict:
+                del self.orderDict[oid]
 
     def onQueryOrder(self, d, request):
-        """{'order_info': [
-            {'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0.0000', 'instrument_id': 'ETH-USD-SWAP', 
-        'order_id': '66-7-4cdb0d73a-0', 'order_type': '0', 'price': '51.00', 'price_avg': '0.00', 'size': '1.0000', 'status': '0', 
-        'timestamp': '2019-02-28T10:46:27.899Z', 'type': '1'}, 
-            {'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0.0000', 'instrument_id': 'ETH-USD-SWAP', 
-        'order_id': '66-7-4cdaf6fec-0', 'order_type': '0', 'price': '50.00', 'price_avg': '0.00', 'size': '1.0000', 'status': '0', 
-        'timestamp': '2019-02-28T10:44:55.917Z', 'type': '1'}]} """
+        """{'order_info': [{'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0', 
+        'instrument_id': 'ETH-USD-SWAP', 'order_id': '66-5-4e6f771f3-0', 'order_type': '0', 'price': '55.00', 
+        'price_avg': '0.00', 'size': '1', 'status': '0', 'timestamp': '2019-03-05T08:34:05.428Z', 'type': '1'}, 
+        {'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0', 
+        'instrument_id': 'ETH-USD-SWAP', 'order_id': '66-5-4e6f5a1a6-0', 'order_type': '0', 'price': '200.00', 
+        'price_avg': '0.00', 'size': '1', 'status': '0', 'timestamp': '2019-03-05T08:32:06.567Z', 'type': '2'}]} """
         # print(d,"or")
         for data in d['order_info']:
-            data['filled_qty'] = float(data['filled_qty'])
             self.processOrderData(data)
 
     #----------------------------------------------------------------------
@@ -533,28 +518,21 @@ class OkexSwapRestApi(RestClient):
         """response correctly: {'error_message': '', 'result': 'true', 'error_code': '0', 
         'client_oid': '2863f51b555f55e292095090a3ac51a3', 'order_id': '66-b-422071e28-0'}"""
         if data['error_message']:
-            return self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
+            self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
         else:
             self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
 
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
-        """1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
-        2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
+        """ 1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
+            2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
         """
-        instrument_id = request.path[26:38]
         if not (data['order_id'] == "-1"):
+            instrument_id = request.path[26:38]
             self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
         else:
-            error = VtErrorData()
-            error.gatewayName = self.gatewayName
-            error.errorID = data['error_code']
-            exchange_id =  str(data['order_id'])
-            if 'error_message' in data.keys():
-                error.errorMsg = exchange_id + ' ' + data['error_message']
-            else:
-                error.errorMsg = exchange_id + ' ' + ERRORCODE[str(error.errorID)]
-            self.gateway.onError(error)
+            oid = request.path.split("/")[-1]
+            self.gateway.writeLog(f"WARNING: cancelorder error, oid:{oid}, msg:{data['error_code']},{data['error_message']}")
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None

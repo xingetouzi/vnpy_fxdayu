@@ -1,9 +1,7 @@
-import logging
 import os
 import json
 import sys
 import time
-import traceback
 import zlib
 from datetime import datetime, timedelta, timezone
 from copy import copy
@@ -16,7 +14,6 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
@@ -121,14 +118,14 @@ class OkexSpotRestApi(RestClient):
             'client_oid': orderID,
             'instrument_id': str.lower(orderReq.symbol),
             'side': type_,
-            'size': float(orderReq.volume)
+            'size': float(orderReq.volume)    # in market order means quantity sold
         }
         if orderReq.priceType == PRICETYPE_LIMITPRICE:
             data["type"] = "limit"
             data["price"] = orderReq.price
         elif orderReq.priceType == PRICETYPE_MARKETPRICE:
             data["type"] = "market"
-            data["notional"] = orderReq.price
+            data["notional"] = orderReq.price    # in market order means amount bought
 
         if self.leverage > 0:
             data["margin_trading"] = 2
@@ -161,12 +158,10 @@ class OkexSpotRestApi(RestClient):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
-        orderID = cancelOrderReq.orderID
-
         req = {
             'instrument_id': cancelOrderReq.symbol,
         }
-        path = f'/api/spot/v3/cancel_orders/{orderID}'
+        path = f'/api/spot/v3/cancel_orders/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder,
                         data=req)
@@ -209,7 +204,7 @@ class OkexSpotRestApi(RestClient):
                             callback=self.onQueryOrder)
 
     # ----------------------------------------------------------------------
-    def cancelAll(self, symbols=None, orders=None):
+    def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
 
         Parameters
@@ -226,29 +221,24 @@ class OkexSpotRestApi(RestClient):
         包含本次所有撤销的订单ID的列表
         """
         vtOrderIDs = []
-        if symbols:
-            symbols = symbols.split(",")
-        else:
-            symbols = self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]
-        for symbol in symbols:
-            # 未完成(包含未成交和部分成交)
-            req = {
-                'instrument_id': symbol,
-                'status': 6
-            }
-            path = '/api/spot/v3/orders/{symbol}'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
-            request = self.sign2(request)
-            request.extra = orders
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['order_info']:
-                data = self.onCancelAll(data, request)
-                if data['result']:
-                    vtOrderIDs += data['order_ids']
-                    self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
-        print("全部撤单结果", vtOrderIDs)
+        # 未完成(未成交和部分成交)
+        req = {
+            'instrument_id': symbol,
+            'status': 'part_filled|open'
+        }
+        path = f'/api/spot/v3/orders/{symbol}'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        request = self.sign2(request)
+        request.extra = orders
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['order_info']:
+            data = self.onCancelAll(data, request)
+            if data['result']:
+                vtOrderIDs += data['order_ids']
+                self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
+        
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
@@ -272,7 +262,7 @@ class OkexSpotRestApi(RestClient):
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
 
-    def closeAll(self, symbols, direction=None):
+    def closeAll(self, symbol, direction=None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
 
         Parameters
@@ -288,26 +278,24 @@ class OkexSpotRestApi(RestClient):
         包含平仓操作发送的所有订单ID的列表
         """
         vtOrderIDs = []
-        symbols = symbols.split(",")
-        for symbol in symbols:
-            req = {
-                'instrument_id': symbol,
-            }
-            path = '/api/spot/v3/{symbol}/position/'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        req = {
+            'instrument_id': symbol,
+        }
+        path = f'/api/spot/v3/{symbol}/position/'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
 
-            request = self.sign2(request)
-            request.extra = direction
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['holding']:
-                data = self.onCloseAll(data, request)
-                for i in data:
-                    if i['result']:
-                        vtOrderIDs.append(i['order_id'])
-                        self.gateway.writeLog(f'平仓成功:{i}')
-        print("全部平仓结果", vtOrderIDs)
+        request = self.sign2(request)
+        request.extra = direction
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['holding']:
+            data = self.onCloseAll(data, request)
+            for i in data:
+                if i['result']:
+                    vtOrderIDs.append(i['order_id'])
+                    self.gateway.writeLog(f'平仓成功:{i}')
+        
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -485,20 +473,12 @@ class OkexSpotRestApi(RestClient):
         """ 1: {'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
             2: failed cancel order: http400
         """
-        rsp = eval(request.data)
-        oid = request.path.split("/")[-1]
         if data['result']:
+            rsp = eval(request.data)
+            oid = request.path.split("/")[-1]
             self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid-{oid}")
         else:
-            error = VtErrorData()
-            error.gatewayName = self.gatewayName
-            error.errorID = data['error_code']
-            exchange_id =  str(data['order_id'])
-            if 'error_message' in data.keys():
-                error.errorMsg = exchange_id + ' ' + data['error_message']
-            else:
-                error.errorMsg = exchange_id + ' ' + ERRORCODE[str(error.errorID)]
-            self.gateway.onError(error)
+            self.gateway.writeLog(f"WARNING: cancelorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -506,7 +486,7 @@ class OkexSpotRestApi(RestClient):
         请求失败处理函数（HttpStatusCode!=2xx）.
         默认行为是打印到stderr
         """
-        print("onfailed",request)
+        print("onfailed", request)
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
@@ -518,7 +498,7 @@ class OkexSpotRestApi(RestClient):
         """
         Python内部错误处理：默认行为是仍给excepthook
         """
-        print(request,"onerror")
+        print(request, "onerror")
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
@@ -565,9 +545,9 @@ class OkexSpotWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onConnected(self):
         """连接回调"""
-        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接成功')
         self.login()
-    
+        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接成功')
+        
     #----------------------------------------------------------------------
     def onDisconnected(self):
         """连接回调"""
@@ -616,7 +596,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
                 "args": [self.gateway.apiKey,
                         self.gateway.passphrase,
                         timestamp,
-                        str(signature,encoding = "utf-8")]
+                        str(signature, encoding = "utf-8")]
                 }
         self.sendPacket(req)
         
@@ -695,7 +675,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.lastVolume = 0
             
             if tick.askPrice5:    
-                tick=copy(tick)    
+                tick=copy(tick)
                 self.gateway.onTick(tick)
 
     #----------------------------------------------------------------------

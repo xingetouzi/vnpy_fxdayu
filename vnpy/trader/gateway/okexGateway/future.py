@@ -1,4 +1,3 @@
-import logging
 import os
 import json
 import sys
@@ -17,7 +16,6 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
@@ -167,13 +165,9 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
         """限速规则：10次/2s"""
-        orderID = cancelOrderReq.orderID
-        if not orderID:
-            return
-
         symbol = self.contractMapReverse[cancelOrderReq.symbol]
 
-        path = f'/api/futures/v3/cancel_order/{symbol}/{orderID}'
+        path = f'/api/futures/v3/cancel_order/{symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder)
 
@@ -222,7 +216,7 @@ class OkexfRestApi(RestClient):
                             callback=self.onQueryOrder)
 
     # ----------------------------------------------------------------------
-    def cancelAll(self, symbols=None, orders=None):
+    def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
         Parameters
         ----------
@@ -238,30 +232,24 @@ class OkexfRestApi(RestClient):
         包含本次所有撤销的订单ID的列表
         """
         vtOrderIDs = []
-        if symbols:
-            symbols = symbols.split(",")
-        else:
-            symbols = self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]
-        for symbol in symbols:
-            symbol = self.contractMapReverse[symbol]
-            # 未完成(包含未成交和部分成交)
-            req = {
-                'instrument_id': symbol,
-                'status': 6
-            }
-            path = f'/api/futures/v3/orders/{symbol}'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
-            request = self.sign2(request)
-            request.extra = orders
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['order_info']:
-                data = self.onCancelAll(data, request)
-                if data['result']:
-                    vtOrderIDs += data['order_ids']
-                    self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
-        print("全部撤单结果", vtOrderIDs)
+        symbol = self.contractMapReverse[symbol]
+        # 未完成(包含未成交和部分成交)
+        req = {
+            'instrument_id': symbol,
+            'status': 6
+        }
+        path = f'/api/futures/v3/orders/{symbol}'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        request = self.sign2(request)
+        request.extra = orders
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['order_info']:
+            data = self.onCancelAll(data, request)
+            if data['result']:
+                vtOrderIDs += data['order_ids']
+                self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
@@ -285,7 +273,7 @@ class OkexfRestApi(RestClient):
             response = requests.post(url, headers=request.headers, data=request.data)
             return response.json()
 
-    def closeAll(self, symbols, direction=None):
+    def closeAll(self, symbol, direction=None):
         """以市价单的方式全平某个合约的当前仓位,若交易所支持批量下单,使用批量下单接口
         Parameters
         ----------
@@ -299,27 +287,24 @@ class OkexfRestApi(RestClient):
         包含平仓操作发送的所有订单ID的列表
         """
         vtOrderIDs = []
-        symbols = symbols.split(",")
-        for symbol in symbols:
-            symbol = self.contractMapReverse[symbol]
-            req = {
-                'instrument_id': symbol,
-            }
-            path = f'/api/futures/v3/{symbol}/position/'
-            request = Request('GET', path, params=req, callback=None, data=None, headers=None)
+        symbol = self.contractMapReverse[symbol]
+        req = {
+            'instrument_id': symbol,
+        }
+        path = f'/api/futures/v3/{symbol}/position/'
+        request = Request('GET', path, params=req, callback=None, data=None, headers=None)
 
-            request = self.sign2(request)
-            request.extra = direction
-            url = self.makeFullUrl(request.path)
-            response = requests.get(url, headers=request.headers, params=request.params)
-            data = response.json()
-            if data['result'] and data['holding']:
-                data = self.onCloseAll(data, request)
-                for i in data:
-                    if i['result']:
-                        vtOrderIDs.append(i['order_id'])
-                        self.gateway.writeLog(f'平仓成功:{i}')
-        print("全部平仓结果", vtOrderIDs)
+        request = self.sign2(request)
+        request.extra = direction
+        url = self.makeFullUrl(request.path)
+        response = requests.get(url, headers=request.headers, params=request.params)
+        data = response.json()
+        if data['result'] and data['holding']:
+            data = self.onCloseAll(data, request)
+            for i in data:
+                if i['result']:
+                    vtOrderIDs.append(i['order_id'])
+                    self.gateway.writeLog(f'平仓成功:{i}')
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -446,7 +431,7 @@ class OkexfRestApi(RestClient):
         'margin_mode': 'fixed', 'auto_margin': '0'}"""
         # request.path: "/api/futures/v3/accounts/eth"
         if data['margin_mode'] =='crossed':
-            currency = str.upper(request.path[25:])
+            currency = str.upper(request.path.split("/")[-1])
         elif data['margin_mode'] =='fixed':
             for contracts in data['contracts']:
                 currency = contracts['instrument_id'][:3]
@@ -584,27 +569,19 @@ class OkexfRestApi(RestClient):
         """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
         'order_id': '1878377147147264'}"""
         if data['error_message']:
-            return self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
+            self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
         else:
             self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
-        """1:{'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
-        2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
-        'error_code': '32004', 'order_id': '1882519016480768'} 
-        """
+        """ 1:{'result': True, 'client_oid': 'FUTURE19030516082610001', 
+                'order_id': 2427283076158464, 'instrument_id': 'ETH-USD-190329'} 
+            2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
+                'error_code': '32004', 'client_oid': 'FUTURE19030516082610001', 'order_id': -1} """
         if data['result']:
             self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: oid-{str(data['client_oid'])}")
         else:
-            error = VtErrorData()
-            error.gatewayName = self.gatewayName
-            error.errorID = data['error_code']
-            exchange_id =  str(data['order_id'])
-            if 'error_message' in data.keys():
-                error.errorMsg = exchange_id + ' ' + data['error_message']
-            else:
-                error.errorMsg = exchange_id + ' ' + ERRORCODE[str(error.errorID)]
-            self.gateway.onError(error)
+            self.gateway.writeLog(f"WARNING: cancelorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None

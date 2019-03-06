@@ -149,8 +149,10 @@ class OkexGateway(VtGateway):
             symbols = list(self.symbolTypeMap.keys())
         for sym in symbols:
             symbolType = self.symbolTypeMap.get(sym, None)
-            vtOrderIDs = self.gatewayMap[symbolType]["REST"].cancelAll(symbols=symbols, orders=orders)
+            vtOrderIDs = self.gatewayMap[symbolType]["REST"].cancelAll(symbol = sym, orders=orders)
             ids.extend(vtOrderIDs)
+            
+        print("全部撤单结果", ids)
         return ids
 
     # ----------------------------------------------------------------------
@@ -161,8 +163,10 @@ class OkexGateway(VtGateway):
             symbols = list(self.symbolTypeMap.keys())
         for sym in symbols:
             symbolType = self.symbolTypeMap.get(sym, None)
-            vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbols=symbols, direction=direction)
+            vtOrderIDs = self.gatewayMap[symbolType]["REST"].closeAll(symbol = sym, direction=direction)
             ids.extend(vtOrderIDs)
+
+        print("全部平仓结果", ids)
         return ids
 
     #----------------------------------------------------------------------
@@ -251,16 +255,20 @@ class OkexGateway(VtGateway):
 
         if since:
             start = datetime.timestamp(datetime.strptime(since,'%Y%m%d'))
+            bar_count = (end -start).total_seconds()/ granularity
 
         if size:
-            start = datetime.utcnow()-timedelta(seconds = (size * granularity))
+            bar_count = size
 
         req = {"granularity":granularity}
-        datetime_range = ((end -start).total_seconds()/ granularity) // 200 + 1
+
         result = pd.DataFrame([])
-        for i in range(min(10, int(datetime_range))):
+        loop = min(10, int(bar_count // 200 + 1))
+        for i in range(loop):
             rotate_end = end.isoformat().split('.')[0]+'Z'
-            rotate_start = end - timedelta(seconds = granularity*200)
+            rotate_start = end - timedelta(seconds = granularity * 200)
+            if (i+1) == loop:
+                rotate_start = end - timedelta(seconds = granularity * (bar_count % 200))
             rotate_start = rotate_start.isoformat().split('.')[0]+'Z'
 
             req["start"] = rotate_start
