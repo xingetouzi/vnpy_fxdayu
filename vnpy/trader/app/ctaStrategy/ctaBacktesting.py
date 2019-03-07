@@ -854,6 +854,10 @@ class BacktestingEngine(object):
                         entryTrade.volume -= closedVolume
                         exitTrade.volume -= closedVolume
 
+                        entryTrade.volume = round(entryTrade.volume, 4)
+                        exitTrade.volume = round(exitTrade.volume, 4)
+
+
                         # 如果开仓交易已经全部清算，则从列表中移除
                         if not entryTrade.volume:
                             shortTrade[trade.vtSymbol].pop(0)
@@ -898,6 +902,9 @@ class BacktestingEngine(object):
                         # 计算未清算部分
                         entryTrade.volume -= closedVolume
                         exitTrade.volume -= closedVolume
+
+                        entryTrade.volume = round(entryTrade.volume, 4)
+                        exitTrade.volume = round(exitTrade.volume, 4)
 
                         # 如果开仓交易已经全部清算，则从列表中移除
                         if not entryTrade.volume:
@@ -1731,8 +1738,10 @@ class PatchedBacktestingEngine(BacktestingEngine):
                 if order.offset == OFFSET_CLOSE:
                     if order.direction == DIRECTION_LONG:
                         self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(self.strategy.eveningDict[order.vtSymbol + '_SHORT'], 4)
                     elif order.direction == DIRECTION_SHORT:
                         self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.eveningDict[order.vtSymbol + '_LONG'], 4)
                 del self.workingLimitOrderDict[vtOrderID]
                 del self._cancelledLimitOrderDict[vtOrderID]
                 self.strategy.onOrder(order)          
