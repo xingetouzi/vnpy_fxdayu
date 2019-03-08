@@ -1273,7 +1273,7 @@ class OkexfWebsocketApi(WebsocketClient):
             order.totalVolume = int(data['amount'])
             order.tradedVolume = 0
             order.direction, order.offset = typeMapReverse[str(data['type'])]
-
+        order.price_avg = float(data['price_avg'])
         order.orderTime = data['create_date_str'].replace("-","")#.split(' ')[-1]
         order.orderDatetime = datetime.strptime(order.orderTime,'%Y%m%d %H:%M:%S')
         order.deliveryTime = datetime.now()   

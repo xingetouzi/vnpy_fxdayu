@@ -510,6 +510,7 @@ class BacktestingEngine(object):
                     # 推送委托数据
                     order.tradedVolume = order.totalVolume
                     order.status = STATUS_ALLTRADED
+                    order.price_avg = trade.price
                     self.strategy.onOrder(order)
 
                     # 从字典中删除该限价单
@@ -1803,6 +1804,7 @@ class PatchedBacktestingEngine(BacktestingEngine):
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.eveningDict[order.vtSymbol + '_LONG'], 4)
                     elif buyCross and trade.offset == OFFSET_CLOSE:
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
@@ -1810,6 +1812,7 @@ class PatchedBacktestingEngine(BacktestingEngine):
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol + "_SHORT"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_SHORT"] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(self.strategy.eveningDict[order.vtSymbol + '_SHORT'], 4)
                     elif sellCross and trade.offset == OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
@@ -1819,10 +1822,13 @@ class PatchedBacktestingEngine(BacktestingEngine):
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
                         self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.eveningDict[order.vtSymbol + '_LONG'], 4)
                     elif sellCross and trade.offset == OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
                         self.strategy.eveningDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(self.strategy.eveningDict[order.vtSymbol + '_LONG'], 4)
+                        
 
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime('%Y%m%d %H:%M:%S')
@@ -1834,12 +1840,13 @@ class PatchedBacktestingEngine(BacktestingEngine):
                         del self.workingLimitOrderDict[orderID]
 
                     self.strategy.onTrade(trade)
-
+                    
                     self.tradeDict[tradeID] = trade
 
                     # 推送委托数据
                     order.tradedVolume = order.totalVolume
                     order.status = STATUS_ALLTRADED
+                    order.price_avg = trade.price
                     self.strategy.onOrder(order)
                     self.processCancelledOrders()
                     
