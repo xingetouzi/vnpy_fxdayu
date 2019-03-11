@@ -457,7 +457,7 @@ class OkexfRestApi(RestClient):
             'realized_pnl': '0', 'total_avail_balance': '0.00000015', 'unrealized_pnl': '0'}
             }} """
         for currency, data in d['info'].items():
-            self.processAccountData(data, currency)
+            self.processAccountData(data, str.upper(currency))
 
     #----------------------------------------------------------------------
     def processPositionData(self, data):

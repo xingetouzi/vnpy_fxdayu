@@ -256,9 +256,9 @@ class OkexGateway(VtGateway):
         else:
             end = datetime.utcfromtimestamp(datetime.timestamp(datetime.now()))
 
-        # if since:
-        #     start = datetime.utcfromtimestamp(datetime.timestamp(datetime.strptime(since,'%Y%m%d')))
-        #     bar_count = (end -start).total_seconds()/ granularity
+        if since:
+            start = datetime.utcfromtimestamp(datetime.timestamp(datetime.strptime(since,'%Y%m%d')))
+            bar_count = (end -start).total_seconds()/ granularity
 
         if size:
             bar_count = size
