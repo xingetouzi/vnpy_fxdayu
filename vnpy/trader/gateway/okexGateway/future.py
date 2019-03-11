@@ -16,7 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, ERRORCODE
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -83,7 +83,7 @@ class OkexfRestApi(RestClient):
             path = request.path + '?' + urlencode(request.params)
         else:
             path = request.path
-            
+        
         msg = timestamp + request.method + path + request.data
         signature = generateSignature(msg, self.gateway.apiSecret)
         
@@ -377,7 +377,7 @@ class OkexfRestApi(RestClient):
             contract.size = int(data['trade_increment'])
             
             self.contractDict[contract.symbol] = contract
-            self.contractMap[contract.symbol] = "-".join([data['underlying_index'], str.upper(data['alias'])])
+            self.contractMap[contract.symbol] = "-".join([data['underlying_index'], str.upper(data['alias']).replace("_","-")])
             # matureDate.add(str(d['instrument_id'])[8:])
             
         self.gateway.writeLog(u'OKEX 交割合约信息查询成功')
@@ -573,7 +573,7 @@ class OkexfRestApi(RestClient):
         """
         self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
         order = request.extra
-        order.status = STATUS_REJECTED
+        order.status = STATUS_UNKNOWN
         order.rejectedInfo = "onSendOrderError: OKEX not response or network issue"
         # str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)

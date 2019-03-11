@@ -265,7 +265,7 @@ class OkexGateway(VtGateway):
 
         req = {"granularity":granularity}
 
-        result = pd.DataFrame([])
+        df = pd.DataFrame([])
         loop = min(10, int(bar_count // 200 + 1))
         for i in range(loop):
             rotate_end = end.isoformat().split('.')[0]+'Z'
@@ -279,12 +279,12 @@ class OkexGateway(VtGateway):
             data = subGateway.loadHistoryBar(REST_HOST, symbol, req)
 
             end = datetime.strptime(rotate_start, "%Y-%m-%dT%H:%M:%SZ")
-            df = pd.concat([result, data])
+            df = pd.concat([df, data])
 
         df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
+        df = df[["datetime", "open", "high", "low", "close", "volume"]]
         df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
         df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].applymap(lambda x: float(x))
-        df = df[["datetime", "open", "high", "low", "close", "volume"]]
         df.sort_values(by=['datetime'], axis = 0, ascending =True, inplace = True)
         return df
 

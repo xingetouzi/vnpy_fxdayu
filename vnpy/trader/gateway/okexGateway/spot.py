@@ -14,7 +14,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, ERRORCODE
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -465,7 +465,7 @@ class OkexSpotRestApi(RestClient):
         """
         self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
         order = request.extra
-        order.status = STATUS_REJECTED
+        order.status = STATUS_UNKNOWN
         order.rejectedInfo = "onSendOrderError: OKEX not response or network issue"
         #str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
