@@ -16,7 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from .util import generateSignature, ERRORCODE
+from .util import generateSignature, ERRORCODE,ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -378,11 +378,12 @@ class OkexSwapRestApi(RestClient):
         account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
 
         account.balance = float(data['equity'])
-        if data["margin_mode"] == "crossed":
-            account.available = float(data['total_avail_balance'])
-        elif data["margin_mode"] == "fixed":
-            account.available = float(data['fixed_balance'])
         account.margin = float(data['margin'])  + float(data['margin_frozen']) 
+        # if data["margin_mode"] == "crossed":
+        #     account.available = float(data['total_avail_balance'])
+        # elif data["margin_mode"] == "fixed":
+        #     account.available = float(data['fixed_balance'])
+        account.available = account.balance - account.margin
         account.positionProfit = float(data['unrealized_pnl'])
         account.closeProfit = float(data['realized_pnl'])
         

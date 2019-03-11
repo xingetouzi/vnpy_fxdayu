@@ -16,7 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
-from .util import generateSignature, ERRORCODE
+from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
 statusMapReverse = {}
@@ -412,11 +412,10 @@ class OkexfRestApi(RestClient):
         account.gatewayName = self.gatewayName
         account.accountID = "_".join([currency, SUBGATEWAY_NAME])
         account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
-        account.balance = float(data['equity'])
-        account.available = float(data['total_avail_balance'])
+        
 
         if data['margin_mode'] =='crossed':
-            account.margin = float(data['margin'])
+            account.margin = float(data['margin']) + float(data['margin_frozen']) 
             account.positionProfit = float(data['unrealized_pnl'])
             account.closeProfit = float(data['realized_pnl'])
         elif data['margin_mode'] =='fixed':
@@ -425,7 +424,8 @@ class OkexfRestApi(RestClient):
                 account.margin += margin
                 account.positionProfit += float(contracts['unrealized_pnl'])
                 account.closeProfit += float(contracts['realized_pnl'])
-        
+        account.balance = float(data['equity'])
+        account.available = account.balance - account.margin
         self.gateway.onAccount(account)
         # self.gateway.writeLog(f'Account: {account.accountID} is {data["margin_mode"]}')
 
