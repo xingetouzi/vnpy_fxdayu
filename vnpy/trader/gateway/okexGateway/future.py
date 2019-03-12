@@ -415,7 +415,7 @@ class OkexfRestApi(RestClient):
         
 
         if data['margin_mode'] =='crossed':
-            account.margin = float(data['margin']) + float(data['margin_frozen']) 
+            account.margin = float(data['margin'])
             account.positionProfit = float(data['unrealized_pnl'])
             account.closeProfit = float(data['realized_pnl'])
         elif data['margin_mode'] =='fixed':
