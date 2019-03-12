@@ -425,7 +425,7 @@ class OkexfRestApi(RestClient):
                 account.positionProfit += float(contracts['unrealized_pnl'])
                 account.closeProfit += float(contracts['realized_pnl'])
         account.balance = float(data['equity'])
-        account.available = account.balance - account.margin
+        account.available = account.balance + account.closeProfit - account.margin
         self.gateway.onAccount(account)
         # self.gateway.writeLog(f'Account: {account.accountID} is {data["margin_mode"]}')
 

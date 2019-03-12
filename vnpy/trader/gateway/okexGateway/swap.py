@@ -383,10 +383,10 @@ class OkexSwapRestApi(RestClient):
         #     account.available = float(data['total_avail_balance'])
         # elif data["margin_mode"] == "fixed":
         #     account.available = float(data['fixed_balance'])
-        account.available = account.balance - account.margin
+        
         account.positionProfit = float(data['unrealized_pnl'])
         account.closeProfit = float(data['realized_pnl'])
-        
+        account.available = account.balance - account.margin + account.closeProfit
         self.gateway.onAccount(account)
         # self.gateway.writeLog(f'Account: {account.accountID} is {account_info["margin_mode"]}')
 
