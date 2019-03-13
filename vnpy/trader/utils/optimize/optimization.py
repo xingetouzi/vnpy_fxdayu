@@ -35,7 +35,7 @@ def runStrategy(engineClass, strategyClass, engineSetting, globalSetting, strate
 
     engine.setStartDate(engineSetting["startDate"], engineSetting.get("initHours", 0))
     engine.setEndDate(engineSetting["endDate"])
-    
+
     engine.initStrategy(strategyClass, {**globalSetting, **strategySetting})
     engine.runBacktesting()
 
@@ -159,7 +159,12 @@ class Optimization(object):
             print(error)
     
     def iter_settings(self):
-        return self.strategySettings[self.strategySettings[STATUS]==0][self.paramNames].iterrows()
+        table = self.strategySettings[self.strategySettings[STATUS]==0][self.paramNames]
+        dct = table.to_dict("list")
+        keys = dct.keys()
+        values = dct.values()
+        for index, t in zip(table.index, zip(*values)):
+            yield index, dict(zip(keys, t))
 
     def run(self):
         if not self.ready:
@@ -172,7 +177,7 @@ class Optimization(object):
                     self.strategyClass, 
                     self.engineSetting.copy(), 
                     self.globalSetting,
-                    strategySetting.to_dict(),
+                    strategySetting,
                     index
                 )
             except Exception as e:
@@ -194,7 +199,7 @@ class Optimization(object):
         for index, strategySetting in self.iter_settings():
             pool.apply_async(
                 runPerformanceParallel, 
-                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting.to_dict(), index),
+                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting, index),
                 callback=self.callback,
                 error_callback=self.error_callback
             )
