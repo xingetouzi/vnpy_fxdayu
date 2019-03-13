@@ -40,8 +40,9 @@ typeMapReverse = {v:k for k,v in typeMap.items()}
 priceTypeMap = {}
 priceTypeMap[PRICETYPE_LIMITPRICE] = 0
 priceTypeMap[PRICETYPE_MARKETPRICE] = 1
-priceTypeMap[PRICETYPE_FAK] = 'fak'
-priceTypeMap[PRICETYPE_FOK] = 'fok'
+priceTypeMap[PRICETYPE_FOK] = 2
+priceTypeMap[PRICETYPE_FAK] = 3
+priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
 
 SUBGATEWAY_NAME = "FUTURE"
 ########################################################################
@@ -130,6 +131,7 @@ class OkexfRestApi(RestClient):
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
+
         data = {
             'client_oid': orderID,
             'instrument_id': self.contractMapReverse[orderReq.symbol],
@@ -137,9 +139,16 @@ class OkexfRestApi(RestClient):
             'price': orderReq.price,
             'size': int(orderReq.volume),
             'leverage': self.leverage,
-            'match_price':priceTypeMap[orderReq.priceType]
         }
-        
+
+        priceType = priceTypeMap[orderReq.priceType]
+        if priceType == 1:
+            data['order_type'] = 0
+            data['match_price'] = 1
+        else:
+            data['order_type'] = priceType
+            data['match_price'] = 0
+
         order = VtOrderData()
         order.gatewayName = self.gatewayName
         order.symbol = orderReq.symbol
@@ -530,6 +539,8 @@ class OkexfRestApi(RestClient):
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = int(data['filled_qty'])
         order.fee = float(data['fee'])
+        if int(data['order_type'])>1:
+            order.priceType = priceTypeMapReverse[data['order_type']]
         
         self.gateway.onOrder(order)
         self.orderDict[oid] = order

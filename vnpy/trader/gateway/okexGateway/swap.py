@@ -40,8 +40,9 @@ typeMapReverse = {v:k for k,v in typeMap.items()}
 priceTypeMap = {}
 priceTypeMap[PRICETYPE_LIMITPRICE] = 0
 priceTypeMap[PRICETYPE_MARKETPRICE] = 1
-priceTypeMap[PRICETYPE_FAK] = 'fak'
-priceTypeMap[PRICETYPE_FOK] = 'fok'
+priceTypeMap[PRICETYPE_FOK] = 2
+priceTypeMap[PRICETYPE_FAK] = 3
+priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
 
 directionMap = {
     "long": DIRECTION_LONG,
@@ -139,8 +140,15 @@ class OkexSwapRestApi(RestClient):
             'type': type_,
             'price': orderReq.price,
             'size': int(orderReq.volume),
-            'match_price':priceTypeMap[orderReq.priceType]
         }
+
+        priceType = priceTypeMap[orderReq.priceType]
+        if priceType == 1:
+            data['order_type'] = 0
+            data['match_price'] = 1
+        else:
+            data['order_type'] = priceType
+            data['match_price'] = 0
         
         order = VtOrderData()
         order.gatewayName = self.gatewayName
@@ -462,6 +470,8 @@ class OkexSwapRestApi(RestClient):
         order.status = statusMapReverse[data['status']]
         order.deliveryTime = datetime.now()
         order.fee = float(data['fee'])
+        if int(data['order_type'])>1:
+            order.priceType = priceTypeMapReverse[data['order_type']]
 
         self.gateway.onOrder(order)
         self.orderDict[oid] = order

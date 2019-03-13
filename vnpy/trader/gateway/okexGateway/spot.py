@@ -30,6 +30,14 @@ typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = 'buy'
 typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 'sell'
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
+# 下单方式映射
+priceTypeMap = {}
+priceTypeMap[PRICETYPE_LIMITPRICE] = 0
+priceTypeMap[PRICETYPE_MARKETPRICE] = 1
+priceTypeMap[PRICETYPE_FOK] = 2
+priceTypeMap[PRICETYPE_FAK] = 3
+priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
+
 SUBGATEWAY_NAME = "SPOT"
 #############################################################################################################
 class OkexSpotRestApi(RestClient):
@@ -120,12 +128,16 @@ class OkexSpotRestApi(RestClient):
             'side': type_,
             'size': float(orderReq.volume)    # in market order means quantity sold
         }
-        if orderReq.priceType == PRICETYPE_LIMITPRICE:
-            data["type"] = "limit"
-            data["price"] = orderReq.price
-        elif orderReq.priceType == PRICETYPE_MARKETPRICE:
+
+        priceType = priceTypeMap[orderReq.priceType]
+        if priceType == 1:
+            data['order_type'] = 0
             data["type"] = "market"
             data["notional"] = orderReq.price    # in market order means amount bought
+        else:
+            data['order_type'] = priceType
+            data["type"] = "limit"
+            data["price"] = orderReq.price
 
         if self.leverage > 0:
             data["margin_trading"] = 2
@@ -423,6 +435,9 @@ class OkexSpotRestApi(RestClient):
         order.thisTradedVolume = incremental_filled_size - order.tradedVolume
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = incremental_filled_size
+
+        if int(data['order_type'])>1:
+            order.priceType = priceTypeMapReverse[data['order_type']]
 
         self.gateway.onOrder(copy(order))
         self.orderDict[oid] = order
