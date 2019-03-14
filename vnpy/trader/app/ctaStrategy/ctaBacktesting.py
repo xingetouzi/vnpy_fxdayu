@@ -22,7 +22,6 @@ try:
 except ImportError:
     pass
 
-# from vnpy.trader.vtGlobal import globalSetting
 from vnpy.trader.vtObject import VtTickData, VtBarData, VtLogData
 from vnpy.trader.language import constant
 from vnpy.trader.vtGateway import VtOrderData, VtTradeData
@@ -77,7 +76,7 @@ class BacktestingEngine(object):
         self.symbol = ''    # 回测集合名
         self.backtestData = []  # 回测用历史数据
 
-        self.cachePath = os.path.join(os.path.expanduser("~"), ".vnpy_data")  # 本地数据缓存地址
+        self.cachePath = os.path.join(os.path.expanduser("~"), "vnpy_data")  # 本地数据缓存地址
         self.logActive = False  # 回测日志开关
         self.logFolderName = u'策略报告_' + datetime.now().strftime("%Y%m%d-%H%M%S")  # 当次日志文件夹名称
         self.logPath = os.path.join(os.getcwd(), "Backtest_Log", self.logFolderName)  # 回测日志自定义路径
@@ -94,7 +93,6 @@ class BacktestingEngine(object):
         self.tradeDict = OrderedDict()  # 成交字典
 
         self.logList = []  # 日志记录
-
         self.orderList = []  # 订单记录
 
         # 当前最新数据，用于模拟成交用
@@ -159,11 +157,11 @@ class BacktestingEngine(object):
         self.mode = mode
 
     # ----------------------------------------------------------------------
-    def setDatabase(self, dbURI):
+    def setDB_URI(self, dbURI):
         """设置历史数据所用的数据库"""
         self.dbURI = dbURI
 
-    def setDBName(self,dbName):
+    def setDatabase(self,dbName):
         self.dbName = dbName
 
     # ----------------------------------------------------------------------
@@ -225,23 +223,24 @@ class BacktestingEngine(object):
     # ----------------------------------------------------------------------
     def loadHistoryData(self, symbolList, startDate, endDate=None):
         """载入历史数据:数据范围[start:end)"""
-        # 首先根据回测模式，确认要使用的数据类
-        if self.mode == self.BAR_MODE:
-            dataClass = VtBarData
-        else:
-            dataClass = VtTickData
-
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
 
+        # 根据回测模式，确认要使用的数据类
+        if self.mode == self.BAR_MODE:
+            dataClass = VtBarData
+            datetime_list = get_minutes_list(start=startDate, end=endDate)
+        else:
+            dataClass = VtTickData
+            datetime_list = get_date_list(start=startDate, end=endDate)
+
         start = startDate.strftime(constant.DATETIME)
         end = endDate.strftime(constant.DATETIME)
-        datetime_list = get_time_list(start=startDate, end=endDate)
+        self.output(f"准备载入数据：时间段:[{start} , {end})")
 
         # 下载数据
         dataList = []
         df_cached = {}
-        temp_count = 0
         # 优先从本地文件缓存读取数据
         symbols_no_data = dict()  # 本地缓存没有的数据
         save_path = os.path.join(self.cachePath, self.mode)
@@ -250,30 +249,45 @@ class BacktestingEngine(object):
         for symbol in symbolList:
             # 如果存在缓存文件，则读取日期列表和bar数据，否则初始化df_cached和dates_cached
             pkl_file_path = f'{save_path}/{symbol.replace(":", "_")}.pkl'
+            print(pkl_file_path)
             if os.path.isfile(pkl_file_path):
+                # 读取 pkl
                 pkl_file = open(pkl_file_path, 'rb')
                 df_cached[symbol] = pickle.load(pkl_file)
                 pkl_file.close()
-                dataList += [self.parseData(dataClass, item) 
-                            for item in df_cached[symbol][(df_cached[symbol].datetime >= start) & (df_cached[symbol].datetime < end)].to_dict("record")]
-                datetime_acquired = list(set(df_cached[symbol]['datetime']) ^ set(datetime_list))
-                symbols_no_data[symbol] = list(set(datetime_acquired) & (set(datetime_list)))
+                df_acquired =  df_cached[symbol][
+                    (df_cached[symbol].datetime >= start) & (df_cached[symbol].datetime < end)
+                    ]
+                dataList += [self.parseData(dataClass, item) for item in df_acquired.to_dict("record")]
+                if self.mode == self.BAR_MODE:
+                    dt_list_acquired = set(df_acquired['datetime'])  # bar 回测按实际的datetime
+                else:
+                    dt_list_acquired = set(df_acquired['date'])  # tick 回测按日
+
+                symbols_no_data[symbol] = list(dt_list_acquired ^ (set(datetime_list)))
             else:
                 df_cached[symbol] = pd.DataFrame([])
+                dt_list_acquired = []
                 symbols_no_data[symbol] = datetime_list
-            self.output(f"{symbol},从本地文件取了{len(dataList)-temp_count},应取{len(datetime_list)},还需{len(datetime_list)-len(dataList)-temp_count}")
-            temp_count = len(dataList)
 
-        # 如果没有完全从本地文件加载完数据,则尝试从指定的mongodb下载数据，并缓存到本地
+            acq, need = len(dt_list_acquired), len(datetime_list)
+            self.output(f"{symbol}： 从本地缓存文件实取{acq}, 最大应取{need}, 还需从数据库取{need-acq}")
+
+        # 如果没有完全从本地文件加载完数据, 则尝试从指定的mongodb下载数据, 并缓存到本地
         if self.dbURI:
             # try:
             import pymongo
             self.dbClient = pymongo.MongoClient(self.dbURI)[self.dbName]
-            for symbol in symbolList:
-                if len(symbols_no_data[symbol]) > 0:  # 需要从数据库取数据
+            for symbol, need_datetimes in symbols_no_data.items():
+                if len(need_datetimes) > 0:  # 需要从数据库取数据
                     if symbol in self.dbClient.collection_names():
                         collection = self.dbClient[symbol]
-                        Cursor = collection.find({"datetime": {"$in": symbols_no_data[symbol]}})  # 按日回测检索
+
+                        if self.mode == self.BAR_MODE:
+                            Cursor = collection.find({"datetime": {"$in": need_datetimes}})  # 按时间回测检索
+                        else:
+                            Cursor = collection.find({"date": {"$in": need_datetimes}})  # 按日回测检索
+                        
                         data_df = pd.DataFrame(list(Cursor))
                         if data_df.size > 0:
                             del data_df["_id"]
@@ -284,11 +298,14 @@ class BacktestingEngine(object):
                             # 缓存到本地文件
                             update_df = df_cached[symbol].append(data_df)
                             output = open(f'{save_path}/{symbol.replace(":", "_")}.pkl', 'wb')
+                            update_df.sort_values(by='datetime', ascending=True, inplace=True)
+                            
                             pickle.dump(update_df, output)
                             output.close()
-                            self.output(f"{symbol},从数据库取了{len(list(data_df['datetime']))},应取{len(symbols_no_data[symbol])},缺失了{len(symbols_no_data[symbol])-len(list(data_df['datetime']))}")
+                            acq, need = len(list(data_df['datetime'])), len(need_datetimes)
+                            self.output(f"{symbol}： 从数据库存取了{acq}, 应补{need}, 缺失了{need-acq}")
                         else:
-                            self.output(f"{symbol}, 数据库也没能补到缺失的数据")
+                            self.output(f"{symbol}： 数据库也没能补到缺失的数据")
                     else:
                         self.output("数据库没有 %s 这个品种" % symbol)
                         self.output("这些品种在我们的数据库里: %s" % self.dbClient.collection_names())
@@ -297,11 +314,11 @@ class BacktestingEngine(object):
             #     import traceback
             #     traceback.print_exc()
         else:
-            self.output('没有设置数据库URI, 本次回测仅使用本地缓存数据, 请注意计算数据量。')
+            self.output('没有设置数据库URI, 请在回测设置 engine.setDB_URI("mongodb://localhost:27017")')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: x.datetime)
-            self.output(u'数据载入完成, 时间段:[%s,%s);数据量:%s' % (start, end, len(dataList)))
+            self.output(u'载入完成, 数据量:%s' % (len(dataList)))
             return dataList
         else:
             self.output(u'WARNING: 该时间段:[%s,%s) 数据量为0!' % (start, end))
@@ -375,7 +392,7 @@ class BacktestingEngine(object):
         self.barDict[bar.vtSymbol] = bar
         self.dt = bar.datetime
 
-        self.crossLimitOrder(bar)  # 先撮合限价单
+        self.crossLimitOrder(bar) # 先撮合限价单
         self.crossStopOrder(bar)  # 再撮合停止单
         self.strategy.onBar(bar)  # 推送K线到策略中
 
@@ -622,7 +639,7 @@ class BacktestingEngine(object):
             order.offset = constant.OFFSET_CLOSE
             closable = self.strategy.eveningDict[order.vtSymbol + '_LONG']
             if order.totalVolume > closable:
-                self.output("当前平仓数量大于可平量，实盘下可能拒单, 请小心处理,下单信息为---direction:卖平;volume:%s;pos=%s"%(order.totalVolume, closable))                
+                self.output(f"当前order：{order.orderTime}, 卖平{order.totalVolume}, 可平{closable}, 实盘下可能拒单, 请小心处理")                
             closable -= order.totalVolume
             self.strategy.eveningDict[order.vtSymbol + '_LONG'] = round(closable, 4)
         elif orderType == CTAORDER_SHORT:
@@ -633,7 +650,7 @@ class BacktestingEngine(object):
             order.offset = constant.OFFSET_CLOSE
             closable = self.strategy.eveningDict[order.vtSymbol + '_SHORT']
             if order.totalVolume > closable:
-                self.output("当前平仓数量大于可平量，实盘下可能拒单, 请小心处理,下单信息为---direction:买平;volume:%s;pos=%s"%(order.totalVolume, closable))
+                self.output(f"当前order：{order.orderTime}, 买平{order.totalVolume}, 可平{closable}, 实盘下可能拒单, 请小心处理")
             closable -= order.totalVolume
             self.strategy.eveningDict[order.vtSymbol + '_SHORT'] = round(closable, 4)
 
@@ -822,7 +839,9 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.tradeDatetime,exitTrade.orderID,
                                                -closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
-                        deliverSheet.append(result.__dict__)
+                        r = result.__dict__
+                        r.update({"symbol":trade.vtSymbol})
+                        deliverSheet.append(r)
 
                         posList.extend([-1, 0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -864,7 +883,9 @@ class BacktestingEngine(object):
                                                exitTrade.price, exitTrade.tradeDatetime, exitTrade.orderID,
                                                closedVolume, self.rate, self.slippage, self.size)
                         resultList.append(result)
-                        deliverSheet.append(result.__dict__)
+                        r = result.__dict__
+                        r.update({"symbol":trade.vtSymbol})
+                        deliverSheet.append(r)
 
                         posList.extend([1, 0])
                         tradeTimeList.extend([result.entryDt, result.exitDt])
@@ -904,7 +925,9 @@ class BacktestingEngine(object):
                                        trade.volume, self.rate, self.slippage, self.size)
 
                 resultList.append(result)
-                deliverSheet.append(result.__dict__)
+                r = result.__dict__
+                r.update({"symbol":symbol})
+                deliverSheet.append(r)
 
         for symbol, tradeList in shortTrade.items():
 
@@ -917,7 +940,9 @@ class BacktestingEngine(object):
                 result = TradingResult(trade.price, trade.tradeDatetime, trade.orderID, endPrice, self.dt, "LastDay",
                                        -trade.volume, self.rate, self.slippage, self.size)
                 resultList.append(result)
-                deliverSheet.append(result.__dict__)
+                r = result.__dict__
+                r.update({"symbol":symbol})
+                deliverSheet.append(r)
 
         # 检查是否有交易
         if not resultList:
@@ -1144,7 +1169,7 @@ class BacktestingEngine(object):
                                                  targetName, self.mode,
                                                  self.startDate, self.initHours, self.endDate,
                                                  self.slippage, self.rate, self.size, self.priceTick,
-                                                 self.dbURI, self.symbol)))
+                                                 self.dbURI, self.dbName, self.symbol)))
         pool.close()
         pool.join()
 
@@ -1535,8 +1560,7 @@ class HistoryDataServer(RpcServer):
         """Constructor"""
         super(HistoryDataServer, self).__init__(repAddress, pubAddress)
 
-        self.dbClient = pymongo.MongoClient(globalSetting['mongoHost'],
-                                            globalSetting['mongoPort'])
+        self.dbClient = pymongo.MongoClient(BacktestingEngine.dbURI)
 
         self.historyDict = {}
 
@@ -1590,7 +1614,7 @@ def formatNumber(n):
 def optimize(backtestEngineClass, strategyClass, setting, targetName,
              mode, startDate, initHours, endDate,
              slippage, rate, size, priceTick,
-             dbName, symbol):
+             db_URI, dbName, symbol):
     """多进程优化时跑在每个进程中运行的函数"""
     engine = backtestEngineClass()
     engine.setBacktestingMode(mode)
@@ -1600,6 +1624,7 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
     engine.setRate(rate)
     engine.setSize(size)
     engine.setPriceTick(priceTick)
+    engine.setDB_URI(db_URI)
     engine.setDatabase(dbName)
 
     engine.initStrategy(strategyClass, setting)
@@ -1644,7 +1669,7 @@ def gen_minutes(b_date, days, minutes):
         yield b_date + minute * i
 
 
-def get_time_list(start=None, end=None):
+def get_minutes_list(start=None, end=None):
     """
     获取日期列表
     :param start: 开始日期
@@ -1658,7 +1683,6 @@ def get_time_list(start=None, end=None):
     data = []
     days = (end - start).days
     minutes = int((end - start).seconds / 60)
-    print(minutes)
     for d in gen_minutes(start, days, minutes):
         data.append(d)
     return data
@@ -1704,8 +1728,10 @@ class PatchedBacktestingEngine(BacktestingEngine):
                 if order.offset == constant.OFFSET_CLOSE:
                     if order.direction == constant.DIRECTION_LONG:
                         self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + "_SHORT"] = round(self.strategy.eveningDict[order.vtSymbol + "_SHORT"], 4)
                     elif order.direction == constant.DIRECTION_SHORT:
                         self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+                        self.strategy.eveningDict[order.vtSymbol + "_LONG"] = round(self.strategy.eveningDict[order.vtSymbol + "_LONG"], 4)
                 del self.workingLimitOrderDict[vtOrderID]
                 del self._cancelledLimitOrderDict[vtOrderID]
                 self.strategy.onOrder(order)          
@@ -1767,26 +1793,32 @@ class PatchedBacktestingEngine(BacktestingEngine):
                         trade.price = min(order.price, buyBestCrossPrice)
                         self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
+                        self.strategy.eveningDict[symbol + "_LONG"] = round(self.strategy.eveningDict[symbol + "_LONG"], 4)
                     elif buyCross and trade.offset == constant.OFFSET_CLOSE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[symbol+"_SHORT"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
                     elif sellCross and trade.offset == constant.OFFSET_OPEN:
                         trade.price = max(order.price, sellBestCrossPrice)
                         self.strategy.posDict[symbol + "_SHORT"] += order.totalVolume
                         self.strategy.eveningDict[symbol + "_SHORT"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_SHORT"] = round(self.strategy.posDict[symbol + "_SHORT"], 4)
+                        self.strategy.eveningDict[symbol + "_SHORT"] = round(self.strategy.eveningDict[symbol + "_SHORT"], 4)
                     elif sellCross and trade.offset == constant.OFFSET_CLOSE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
 
                     # 现货仓位
                     elif buyCross and trade.offset == constant.OFFSET_NONE:
                         trade.price = min(order.price, buyBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] += order.totalVolume
-                        self.strategy.eveningDict[symbol+"_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] += order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
                     elif sellCross and trade.offset == constant.OFFSET_NONE:
                         trade.price = max(order.price, sellBestCrossPrice)
-                        self.strategy.posDict[symbol+"_LONG"] -= order.totalVolume
-                        self.strategy.eveningDict[symbol+"_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] -= order.totalVolume
+                        self.strategy.posDict[symbol + "_LONG"] = round(self.strategy.posDict[symbol + "_LONG"], 4)
 
                     trade.volume = order.totalVolume
                     trade.tradeTime = self.dt.strftime(constant.DATETIME)
@@ -1804,6 +1836,7 @@ class PatchedBacktestingEngine(BacktestingEngine):
                     # 推送委托数据
                     order.tradedVolume = order.totalVolume
                     order.status = constant.STATUS_ALLTRADED
+                    order.price_avg = trade.price
                     self.strategy.onOrder(order)
                     self.processCancelledOrders()
                     
