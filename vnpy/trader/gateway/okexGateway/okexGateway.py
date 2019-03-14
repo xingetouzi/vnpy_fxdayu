@@ -45,7 +45,7 @@ statusMap[-1] = STATUS_CANCELLED
 statusMap[0] = STATUS_NOTTRADED
 statusMap[1] = STATUS_PARTTRADED
 statusMap[2] = STATUS_ALLTRADED
-statusMap[4] = STATUS_CANCELINPROGRESS
+statusMap[4] = STATUS_CANCELLING
 statusMap[5] = STATUS_CANCELLING
 
 # Restful 下单返回错误映射

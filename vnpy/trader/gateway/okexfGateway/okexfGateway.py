@@ -37,7 +37,7 @@ statusMapReverse['0'] = STATUS_NOTTRADED
 statusMapReverse['1'] = STATUS_PARTTRADED
 statusMapReverse['2'] = STATUS_ALLTRADED
 statusMapReverse['-1'] = STATUS_CANCELLED
-statusMapReverse['4'] = STATUS_CANCELINPROGRESS
+statusMapReverse['4'] = STATUS_CANCELLING
 statusMapReverse['5'] = STATUS_CANCELLING
 
 # 方向和开平映射
