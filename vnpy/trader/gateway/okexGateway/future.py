@@ -827,6 +827,16 @@ class OkexfWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onFuturesDepth(self, d):
         """{"table": "futures/depth5", "data": [{
+        'asks': 
+            [[3827.22, 253, 0, 4], [3827.46, 30, 0, 1], [3827.6, 9, 0, 2], 
+            [3827.71, 40, 0, 1], [3827.78, 18, 0, 1]], 
+        'bids': 
+            [[3827.21, 32, 0, 3], [3827.2, 35, 0, 2], [3827.1, 10, 0, 1], 
+            [3827.0, 98, 0, 3], [3826.95, 100, 0, 1]], 
+        'instrument_id': 'BTC-USD-190329', 'timestamp': '2019-03-14T06:12:56.342Z'}]}"""
+
+
+        """{"table": "futures/depth5", "data": [{
         "asks": [
             [3921.8772, 1, 1, 1], [3981.6852, 40, 1, 1], [4036.165, 12, 1, 1],
             [4059.7606, 95, 1, 1], [4100.0, 6, 0, 4]
@@ -840,15 +850,15 @@ class OkexfWebsocketApi(WebsocketClient):
         for idx, data in enumerate(d):
             tick = self.tickDict[data['instrument_id']]
             
-            for idx, buf in enumerate(data['bids']):
-                price, volume = buf[:2]
-                tick.__setattr__(f'bidPrice{(idx +1)}', float(price))
-                tick.__setattr__(f'bidVolume{(idx +1)}', int(volume))
-            
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
-                tick.__setattr__(f'askPrice{(5-idx)}', float(price))
-                tick.__setattr__(f'askVolume{(5-idx)}', int(volume))
+                tick.__setattr__(f'askPrice{(idx +1)}', float(price))
+                tick.__setattr__(f'askVolume{(idx +1)}', int(volume))
+            
+            for idx, buf in enumerate(data['bids']):
+                price, volume = buf[:2]
+                tick.__setattr__(f'bidPrice{(5-idx)}', float(price))
+                tick.__setattr__(f'bidVolume{(5-idx)}', int(volume))
             
             tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()

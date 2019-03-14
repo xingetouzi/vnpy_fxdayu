@@ -714,15 +714,15 @@ class OkexSpotWebsocketApi(WebsocketClient):
         for data in d:
             tick = self.tickDict[data['instrument_id']]
             
-            for idx, buf in enumerate(data['bids']):
-                price, volume = buf[:2]
-                tick.__setattr__(f'bidPrice{(idx +1)}', float(price))
-                tick.__setattr__(f'bidVolume{(idx +1)}', float(volume))
-            
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
-                tick.__setattr__(f'askPrice{(5-idx)}', float(price))
-                tick.__setattr__(f'askVolume{(5-idx)}', float(volume))
+                tick.__setattr__(f'askPrice{(idx +1)}', float(price))
+                tick.__setattr__(f'askVolume{(idx +1)}', int(volume))
+            
+            for idx, buf in enumerate(data['bids']):
+                price, volume = buf[:2]
+                tick.__setattr__(f'bidPrice{(5-idx)}', float(price))
+                tick.__setattr__(f'bidVolume{(5-idx)}', int(volume))
             
             tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
             tick.date = tick.datetime.strftime('%Y%m%d')
