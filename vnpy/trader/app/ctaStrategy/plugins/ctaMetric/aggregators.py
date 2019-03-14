@@ -131,13 +131,12 @@ _order_status_map_status = {
     STATUS_UNKNOWN: 1,
     STATUS_PARTTRADED: 2,
     STATUS_CANCELLING: 3,
-    STATUS_CANCELINPROGRESS: 4,
     STATUS_ALLTRADED: 5,
     STATUS_REJECTED: 6,
     STATUS_CANCELLED: 7,
 }
 
-_activate_set = {STATUS_NOTTRADED, STATUS_UNKNOWN, STATUS_PARTTRADED, STATUS_CANCELLING, STATUS_CANCELINPROGRESS}
+_activate_set = {STATUS_NOTTRADED, STATUS_UNKNOWN, STATUS_PARTTRADED, STATUS_CANCELLING}
 
 def orderstatus2int(status):
     return _order_status_map_status.get(status, _order_status_map_status[STATUS_UNKNOWN])
