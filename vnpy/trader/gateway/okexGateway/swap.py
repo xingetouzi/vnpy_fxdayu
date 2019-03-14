@@ -770,13 +770,13 @@ class OkexSwapWebsocketApi(WebsocketClient):
             
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
-                tick.__setattr__(f'askPrice{(idx +1)}', float(price))
-                tick.__setattr__(f'askVolume{(idx +1)}', int(volume))
+                tick.__setattr__(f'askPrice{(idx + 1)}', float(price))
+                tick.__setattr__(f'askVolume{(idx + 1)}', int(volume))
             
             for idx, buf in enumerate(data['bids']):
                 price, volume = buf[:2]
-                tick.__setattr__(f'bidPrice{(5-idx)}', float(price))
-                tick.__setattr__(f'bidVolume{(5-idx)}', int(volume))
+                tick.__setattr__(f'bidPrice{(idx + 1)}', float(price))
+                tick.__setattr__(f'bidVolume{(idx + 1)}', int(volume))
             
             tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
