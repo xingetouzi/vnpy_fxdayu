@@ -419,7 +419,7 @@ class OkexfRestApi(RestClient):
     def processAccountData(self, data, currency):
         account = VtAccountData()
         account.gatewayName = self.gatewayName
-        account.accountID = "_".join([currency, SUBGATEWAY_NAME])
+        account.accountID = "_".join([str.upper(currency), SUBGATEWAY_NAME])
         account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
         
 
@@ -466,7 +466,7 @@ class OkexfRestApi(RestClient):
             'realized_pnl': '0', 'total_avail_balance': '0.00000015', 'unrealized_pnl': '0'}
             }} """
         for currency, data in d['info'].items():
-            self.processAccountData(data, str.upper(currency))
+            self.processAccountData(data, currency)
 
     #----------------------------------------------------------------------
     def processPositionData(self, data):
@@ -847,8 +847,8 @@ class OkexfWebsocketApi(WebsocketClient):
             
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
-                tick.__setattr__(f'askPrice{(10-idx)}', float(price))
-                tick.__setattr__(f'askVolume{(10-idx)}', int(volume))
+                tick.__setattr__(f'askPrice{(5-idx)}', float(price))
+                tick.__setattr__(f'askVolume{(5-idx)}', int(volume))
             
             tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
