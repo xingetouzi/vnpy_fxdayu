@@ -308,10 +308,6 @@ class OkexGateway(VtGateway):
             self.writeLog(f"order by other source, symbol:{order.symbol}, exchange_id: {order.orderID}")
 
         order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
-        order.price = data['price']
-        order.tradedVolume = 0
-        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
         return order
 
     def newTradeObject(self, order):

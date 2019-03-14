@@ -426,6 +426,7 @@ class OkexSpotRestApi(RestClient):
             order.direction, order.offset = typeMapReverse[str(data['side'])]
         
         # update order info
+        order.price = float(data['price'])
         incremental_filled_size = float(data['filled_size'])
         if incremental_filled_size:
             order.price_avg = float(data['filled_notional'])/incremental_filled_size
@@ -435,6 +436,8 @@ class OkexSpotRestApi(RestClient):
         order.thisTradedVolume = incremental_filled_size - order.tradedVolume
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = incremental_filled_size
+        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
         if int(data['order_type'])>1:
             order.priceType = priceTypeMapReverse[data['order_type']]

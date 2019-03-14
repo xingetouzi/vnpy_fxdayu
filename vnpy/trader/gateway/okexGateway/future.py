@@ -532,13 +532,17 @@ class OkexfRestApi(RestClient):
             order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
             order.totalVolume = int(data['size'])
             order.direction, order.offset = typeMapReverse[str(data['type'])]
-                        
+
+        order.price = data['price']
         order.price_avg = float(data['price_avg'])
         order.deliveryTime = datetime.now()
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = int(data['filled_qty'])
         order.fee = float(data['fee'])
+        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+
         if int(data['order_type'])>1:
             order.priceType = priceTypeMapReverse[data['order_type']]
         

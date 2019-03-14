@@ -464,12 +464,15 @@ class OkexSwapRestApi(RestClient):
             order.totalVolume = int(data['size'])
             order.direction, order.offset = typeMapReverse[data['type']]
         
+        order.price = float(data['price'])
         order.price_avg = float(data['price_avg'])
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
         order.tradedVolume = int(data['filled_qty'])
         order.status = statusMapReverse[data['status']]
         order.deliveryTime = datetime.now()
         order.fee = float(data['fee'])
+        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
         if int(data['order_type'])>1:
             order.priceType = priceTypeMapReverse[data['order_type']]
 
