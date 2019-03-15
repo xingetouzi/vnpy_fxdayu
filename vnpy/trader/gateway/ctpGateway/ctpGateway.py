@@ -961,6 +961,8 @@ class CtpTdApi(TdApi):
 
         # 针对上期所持仓的今昨分条返回（有昨仓、无今仓），读取昨仓数据
         pos.ydPosition = 0
+        exchange = self.symbolExchangeDict.get(pos.symbol, EXCHANGE_UNKNOWN)
+        
         if exchange == EXCHANGE_SHFE:
             if data['YdPosition'] and not data['TodayPosition']:
                 pos.ydPosition = data['Position']
@@ -1028,6 +1030,8 @@ class CtpTdApi(TdApi):
                            data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
                            data['Commission'])
         self.gateway.onAccount(account)
+        self.writeLog(f"A/C-{account.accountID}: balance:{account.balance}, pre:{account.preBalance}")
+        self.writeLog(f"unsettled_pnl:{account.positionProfit}, closed_pnl:{account.closeProfit}, commission:{account.commission}")
 
     #----------------------------------------------------------------------
     def onRspQryInvestor(self, data, error, n, last):
