@@ -5,14 +5,16 @@ import base64
 from threading import Thread
 from io import BytesIO
 import re
+import importlib
 
 import requests
 import pycurl
 
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin, CtaEngine as CtaEngineMetric
-from ..ctaPlugin import CtaEnginePlugin
 from vnpy.trader.vtFunction import getJsonPath
 from vnpy.trader.utils import LoggerMixin
+from ..ctaPlugin import CtaEnginePlugin
+from .config import *
 
 
 class IpError(Exception):
@@ -20,48 +22,73 @@ class IpError(Exception):
         super(IpError, self).__init__(*args)
 
 
+def bash64_encode(s):
+    return base64.b64encode(s.encode('utf-8')).decode("utf-8")
+
+
 class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
+    ETCD_PREFIX = "/vnpy/strategy"
     MAX_RETRY = 5
 
     def __init__(self):
         super(CtaStrategyInfoPlugin, self).__init__()
         LoggerMixin.__init__(self)
-        self._etcd_url = os.environ.get("ETCD_URL", "http://localhost:2379/v3beta/kv/put")
+        self._etcd_url = os.environ.get("ETCD_URL",
+                                        "http://localhost:2379/v3beta/kv/put")
         self.ctaEngine = None
 
     def register(self, engine):
         super(CtaStrategyInfoPlugin, self).register(engine)
         self.ctaEngine = engine
 
-    def sendStrategyConf(self, name):
+    def get_strategy_config(self, name):
+        timestamp = int(time.time())
+        config = {"name": name, "version": timestamp}
+        config["ip"] = self.get_ip() or self.get_ip2()
+        settings = {}
+        # find cta settings
         if name in self.ctaEngine.strategyDict:
             strategy = self.ctaEngine.strategyDict[name]
-            gatewayConfDict = {}
-
-            # 策略对应的gateway配置
-            for vtSymbol in strategy.symbolList:
-                gatewayName = vtSymbol.split(":")[-1]
-                fileName = gatewayName + '_connect.json'
-                filePath = getJsonPath(fileName, __file__)
-                with open(filePath) as f:
-                    gatewayConfDict[gatewayName] = json.load(f)
-
-            # 发送策略配置
-            timestamp = int(time.time())
-            d = {
-                "name": strategy.name,
-                "className": strategy.__class__.__name__,
-                "symbolList": strategy.symbolList,
-                "mailAdd": strategy.mailAdd,
-                "gatewayConfDict": gatewayConfDict,
-                "version": timestamp,
-                "ip": ""
+            cta_setting_file = getJsonPath(CTA_SETTING_FILE,
+                                           CTA_SETTING_MODULE_FILE)
+            with open(cta_setting_file) as f:
+                strategy_settings = json.load(f)
+            strategy_settings = {
+                item["name"]: item
+                for item in strategy_settings
             }
-            self.push_falcon(d)
-            self.push_etcd(strategy.name, json.dumps(d))
+            if name in strategy_settings:
+                cta_setting = strategy_settings[name]
+                cta_setting["symbolList"] = cta_setting.get(
+                    "symbolList", None) or strategy.symbolList
+                settings[CTA_SETTING_FILE] = [cta_setting]
+            else:
+                return None
+        # find gateway setting
+        symbolList = cta_setting["symbolList"]
+        for vtSymbol in symbolList:
+            gatewayName = vtSymbol.split(":")[-1]
+            fileName = gatewayName + GATEWAY_SETTING_SUFFIX
+            gateway = self.ctaEngine.getGateway(gatewayName)
+            module = importlib.import_module(gateway.__module__)
+            filePath = getJsonPath(fileName, module.__file__)
+            with open(filePath) as f:
+                settings[fileName] = json.load(f)
+        # find rpcservice settings
+        rs_setting_file = getJsonPath(RS_SETTING_FILE, RS_SETTING_MODULE_FILE)
+        with open(rs_setting_file) as f:
+            settings[RS_SETTING_FILE] = json.load(f)
+        config["settings"] = settings
+        return config
+
+    def send_strategy_config(self, name):
+        if name in self.ctaEngine.strategyDict:
+            data = self.get_strategy_config(name)
+            self.push_falcon(data)
+            self.push_etcd(self.ETCD_PREFIX + "/" + name, json.dumps(data))
 
     def is_ip(self, s):
-        pattern = '^(([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.){3}([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])$'
+        pattern = r'^(([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])\.){3}([1-9]|[1-9]\d|1\d\d|2[0-4]\d|25[0-5])$'
         r = re.compile(pattern)
         r = r.match(s)
         if r is None:
@@ -102,35 +129,33 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     def _do_push_falcon(self, data):
         mp = self.ctaEngine.getPlugin(CtaMerticPlugin)
         if not mp.is_enabled():
-            self.warn("if you enable CtaStrategyInfoPlugin, CtaMerticPlugin will be enabled automatically")
+            self.warn(
+                "if you enable CtaStrategyInfoPlugin, CtaMerticPlugin will be enabled automatically"
+            )
             self.ctaEngine.enablePlugin(CtaMerticPlugin)
         count = 0
         while self.is_enabled() and count < self.MAX_RETRY:
             count += 1
             metric = "version"
             mp.addMetric(data["version"], metric, strategy=data["name"])
-            self.info(u"推送策略%s的版本信息到falcon,第%s次,共%s次", data["name"], count, self.MAX_RETRY)
-            time.sleep(2 * mp.interval) # wait ctaMetricPlugin push this metric out.
+            self.info(u"推送策略%s的版本信息到falcon,第%s次,共%s次", data["name"], count,
+                      self.MAX_RETRY)
+            # wait ctaMetricPlugin push this metric out
+            time.sleep(2 * mp.interval)
 
     def _do_push_etcd(self, k, v):
         name = k
-        k = base64.b64encode(k.encode('utf-8'))
         retry = 0
         wait = 1
         while True:
             try:
-                if isinstance(v, bytes):
-                    v = base64.b64decode(v).decode("utf-8")
-                if not isinstance(v, dict):
-                    v = json.loads(v)
-                v["ip"] = v["ip"] or self.get_ip() or self.get_ip2()
-                if not v['ip']:
-                    raise IpError("ip为空")
-                v = json.dumps(v)
-                v = base64.b64encode(v.encode('utf-8'))
                 self.info(u"推送策略%s的配置信息到etcd", name)
-                r = requests.post(self._etcd_url,
-                                json={"key": str(k, encoding='utf-8'), "value": str(v, encoding='utf-8')})
+                r = requests.post(
+                    self._etcd_url,
+                    json={
+                        "key": bash64_encode(k),
+                        "value": bash64_encode(v)
+                    })
                 r.raise_for_status()
                 self.info(u"成功推送策略%s的配置信息, 返回: %s", name, r.content)
                 break
@@ -168,4 +193,4 @@ class CtaEngine(CtaEngineMetric):
         plugin = self.getPlugin(CtaStrategyInfoPlugin)
         if plugin.is_enabled() and name not in self.__info_pushed_strategy:
             self.__info_pushed_strategy.add(name)
-            plugin.sendStrategyConf(name)
+            plugin.send_strategy_config(name)
