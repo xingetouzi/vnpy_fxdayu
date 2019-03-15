@@ -35,7 +35,7 @@ def runStrategy(engineClass, strategyClass, engineSetting, globalSetting, strate
 
     engine.setStartDate(engineSetting["startDate"], engineSetting.get("initHours", 0))
     engine.setEndDate(engineSetting["endDate"])
-    
+
     engine.initStrategy(strategyClass, {**globalSetting, **strategySetting})
     engine.runBacktesting()
 
@@ -126,7 +126,7 @@ class Optimization(object):
         self.strategySettings.index.name=INDEX_NAME
 
     def fill_index(self, keys):
-        self.strategySettings.loc[keys] = 1
+        self.strategySettings.loc[keys, STATUS] = 1
 
     def _callback(self, result):
         index = result.pop(INDEX_NAME)
@@ -159,7 +159,12 @@ class Optimization(object):
             print(error)
     
     def iter_settings(self):
-        return self.strategySettings[self.strategySettings[STATUS]==0][self.paramNames].iterrows()
+        table = self.strategySettings[self.strategySettings[STATUS]==0][self.paramNames]
+        dct = table.to_dict("list")
+        keys = dct.keys()
+        values = dct.values()
+        for index, t in zip(table.index, zip(*values)):
+            yield index, dict(zip(keys, t))
 
     def run(self):
         if not self.ready:
@@ -172,7 +177,7 @@ class Optimization(object):
                     self.strategyClass, 
                     self.engineSetting.copy(), 
                     self.globalSetting,
-                    strategySetting.to_dict(),
+                    strategySetting,
                     index
                 )
             except Exception as e:
@@ -184,17 +189,17 @@ class Optimization(object):
         
         return self
     
-    def runParallel(self):
+    def runParallel(self, processes=None):
         if not self.ready:
             return self
 
         import multiprocessing
         
-        pool = multiprocessing.Pool()
+        pool = multiprocessing.Pool(processes)
         for index, strategySetting in self.iter_settings():
             pool.apply_async(
                 runPerformanceParallel, 
-                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting.to_dict(), index),
+                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting, index),
                 callback=self.callback,
                 error_callback=self.error_callback
             )
@@ -303,16 +308,18 @@ class OptMemory(object):
                 self.optimization.fill_index(index)
         self.flush_index()
     
-    def save_report(self):
+    def save_report(self, cover=False):
         report = self.optimization.report()
 
-        report = pd.concat([report, self.read_result()])
+        if cover:
+            index_numbers = self.optimization.strategySettings.index
+        else:
+            index_numbers = self.optimization.strategySettings[self.optimization.strategySettings[STATUS]==0].index
 
         results = []
-        for index in self.optimization.strategySettings[self.optimization.strategySettings[STATUS]==0].index:
+        for index in index_numbers:
             filename = os.path.join(self.results_cache, "%d.json" % index)
             self.add_result(filename, results)
-
         if results:
             cr = pd.DataFrame(results).set_index(INDEX_NAME)
             self.optimization.fill_index(cr.index)
@@ -324,7 +331,7 @@ class OptMemory(object):
                 report,
                 df
             ])
-        self.flush_result(report)
+        report = self.flush_result(report)
         self.flush_index()
         return report
     
@@ -339,7 +346,9 @@ class OptMemory(object):
                 [table, result]
             )
             result = result[~result.index.duplicated(keep="last")]
-        self.flush(self.result_file, result)
+        if len(result):
+            self.flush(self.result_file, result)
+        return result
 
     def read_result(self):
         if os.path.isfile(self.result_file):

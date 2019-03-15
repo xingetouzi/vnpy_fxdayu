@@ -69,6 +69,9 @@ def getMemory():
 
 
 def run():
+    if isinstance(_memory, OptMemory):
+        _memory.save_report()
+
     opt = getOpt().run()
     if isinstance(_memory, OptMemory):
         return _memory.save_report()
@@ -76,8 +79,11 @@ def run():
         return opt.report()
 
 
-def runParallel():
-    opt = getOpt().runParallel()
+def runParallel(process=None):
+    if isinstance(_memory, OptMemory):
+        _memory.save_report()
+
+    opt = getOpt().runParallel(process)
     if isinstance(_memory, OptMemory):
         return _memory.save_report()
     else:

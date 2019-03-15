@@ -403,7 +403,10 @@ class HistoryData1MinBarCache(object):
                     self._start = start
                     self.bars = bars + self._bars
                 if end > self._end:
-                    bars = self._engine.loadHistoryData([symbol], self._end + timedelta(microseconds=1), end)
+                    if self._engine.mode == 'tick':
+                        bars = self._engine.loadHistoryData([symbol], self._end + timedelta(microseconds=1), end)
+                    else:
+                        bars = self._engine.loadHistoryData([symbol], self._end + timedelta(minutes=1), end)
                     self._end = end
                     self.bars = self._bars + bars
             else:

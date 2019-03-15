@@ -1,7 +1,33 @@
+import hmac
+import base64
+
+ISO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+#----------------------------------------------------------------------
+def generateSignature(msg, apiSecret):
+    """签名V3"""
+    mac = hmac.new(bytes(apiSecret, encoding='utf-8'), bytes(msg,encoding='utf-8'), digestmod='sha256')
+    d= mac.digest()
+    return base64.b64encode(d)
+
+# K线频率映射
+granularityMap = {}
+granularityMap['1min'] =60
+granularityMap['3min'] =180
+granularityMap['5min'] =300
+granularityMap['10min'] =600
+granularityMap['15min'] =900
+granularityMap['30min'] =1800
+granularityMap['60min'] =3600
+granularityMap['120min'] =7200
+granularityMap['240min'] =14400
+granularityMap['360min'] =21600
+granularityMap['720min'] =43200
+granularityMap['1day'] =86400
+granularityMap['1week'] =604800
+
 # 公共错误码（30000-31000）
 # v3API将使用统一30000开头的错误码
 # 公共错误码包括签名以及各个业务线统一的错误码
-
 ERRORCODE = {}
 ERRORCODE['30001'] = u'请求头"OK_ACCESS_KEY"不能为空'
 ERRORCODE['30002'] = u'请求头"OK_ACCESS_SIGN"不能为空'
@@ -42,6 +68,12 @@ ERRORCODE['30035'] = u'该交易已关闭'
 ERRORCODE['30036'] = u'没有相应数据'
 ERRORCODE['30037'] = u'接口已下线或无法使用'
 ERRORCODE['30038'] = u'用户不存在'
+ERRORCODE['30039'] = u'请求无法识别'
+ERRORCODE['30040'] = u'Channel doesn\'t exist'
+ERRORCODE['30041'] = u'用户必须先登录'
+ERRORCODE['30042'] = u'用户已经先登录'
+ERRORCODE['30043'] = u'系统内部错误'
+
 
 # 交割合约错误码（32000-33000）
 ERRORCODE['32001'] = u'合约账户被冻结'
@@ -129,3 +161,39 @@ ERRORCODE['34019'] = u'您需要绑定邮箱后，才能提现'
 ERRORCODE['34020'] = u'您需设置资金密码后，才能提现'
 ERRORCODE['34021'] = u'提现接口，不是认证的地址'
 ERRORCODE['34022'] = u'提现接口，子账号不允许提现'
+
+#SWAP
+ERRORCODE['35001'] = u'合约不存在'
+ERRORCODE['35002'] = u'合约结算中'
+ERRORCODE['35003'] = u'合约暂停'
+ERRORCODE['35004'] = u'合约待资金结算'
+ERRORCODE['35005'] = u'用户未开通合约'
+ERRORCODE['35008'] = u'账户风险率过高'
+ERRORCODE['35010'] = u'平仓数量大于可平数量'
+ERRORCODE['35012'] = u'用户下单数量不足1张'
+ERRORCODE['35014'] = u'下单价格不在限价范围'
+ERRORCODE['35015'] = u'杠杆倍数超过允许范围'
+ERRORCODE['35017'] = u'用户修改杠杆时存在挂单'
+ERRORCODE['35019'] = u'下单数量超过最大允许的数量'
+ERRORCODE['35020'] = u'下单价格超过最大允许的价格'
+ERRORCODE['35021'] = u'下单数量超过用户当前档位'
+ERRORCODE['35022'] = u'合约处于暂停或关闭状态时'
+ERRORCODE['35024'] = u'该用户合约未初始化'
+ERRORCODE['35025'] = u'用户账户余额为空'
+ERRORCODE['35026'] = u'用户合约配置未初始化'
+ERRORCODE['35029'] = u'订单不存在'
+ERRORCODE['35030'] = u'批量下单, 超过最大下单数量'
+ERRORCODE['35031'] = u'批量撤单, 超过最大撤单数量'
+ERRORCODE['35032'] = u'用户状态无效'
+ERRORCODE['35039'] = u'开仓张数大于可开张数'
+ERRORCODE['35044'] = u'订单状态不合适'
+ERRORCODE['35046'] = u'账户余额是负数'
+ERRORCODE['35047'] = u'账户余额不足'
+ERRORCODE['35048'] = u'用户合约正在爆仓冻结'
+ERRORCODE['35049'] = u'订单类型不合适'
+ERRORCODE['35050'] = u'档位配置为空'
+ERRORCODE['35052'] = u'全仓保证金不足'
+ERRORCODE['35053'] = u'账户风险过高'
+ERRORCODE['35055'] = u'账户余额不足'
+ERRORCODE['35057'] = u'无最新成交'
+ERRORCODE['35058'] = u'无限价'

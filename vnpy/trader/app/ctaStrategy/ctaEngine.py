@@ -222,8 +222,7 @@ class CtaEngine(object):
             orderFinished = (order.status==STATUS_ALLTRADED 
                             or order.status==STATUS_CANCELLED 
                             or order.status == STATUS_REJECTED
-                            or order.status == STATUS_CANCELLING
-                            or order.status == STATUS_CANCELINPROGRESS)
+                            or order.status == STATUS_CANCELLING)
             
             if not orderFinished:
                 req = VtCancelOrderReq()
@@ -251,8 +250,7 @@ class CtaEngine(object):
                 orderFinished = (order.status==STATUS_ALLTRADED 
                                 or order.status==STATUS_CANCELLED 
                                 or order.status == STATUS_REJECTED
-                                or order.status == STATUS_CANCELLING
-                                or order.status == STATUS_CANCELINPROGRESS)
+                                or order.status == STATUS_CANCELLING)
                 
                 if not orderFinished:
                     req = VtCancelOrderReq()
