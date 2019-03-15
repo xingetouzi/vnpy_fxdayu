@@ -6,25 +6,21 @@ import importlib
 
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
 
-CONTEXT_SETTINGS = {
-    'default_map': {
-        'run': {
-        }
-    }
-}
+CONTEXT_SETTINGS = {'default_map': {'run': {}}}
+
 
 class VnCliRun(click.MultiCommand):
     def __init__(self, *args, **kwargs):
         super(VnCliRun, self).__init__(*args, **kwargs)
-        self._applications={}
+        self._applications = {}
         self.load_application()
 
     def load_application(self):
         prefix = "vnpy.applications"
         dirpath = pathlib.Path(__file__).absolute().parent / "applications"
         for name in os.listdir(dirpath):
-            if name != "__init__.py":
-                pkg_name = name[:-3] if name.endswith(".py") else name 
+            if name != "__init__.py" and (dirpath / name).is_dir():
+                pkg_name = name[:-3] if name.endswith(".py") else name
                 mod = importlib.import_module(".".join([prefix, name]))
                 app_name = getattr(mod, "app_name", None)
                 app_cli = getattr(mod, "app_cli", None)
@@ -41,8 +37,10 @@ class VnCliRun(click.MultiCommand):
     def get_command(self, ctx, name):
         return self._applications[name]
 
+
 def entry_point():
     cli(obj={})
+
 
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.option('-v', '--verbose', count=True)
@@ -51,9 +49,11 @@ def entry_point():
 def cli(ctx, verbose):
     ctx.obj["VERBOSE"] = verbose
 
+
 @cli.command(cls=VnCliRun)
 def run():
     sys.path.append(os.path.abspath(os.getcwd()))
+
 
 @cli.command()
 def version():
