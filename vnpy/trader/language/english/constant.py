@@ -113,6 +113,6 @@ GATEWAYTYPE_DATA = 'data'                       # 数据（非交易）
 
 # 品种和gateway的分隔符
 VN_SEPARATOR = ':'
-DATETIME_FORMAT = '%Y%m%d %H:%M:%S.%f'
+DATETIME_FORMAT = '%Y%m%d %H:%M:%S'
 DATE_FORMAT = '%Y%m%d'
-TIME_FORMAT = '%H:%M:%S.%f'
+TIME_FORMAT = '%H:%M:%S'
