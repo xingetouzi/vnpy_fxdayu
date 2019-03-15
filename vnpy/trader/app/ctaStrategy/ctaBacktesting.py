@@ -249,7 +249,6 @@ class BacktestingEngine(object):
         for symbol in symbolList:
             # 如果存在缓存文件，则读取日期列表和bar数据，否则初始化df_cached和dates_cached
             pkl_file_path = f'{save_path}/{symbol.replace(":", "_")}.pkl'
-            print(pkl_file_path)
             if os.path.isfile(pkl_file_path):
                 # 读取 pkl
                 pkl_file = open(pkl_file_path, 'rb')
@@ -1728,21 +1727,21 @@ class PatchedBacktestingEngine(BacktestingEngine):
             # 可撤单是有限的，不会死循环
             keys = list(self._cancelledLimitOrderDict.keys())
             for vtOrderID in keys:
-                order = self._cancelledLimitOrderDict[vtOrderID]
-                order.status = constant.STATUS_CANCELLED
-                order.cancelTime = self.dt.strftime(constant.DATETIME)
-                order.cancelDatetime = self.dt
-                if order.offset == constant.OFFSET_CLOSE:
-                    if order.direction == constant.DIRECTION_LONG:
-                        self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
-                        self.strategy.eveningDict[order.vtSymbol + "_SHORT"] = round(self.strategy.eveningDict[order.vtSymbol + "_SHORT"], 4)
-                    elif order.direction == constant.DIRECTION_SHORT:
-                        self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
-                        self.strategy.eveningDict[order.vtSymbol + "_LONG"] = round(self.strategy.eveningDict[order.vtSymbol + "_LONG"], 4)
-                del self.workingLimitOrderDict[vtOrderID]
+                if vtOrderID in self.workingLimitOrderDict:
+                    order = self._cancelledLimitOrderDict[vtOrderID]
+                    order.status = constant.STATUS_CANCELLED
+                    order.cancelTime = self.dt.strftime(constant.DATETIME)
+                    order.cancelDatetime = self.dt
+                    if order.offset == constant.OFFSET_CLOSE:
+                        if order.direction == constant.DIRECTION_LONG:
+                            self.strategy.eveningDict[order.vtSymbol + '_SHORT'] += order.totalVolume
+                            self.strategy.eveningDict[order.vtSymbol + "_SHORT"] = round(self.strategy.eveningDict[order.vtSymbol + "_SHORT"], 4)
+                        elif order.direction == constant.DIRECTION_SHORT:
+                            self.strategy.eveningDict[order.vtSymbol + '_LONG'] += order.totalVolume
+                            self.strategy.eveningDict[order.vtSymbol + "_LONG"] = round(self.strategy.eveningDict[order.vtSymbol + "_LONG"], 4)
+                    del self.workingLimitOrderDict[vtOrderID]
+                    self.strategy.onOrder(order)
                 del self._cancelledLimitOrderDict[vtOrderID]
-                self.strategy.onOrder(order)          
-
     def crossLimitOrder(self, data):
         # 先确定会撮合成交的价格
         if self.mode == self.BAR_MODE:
