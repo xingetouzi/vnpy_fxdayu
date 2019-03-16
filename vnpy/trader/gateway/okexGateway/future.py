@@ -533,7 +533,7 @@ class OkexfRestApi(RestClient):
             order.totalVolume = int(data['size'])
             order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-        order.price = data['price']
+        order.price = float(data['price'])
         order.price_avg = float(data['price_avg'])
         order.deliveryTime = datetime.now()
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
