@@ -814,8 +814,8 @@ class OkexSwapWebsocketApi(WebsocketClient):
         }]}"""
         for idx, data in enumerate(d):
             tick = self.tickDict[data['instrument_id']]
-            tick.upperLimit = data['highest']
-            tick.lowerLimit = data['lowest']
+            tick.upperLimit = float(data['highest'])
+            tick.lowerLimit = float(data['lowest'])
 
             tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
