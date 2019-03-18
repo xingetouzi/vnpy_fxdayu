@@ -5,6 +5,7 @@ from vnpy.trader.language import constant
 from vnpy.trader.app.ctaStrategy import ctaBase
 from datetime import datetime, timedelta
 from collections import Iterable
+import numpy as np
 import logging
 
 
@@ -1183,3 +1184,13 @@ class OrderTemplate(CtaTemplate):
     
     def isCancel(self, op):
         return op.info.get(self._CANCEL_TAG, False)
+
+    def maximumOrderVolume(self, vtSymbol, orderType):
+        return np.inf
+
+    def isOrderVolumeValid(self, vtSymbol, orderType, volume):
+        if volume <=0:
+            return False
+        
+        maximum = self.maximumOrderVolume(vtSymbol, orderType)
+        return maximum > volume
