@@ -561,7 +561,10 @@ class BarManager(object):
             if m is not None:
                 freq = m.group(1) + m.group(2)
                 for vtSymbol in symbols:
-                    to_register.append((vtSymbol, freq, self.must_in_trading(v)))
+                    func = self.must_in_trading(v)
+                    if not self.is_backtesting():
+                        func = partial(self._engine.callStrategyFunc, strategy, func)
+                    to_register.append((vtSymbol, freq, func))
         for k, v in strategy.__class__.__dict__.items():
             if k == "onBar":
                 k = "on1mBar"
@@ -569,6 +572,8 @@ class BarManager(object):
             if m is not None:
                 freq = m.group(1) + m.group(2)
                 func = partial(self.must_in_trading(v), strategy)
+                if not self.is_backtesting():
+                    func = partial(self._engine.callStrategyFunc, strategy, func)
                 for vtSymbol in symbols:
                     to_register.append((vtSymbol, freq, func))
         to_register = sorted(to_register, key=lambda x: freq2seconds(standardize_freq(x[1])), reverse=True)
