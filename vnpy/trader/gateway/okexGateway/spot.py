@@ -373,6 +373,7 @@ class OkexSpotRestApi(RestClient):
             contract.productClass = PRODUCT_FUTURES
             contract.priceTick = float(d['tick_size'])
             contract.size = float(d['size_increment'])
+            contract.minVolume = float(d['min_size'])
             
             self.contractDict[contract.symbol] = contract
 

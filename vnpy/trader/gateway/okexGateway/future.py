@@ -384,6 +384,7 @@ class OkexfRestApi(RestClient):
             contract.productClass = PRODUCT_FUTURES
             contract.priceTick = float(data['tick_size'])
             contract.size = int(data['trade_increment'])
+            contract.minVolume = 1
             
             self.contractDict[contract.symbol] = contract
             self.contractMap[contract.symbol] = "-".join([data['underlying_index'], str.upper(data['alias']).replace("_","-")])
