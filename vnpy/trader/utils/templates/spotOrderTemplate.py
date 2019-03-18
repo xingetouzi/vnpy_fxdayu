@@ -13,6 +13,8 @@ SPOT_POS_MAP = {
 
 class SpotOrderTemplate(OrderTemplate):
 
+    _MAXIMUM_VOLUME_ADJUST = 1
+
     def maximumOrderVolume(self, vtSymbol, orderType):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
             return np.inf
@@ -27,7 +29,7 @@ class SpotOrderTemplate(OrderTemplate):
             cname = "%s_SPOT" % c
             cvalue = self.accountDict[cname]
             tick = self._tickInstance[vtSymbol]
-            value =  cvalue / tick.askPrice1
+            value =  cvalue / tick.askPrice1 * self._MAXIMUM_VOLUME_ADJUST
             return value
         else:
             raise ValueError("OrderType(%s) or direction(%s) incorrect." % (orderType, direction))
