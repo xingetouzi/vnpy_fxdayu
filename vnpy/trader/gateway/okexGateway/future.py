@@ -189,7 +189,8 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        for symbol in symbolList:
+        sym_list = [str.lower(symbol.split("-")[0]) for symbol in symbolList]
+        for symbol in list(set(sym_list)):
             sym = str.lower(symbol.split("-")[0])
             self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
                             callback=self.onQueryMonoAccount)
