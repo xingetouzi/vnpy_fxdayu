@@ -90,9 +90,9 @@ class CtaEngine(object):
         # 注册事件监听
         self.registerEvent()
 
-        self.path = os.path.join(os.getcwd(), u"reports" )
-        if not os.path.isdir(self.path):
-            os.makedirs(self.path)
+        # self.path = os.path.join(os.getcwd(), u"reports" )
+        # if not os.path.isdir(self.path):
+        #     os.makedirs(self.path)
         
         # 上期所昨持仓缓存
         self.ydPositionDict = {}  
@@ -494,7 +494,7 @@ class CtaEngine(object):
                         self.ydPositionDict[str(posName2)] = pos.ydPosition                        
 
                     # 保存策略持仓到数据库
-                    self.saveSyncData(strategy)  
+                    # self.saveSyncData(strategy)  
 
     #------------------------------------------------------
     def processAccountEvent(self,event):
@@ -613,21 +613,21 @@ class CtaEngine(object):
             strategy.symbolList = vtSymbolset
             strategy.mailAdd = mailAdd
             strategy.name = name
-            d= {}
-            fileName = os.path.join(self.path,strategy.name+'_syncData.json')
-            if not os.path.exists(fileName):
-                with open(fileName,'w') as f:
-                    json.dump(d,f)
-            self.loadSyncData(strategy)
-            fileName = os.path.join(self.path,strategy.name+'_varData.json')
-            if not os.path.exists(fileName):
-                with open(fileName,'w') as f:
-                    json.dump(d,f)
-            fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
-            if not os.path.exists(fileName):
-                d['orders']=[]
-                with open(fileName,'w') as f:
-                    json.dump(d,f)
+            # d= {}
+            # fileName = os.path.join(self.path,strategy.name+'_syncData.json')
+            # if not os.path.exists(fileName):
+            #     with open(fileName,'w') as f:
+            #         json.dump(d,f)
+            # self.loadSyncData(strategy)
+            # fileName = os.path.join(self.path,strategy.name+'_varData.json')
+            # if not os.path.exists(fileName):
+            #     with open(fileName,'w') as f:
+            #         json.dump(d,f)
+            # fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
+            # if not os.path.exists(fileName):
+            #     d['orders']=[]
+            #     with open(fileName,'w') as f:
+            #         json.dump(d,f)
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -700,7 +700,7 @@ class CtaEngine(object):
 
             if strategy.trading:
                 self.writeCtaLog(u'策略%s： 准备停止工作' %name)
-                self.saveVarData(strategy)
+                # self.saveVarData(strategy)
                 strategy.trading = False
                 self.callStrategyFunc(strategy, strategy.onStop)
 

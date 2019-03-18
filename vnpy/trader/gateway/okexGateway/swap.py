@@ -368,6 +368,7 @@ class OkexSwapRestApi(RestClient):
             contract.productClass = PRODUCT_FUTURES
             contract.priceTick = float(data['tick_size'])
             contract.size = int(data['size_increment'])
+            contract.minVolume = 1
             
             self.contractDict[contract.symbol] = contract
 
