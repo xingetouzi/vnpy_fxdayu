@@ -187,11 +187,12 @@ class OkexfRestApi(RestClient):
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
-    def queryMonoAccount(self, symbol):
+    def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        sym = str.lower(symbol.split("-")[0])
-        self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
-                        callback=self.onQueryMonoAccount)
+        for symbol in symbolList:
+            sym = str.lower(symbol.split("-")[0])
+            self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
+                            callback=self.onQueryMonoAccount)
 
     def queryAccount(self):
         """限速规则：1次/10s"""
