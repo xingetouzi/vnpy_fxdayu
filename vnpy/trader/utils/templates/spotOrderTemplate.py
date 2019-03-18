@@ -23,7 +23,7 @@ class SpotOrderTemplate(OrderTemplate):
         direction = DIRECTION_MAP[orderType]
         if direction == constant.DIRECTION_SHORT:
             aname = "%s_SPOT" % a
-            return self.accountDict[aname]
+            return self.adjustVolume(vtSymbol, self.accountDict[aname])
         elif direction == constant.DIRECTION_LONG:
             aname = "%s_SPOT" % a
             cname = "%s_SPOT" % c
@@ -32,6 +32,17 @@ class SpotOrderTemplate(OrderTemplate):
                 tick = self._tickInstance[vtSymbol]
                 price = tick.askPrice1
             value =  cvalue / price * self._MAXIMUM_VOLUME_ADJUST
-            return value
+
+            return self.adjustVolume(vtSymbol, value)
         else:
             raise ValueError("OrderType(%s) or direction(%s) incorrect." % (orderType, direction))
+
+    def adjustVolume(self, vtSymbol, volume):
+        if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
+            return volume
+        
+        contract = self.ctaEngine.mainEngine.getContract(vtSymbol)
+        if contract.minVolume:
+            return int(volume/contract.minVolume) * contract.minVolume
+        else:
+            return volume
