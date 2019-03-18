@@ -11,7 +11,7 @@ SPOT_POS_MAP = {
 
 
 
-class SpotOrderTamplate(OrderTemplate):
+class SpotOrderTemplate(OrderTemplate):
 
     def maximumOrderVolume(self, vtSymbol, orderType):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
