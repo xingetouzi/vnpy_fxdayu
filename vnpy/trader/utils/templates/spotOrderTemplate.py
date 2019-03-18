@@ -27,6 +27,8 @@ class SpotOrderTemplate(OrderTemplate):
         elif direction == constant.DIRECTION_LONG:
             aname = "%s_SPOT" % a
             cname = "%s_SPOT" % c
+            if cname not in self.accountDict:
+                return 0
             cvalue = self.accountDict[cname]
             if not price:
                 tick = self._tickInstance[vtSymbol]
