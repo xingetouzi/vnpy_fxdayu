@@ -15,7 +15,7 @@ class SpotOrderTemplate(OrderTemplate):
 
     _MAXIMUM_VOLUME_ADJUST = 1
 
-    def maximumOrderVolume(self, vtSymbol, orderType):
+    def maximumOrderVolume(self, vtSymbol, orderType, price=None):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
             return np.inf
 
@@ -28,8 +28,10 @@ class SpotOrderTemplate(OrderTemplate):
             aname = "%s_SPOT" % a
             cname = "%s_SPOT" % c
             cvalue = self.accountDict[cname]
-            tick = self._tickInstance[vtSymbol]
-            value =  cvalue / tick.askPrice1 * self._MAXIMUM_VOLUME_ADJUST
+            if not price:
+                tick = self._tickInstance[vtSymbol]
+                price = tick.askPrice1
+            value =  cvalue / price * self._MAXIMUM_VOLUME_ADJUST
             return value
         else:
             raise ValueError("OrderType(%s) or direction(%s) incorrect." % (orderType, direction))

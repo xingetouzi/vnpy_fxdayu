@@ -1185,12 +1185,12 @@ class OrderTemplate(CtaTemplate):
     def isCancel(self, op):
         return op.info.get(self._CANCEL_TAG, False)
 
-    def maximumOrderVolume(self, vtSymbol, orderType):
+    def maximumOrderVolume(self, vtSymbol, orderType, price=None):
         return np.inf
 
-    def isOrderVolumeValid(self, vtSymbol, orderType, volume):
+    def isOrderVolumeValid(self, vtSymbol, orderType, volume, price=None):
         if volume <=0:
             return False
         
-        maximum = self.maximumOrderVolume(vtSymbol, orderType)
-        return maximum > volume
+        maximum = self.maximumOrderVolume(vtSymbol, orderType, price)
+        return maximum >= volume
