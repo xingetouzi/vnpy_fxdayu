@@ -2,8 +2,9 @@
 
 基于`vnpy.trader.app.ctaStrategy.CtaTemplate`编写，提供了更精细的订单管理方案。
 
+---
 
-# 相关模块介绍
+# orderTemplate模块介绍
 
 ## `class` OrderTemplate
 
@@ -311,7 +312,13 @@ class OrderTemplate(CtaTemplate):
     def orderClosed(self, op):
         return bool
     
-
+    # 返回指定品种方向的最大下单量，与品种类型有关，需要根据品种类型重新实现，OrderTemplate模板返回无限大。
+    def maximumOrderVolume(self, vtSymbol, orderType, price=None):
+        return np.inf
+    
+    # 返回指定品种方向下单量是否有效，大于0小于等于最大下单量返回True否则返回False
+    def isOrderVolumeValid(self, vtSymbol, orderType, volume, price=None):
+        return bool
 ```
 
 
@@ -473,3 +480,44 @@ wait|float|每次下单间隔时间|
 |:-|:-|:-|
 |TYPE|str|深度下单标记 "_DepthOrderInfo"|
 |depth|int|最大盘口深度|
+
+
+---
+
+# spotOrderTemplate模块介绍
+
+## `class` SpotOrderTemplate(OrderTemplate)
+
+用于现货的策略模板，继承`OrderTemplate`
+
+### 新增属性
+
+|name|type|description|
+|:-|:-|:-|
+|_MAXIMUM_VOLUME_ADJUST|float,int|最大下单量调整值，在计算得到最大下单量后乘以该参数返回|
+
+### 方法
+
+**`SpotOrderTemplate.maximumOrderVolume(vtSymbol, orderType, price=None)`**
+
+返回指定品种订单在指定价格下最大下单量，非实盘时返回numpy.inf
+
+|param|type|description|
+|:-|:-|:-|
+|vtSymbol|str|品种|
+|orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
+|price|float, None|指定价格，未指定则使用一档成交价。|
+|return|float|最大下单量|
+
+
+**`isOrderVolumeValid(vtSymbol, orderType, volume, price=None)`**
+
+返回下单量是否合法，大于0且小于等于最大下单量为合法
+
+|param|type|description|
+|:-|:-|:-|
+|vtSymbol|str|品种|
+|orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
+|volume|float|下单量。|
+|price|float, None|指定价格，未指定则使用一档成交价。|
+|return|bool|下单量是否合法|
