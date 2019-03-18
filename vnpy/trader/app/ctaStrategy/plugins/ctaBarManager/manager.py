@@ -221,8 +221,8 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
         return self.is_ready(freq)
 
     def push_bar(self, freq, bar):
-        if not self.is_backtesting():
-            self.debug("推送品种%s的%sk线数据: %s", self._symbol, freq, bar.__dict__)
+        # if not self.is_backtesting():
+        #     self.debug("推送品种%s的%sk线数据: %s", self._symbol, freq, bar.__dict__)
         funcs = self._callback.get(freq, [])
         for func in funcs:
             func(bar)

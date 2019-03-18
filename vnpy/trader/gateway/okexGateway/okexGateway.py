@@ -81,7 +81,7 @@ class OkexGateway(VtGateway):
         # 创建行情和交易接口对象
         future_leverage = setting.get('future_leverage', 10)
         swap_leverage = setting.get('swap_leverage', 1)
-        margin_token = setting.get('margin_token', 3)
+        margin_token = setting.get('margin_token', 0) 
 
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())
@@ -222,7 +222,7 @@ class OkexGateway(VtGateway):
     def queryInfo(self):
         """"""
         for subGateway in self.gatewayMap.values():
-            subGateway["REST"].queryAccount()
+            subGateway["REST"].queryMonoAccount(subGateway['symbols'])
             subGateway["REST"].queryPosition()
             subGateway["REST"].queryOrder()
 

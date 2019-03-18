@@ -185,11 +185,12 @@ class OkexSpotRestApi(RestClient):
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
-    def queryMonoAccount(self, symbol):
+    def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        sym = str.lower(symbol.split("-")[0])
-        self.addRequest('GET', f'/api/spot/v3/accounts/{sym}', 
-                        callback=self.onQueryMonoAccount)
+        for symbol in symbolList:
+            sym = str.lower(symbol.split("-")[0])
+            self.addRequest('GET', f'/api/spot/v3/accounts/{sym}', 
+                            callback=self.onQueryMonoAccount)
     def queryAccount(self):
         """限速规则：20次/2s"""
         self.addRequest('GET', '/api/spot/v3/accounts', 
@@ -373,6 +374,7 @@ class OkexSpotRestApi(RestClient):
             contract.productClass = PRODUCT_FUTURES
             contract.priceTick = float(d['tick_size'])
             contract.size = float(d['size_increment'])
+            contract.minVolume = float(d['min_size'])
             
             self.contractDict[contract.symbol] = contract
 
