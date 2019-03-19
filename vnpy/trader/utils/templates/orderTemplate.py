@@ -892,7 +892,6 @@ class OrderTemplate(CtaTemplate):
             volume = soi.step if locked + soi.step <= soi.volume else soi.volume - locked
             tlo = self.timeLimitOrder(soi.orderType, soi.vtSymbol, soi.price, volume, (soi.expire_at - self.currentTime).total_seconds())
             for pack in self.findOrderPacks(tlo.vtOrderIDs):
-                pack.addTrack(StepOrderInfo.TYPE, soi)
                 soi.addChild(pack)
             soi.nextSendTime = self.currentTime + timedelta(seconds=soi.wait)
                     
@@ -970,7 +969,6 @@ class OrderTemplate(CtaTemplate):
         
         tlo = self.timeLimitOrder(doi.orderType, doi.vtSymbol, doi.price, executable, (doi.expire_at - self.currentTime).total_seconds())
         for pack in self.findOrderPacks(tlo.vtOrderIDs):
-            pack.addTrack(DepthOrderInfo.TYPE, doi)
             doi.addChild(pack)
         doi.nextSendTime = self.currentTime + timedelta(seconds=doi.wait)
 
