@@ -924,7 +924,6 @@ class OrderTemplate(CtaTemplate):
         else:
             vtOrderIDs = self.timeLimitOrder(orderType, vtSymbol, price, volume, expire).vtOrderIDs
             for pack in self.findOrderPacks(vtOrderIDs):
-                pack.addTrack(doi.TYPE, doi)
                 doi.addChild(pack)
         fakeOp.addTrack(doi.TYPE, doi)
         return doi
@@ -973,8 +972,7 @@ class OrderTemplate(CtaTemplate):
         tlo = self.timeLimitOrder(doi.orderType, doi.vtSymbol, doi.price, executable, (doi.expire_at - self.currentTime).total_seconds())
         for pack in self.findOrderPacks(tlo.vtOrderIDs):
             pack.addTrack(DepthOrderInfo.TYPE, doi)
-            doi.add(pack)
-            joi.addChild(pack)
+            doi.addChild(pack)
         doi.nextSendTime = self.currentTime + timedelta(seconds=doi.wait)
 
     def onDepthOrder(self, op):
