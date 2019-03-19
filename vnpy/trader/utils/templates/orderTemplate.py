@@ -1273,6 +1273,9 @@ class OrderTemplate(CtaTemplate):
             
         return super().cancelOrder(vtOrderID)
 
+    def isCancel(self, op):
+        return op.info.get(self._CANCEL_TAG, False)
+
     def maximumOrderVolume(self, vtSymbol, orderType, price=None):
         return np.inf
 
