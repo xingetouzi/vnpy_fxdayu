@@ -1125,7 +1125,7 @@ class OrderTemplate(CtaTemplate):
             parent.order.price_avg = tradedAmount / tradedVolume
         if not joi.activeIDs:
             if parent.order.tradedVolume >= parent.order.totalVolume:
-                parent.order.status = STATUS_FINISHED
+                parent.order.status = constant.STATUS_ALLTRADED
             else:
                 parent.order.stauts = constant.STATUS_CANCELLED
         self.onOrder(parent.order)
