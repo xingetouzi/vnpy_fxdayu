@@ -950,7 +950,6 @@ class OrderTemplate(CtaTemplate):
         if self.currentTime < doi.nextSendTime:
             return
         
-        joi = doi.joinedOrderInfo
         locked = self.aggOrder(doi.vtOrderIDs, "totalVolume", sum) + self.aggOrder(doi.finishedOrderIDs, 'tradedVolume', sum)
         unlocked = self._round(doi.volume - locked)
         if unlocked <= 0:
@@ -1119,9 +1118,10 @@ class OrderTemplate(CtaTemplate):
         parent = self._orderPacks[joi.parentID]
         tradedVolume = 0
         tradedAmount = 0
-        for op in self.findOrderPacks(joi.validIDs):
-            tradedVolume += op.tradedVolume
-            tradedAmount += op.tradedVolume * op.price_avg
+        for child in self.findOrderPacks(joi.validIDs):
+            order = child.order
+            tradedVolume += order.tradedVolume
+            tradedAmount += order.tradedVolume * order.price_avg
         parent.order.tradedVolume = self._round(tradedVolume)
         parent.order.price_avg = tradedAmount / tradedVolume
         if not joi.activeIDs:
