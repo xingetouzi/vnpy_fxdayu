@@ -596,12 +596,6 @@ class CtaEngine(object):
                 self.writeCtaLog(u'找不到策略类：%s' %className)
                 return
 
-        # 规定策略名称长度和合法字符
-        alpha='abcdefghijklmnopqrstuvwxyz'
-        filter_text = "0123456789_" + alpha + alpha.upper()
-        new_name = filter(lambda ch: ch in filter_text, name)
-        name = ''.join(list(new_name))[:10]
-
         # 防止策略重名
         if name in self.strategyDict:
             self.writeCtaLog(u'策略实例重名：%s' %name)
