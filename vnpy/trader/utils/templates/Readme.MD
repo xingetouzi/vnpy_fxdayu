@@ -449,19 +449,64 @@ TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 |takeprofit|float,None|止盈价，可以不设止盈|
 
 
-## `class` StepOrderInfo(object)
+## `class` JoinedOrderInfo(object)
 
-分批下单信息
+合单信息。将多张真实订单绑定视为一张虚拟订单处理。
 
 ### 属性
 
 |name|type|description|
 |:-|:-|:-|
-|TYPE|str|分批下单标记 "_StepOrderInfo"|
+|parentID|str|合并母单(虚拟订单)订单号|
+|childIDs|set(str)|合并子单(真实订单)订单号|
+|activeIDs|set(str)|未完成的合并子单订单号|
+|closedIDs|set(str)|已完成的合并子单订单号|
+|validIDs|set(str)|有效(有成交)的合并子单订单号|
+
+
+## `class` BatchOrderInfo(JoinedOrderInfo)
+
+基于合单逻辑的分批下单信息基类，记录分批下单通用信息。
+
+### 新增属性
+
+|name|type|description|
+|:-|:-|:-|
 |orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
 |vtSymbol|str|品种名。|
 |price|float|限制价格。|
 |volume|float|下单总数。|
+
+### 构造方法
+
+`BatchOrderInfo.isActive()`
+
+分批下单是否有效。无效时策略模板会撤销所有未成交的分批下单并停止继续下单。
+
+`BatchOrderInfo.deactivate()`
+
+使分批下单失效。
+
+
+## `class` StepOrderInfo(BatchOrderInfo)
+
+定时定量分批下单信息，继承BatchOrderInfo。
+
+
+### 属性
+
+|name|type|description|
+|:-|:-|:-|
+|parentID|str|合并母单(虚拟订单)订单号|
+|childIDs|set(str)|合并子单(真实订单)订单号|
+|activeIDs|set(str)|未完成的合并子单订单号|
+|closedIDs|set(str)|已完成的合并子单订单号|
+|validIDs|set(str)|有效(有成交)的合并子单订单号|
+|orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
+|vtSymbol|str|品种名。|
+|price|float|限制价格。|
+|volume|float|下单总数。|
+|TYPE|str|分批下单标记 "_StepOrderInfo"|
 |step|float|每次下单数。|
 |expire_at|datetime.datetime|撤单时间|
 |nextSendTime|datetime.datetime|下次发单时间，如果当前时间小于下次发单时间则不发。|
@@ -470,16 +515,27 @@ wait|float|每次下单间隔时间|
 
 ## `class` DepthOrderInfo(StepOrderInfo)
 
-盘口深度下单信息
+盘口深度下单信息，继承BatchOrderInfo。
 
 ### 属性
 
-主要属性与StepOrderInfo相同，下面只列出额外属性。
-
 |name|type|description|
 |:-|:-|:-|
+|parentID|str|合并母单(虚拟订单)订单号|
+|childIDs|set(str)|合并子单(真实订单)订单号|
+|activeIDs|set(str)|未完成的合并子单订单号|
+|closedIDs|set(str)|已完成的合并子单订单号|
+|validIDs|set(str)|有效(有成交)的合并子单订单号|
+|orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
+|vtSymbol|str|品种名。|
+|price|float|限制价格。|
+|volume|float|下单总数。|
 |TYPE|str|深度下单标记 "_DepthOrderInfo"|
 |depth|int|最大盘口深度|
+|expire_at|datetime.datetime|撤单时间|
+|nextSendTime|datetime.datetime|下次发单时间，如果当前时间小于下次发单时间则不发。|
+wait|float|每次下单间隔时间|
+
 
 
 ---
@@ -510,7 +566,7 @@ wait|float|每次下单间隔时间|
 |return|float|最大下单量|
 
 
-**`isOrderVolumeValid(vtSymbol, orderType, volume, price=None)`**
+**`SpotOrderTemplate.isOrderVolumeValid(vtSymbol, orderType, volume, price=None)`**
 
 返回下单量是否合法，大于0且小于等于最大下单量为合法
 
