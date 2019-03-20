@@ -128,7 +128,7 @@ class OkexGateway(VtGateway):
             self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}")
         else:
             self.orderID += 1
-            order_id = symbolType + str(self.loginTime + self.orderID)
+            order_id = f"{orderReq.byStrategy.replace('_','')}{symbolType[:4]}{str(self.loginTime + self.orderID)}"
             return self.gatewayMap[symbolType]["REST"].sendOrder(orderReq, order_id)
 
     #----------------------------------------------------------------------
@@ -223,7 +223,7 @@ class OkexGateway(VtGateway):
         """"""
         for subGateway in self.gatewayMap.values():
             subGateway["REST"].queryMonoAccount(subGateway['symbols'])
-            subGateway["REST"].queryPosition()
+            subGateway["REST"].queryMonoPosition(subGateway['symbols'])
             subGateway["REST"].queryOrder()
 
     def initPosition(self,vtSymbol):
@@ -232,13 +232,13 @@ class OkexGateway(VtGateway):
         if not symbolType:
             self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
         else:
-            self.gatewayMap[symbolType]["REST"].queryMonoPosition(symbol)
-            self.gatewayMap[symbolType]["REST"].queryMonoAccount(symbol)
+            self.gatewayMap[symbolType]["REST"].queryMonoPosition([symbol])
+            self.gatewayMap[symbolType]["REST"].queryMonoAccount([symbol])
 
     def qryAllOrders(self, vtSymbol, order_id, status=None):
         pass
 
-    def loadHistoryBar(self, vtSymbol, type_, size=None, since=None, end=None):
+    def loadHistoryBar(self, vtSymbol, type_, size = None, since = None, end = None):
         import pandas as pd
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)

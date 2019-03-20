@@ -187,8 +187,11 @@ class OkexSpotRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
+        list_symbols = []
         for symbol in symbolList:
-            sym = str.lower(symbol.split("-")[0])
+            split_symbols = symbol.split("-")
+            list_symbols += split_symbols
+        for sym in list(set(list_symbols)):
             self.addRequest('GET', f'/api/spot/v3/accounts/{sym}', 
                             callback=self.onQueryMonoAccount)
     def queryAccount(self):
@@ -196,7 +199,7 @@ class OkexSpotRestApi(RestClient):
         self.addRequest('GET', '/api/spot/v3/accounts', 
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
-    def queryMonoPosition(self, symbol):
+    def queryMonoPosition(self, symbolList):
         """占位"""
         pass
     def queryPosition(self):
