@@ -1127,8 +1127,6 @@ class OrderTemplate(CtaTemplate):
         if not joi.activeIDs:
             if parent.order.tradedVolume >= parent.order.totalVolume:
                 parent.order.status = constant.STATUS_ALLTRADED
-            else:
-                parent.order.status = constant.STATUS_CANCELLED
         self.onOrder(parent.order)
 
 
