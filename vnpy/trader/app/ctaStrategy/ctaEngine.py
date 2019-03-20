@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from copy import copy
 from vnpy.event import Event
 from vnpy.trader.vtEvent import *
-from vnpy.trader.vtConstant import *
+from vnpy.trader.language import constant
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
@@ -51,7 +51,6 @@ class CtaEngine(object):
 
         # 当前日期
         self.today = todayDate()
-        self.minute_temp = 0
 
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
@@ -116,75 +115,74 @@ class CtaEngine(object):
 
         # 设计为CTA引擎发出的委托只允许使用限价单
         # req.priceType = PRICETYPE_LIMITPRICE
-
         req.priceType = priceType
         
 
         # CTA委托类型映射
         if orderType == CTAORDER_BUY:
-            req.direction = DIRECTION_LONG
-            req.offset = OFFSET_OPEN
+            req.direction = constant.DIRECTION_LONG
+            req.offset = constant.OFFSET_OPEN
             
         elif orderType == CTAORDER_SELL:
-            req.direction = DIRECTION_SHORT
+            req.direction = constant.DIRECTION_SHORT
             # 只有上期所才要考虑平今平昨
-            if contract.exchange != EXCHANGE_SHFE:
-                req.offset = OFFSET_CLOSE
+            if contract.exchange != constant.EXCHANGE_SHFE:
+                req.offset = constant.OFFSET_CLOSE
             else:
                 # 获取持仓缓存数据
                 posBuffer = self.ydPositionDict.get(vtSymbol+'_LONG', None)
                 # 如果获取持仓缓存失败，则默认平昨
                 if not posBuffer:
                     self.writeCtaLog(u'获取昨持多仓为0，发出平今指令')
-                    req.offset = OFFSET_CLOSETODAY
+                    req.offset = constant.OFFSET_CLOSETODAY
 
                 elif posBuffer:
                     if volume <= posBuffer:
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         self.writeCtaLog(u'{}优先平昨，昨多仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         if (posBuffer - volume)>0:
                             self.writeCtaLog(u'{}剩余昨多仓{}'.format(vtSymbol,(posBuffer - volume)))
                     else:
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         req.volume = posBuffer
                         self.writeCtaLog(u'{}平仓量{}，大于昨多仓，拆分优先平昨仓数:{}'.format(vtSymbol, volume, posBuffer))
                         req2 = copy(req)
-                        req2.offset = OFFSET_CLOSETODAY
+                        req2.offset = constant.OFFSET_CLOSETODAY
                         req2.volume = volume - posBuffer
                         self.writeCtaLog(u'{}平仓量大于昨多仓，拆分到平今仓数:{}'.format(vtSymbol, req2.volume))
                         reqcount = 2
 
         elif orderType == CTAORDER_SHORT:
-            req.direction = DIRECTION_SHORT
-            req.offset = OFFSET_OPEN
+            req.direction = constant.DIRECTION_SHORT
+            req.offset = constant.OFFSET_OPEN
             
         elif orderType == CTAORDER_COVER:
-            req.direction = DIRECTION_LONG
+            req.direction = constant.DIRECTION_LONG
             # # 只有上期所才要考虑平今平昨
-            if contract.exchange != EXCHANGE_SHFE:
-                req.offset = OFFSET_CLOSE
+            if contract.exchange != constant.EXCHANGE_SHFE:
+                req.offset = constant.OFFSET_CLOSE
             else:
                 # 获取持仓缓存数据
                 posBuffer = self.ydPositionDict.get(vtSymbol+'_SHORT', None)
                 # 如果获取持仓缓存失败，则默认平昨
                 if not posBuffer:
                     self.writeCtaLog(u'获取昨持空仓为0，发出平今指令')
-                    req.offset = OFFSET_CLOSETODAY
+                    req.offset = constant.OFFSET_CLOSETODAY
 
                 elif posBuffer:
                     if volume <= posBuffer:
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         self.writeCtaLog(u'{}优先平昨，昨空仓:{}，平仓数:{}'.format(vtSymbol, posBuffer, volume))
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         if (posBuffer - volume)>0:
                             self.writeCtaLog(u'{}剩余昨空仓{}'.format(vtSymbol,(posBuffer - volume)))
                     else:
-                        req.offset = OFFSET_CLOSE
+                        req.offset = constant.OFFSET_CLOSE
                         req.volume = posBuffer
                         self.writeCtaLog(u'{}平仓量{}，大于昨空仓，拆分优先平昨仓数:{}'.format(vtSymbol, volume, posBuffer))
                         req2 = copy(req)
-                        req2.offset = OFFSET_CLOSETODAY
+                        req2.offset = constant.OFFSET_CLOSETODAY
                         req2.volume = volume - posBuffer
                         self.writeCtaLog(u'{}平仓量大于昨空仓，拆分到平今仓数:{}'.format(vtSymbol, req2.volume))
                         reqcount = 2
@@ -219,10 +217,10 @@ class CtaEngine(object):
         # 如果查询成功
         if order:
             # 检查是否报单还有效，只有有效时才发出撤单指令
-            orderFinished = (order.status==STATUS_ALLTRADED 
-                            or order.status==STATUS_CANCELLED 
-                            or order.status == STATUS_REJECTED
-                            or order.status == STATUS_CANCELLING)
+            orderFinished = (order.status == constant.STATUS_ALLTRADED 
+                            or order.status == constant.STATUS_CANCELLED 
+                            or order.status == constant.STATUS_REJECTED
+                            or order.status == constant.STATUS_CANCELLING)
             
             if not orderFinished:
                 req = VtCancelOrderReq()
@@ -247,10 +245,10 @@ class CtaEngine(object):
             # 如果查询成功
             if order:
                 # 检查是否报单还有效，只有有效时才发出撤单指令
-                orderFinished = (order.status==STATUS_ALLTRADED 
-                                or order.status==STATUS_CANCELLED 
-                                or order.status == STATUS_REJECTED
-                                or order.status == STATUS_CANCELLING)
+                orderFinished = (order.status == constant.STATUS_ALLTRADED 
+                                or order.status == constant.STATUS_CANCELLED 
+                                or order.status == constant.STATUS_REJECTED
+                                or order.status == constant.STATUS_CANCELLING)
                 
                 if not orderFinished:
                     req = VtCancelOrderReq()
@@ -284,17 +282,17 @@ class CtaEngine(object):
         so.byStrategy = strategy.name
 
         if orderType == CTAORDER_BUY:
-            so.direction = DIRECTION_LONG
-            so.offset = OFFSET_OPEN
+            so.direction = constant.DIRECTION_LONG
+            so.offset = constant.OFFSET_OPEN
         elif orderType == CTAORDER_SELL:
-            so.direction = DIRECTION_SHORT
-            so.offset = OFFSET_CLOSE
+            so.direction = constant.DIRECTION_SHORT
+            so.offset = constant.OFFSET_CLOSE
         elif orderType == CTAORDER_SHORT:
-            so.direction = DIRECTION_SHORT
-            so.offset = OFFSET_OPEN
+            so.direction = constant.DIRECTION_SHORT
+            so.offset = constant.OFFSET_OPEN
         elif orderType == CTAORDER_COVER:
-            so.direction = DIRECTION_LONG
-            so.offset = OFFSET_CLOSE
+            so.direction = constant.DIRECTION_LONG
+            so.offset = constant.OFFSET_CLOSE
 
         # 保存stopOrder对象到字典中
         self.stopOrderDict[stopOrderID] = so
@@ -340,13 +338,13 @@ class CtaEngine(object):
             # 遍历等待中的停止单，检查是否会被触发
             for so in list(self.workingStopOrderDict.values()):
                 if so.vtSymbol == vtSymbol:
-                    longTriggered = so.direction==DIRECTION_LONG and tick.lastPrice>=so.price        # 多头停止单被触发
-                    shortTriggered = so.direction==DIRECTION_SHORT and tick.lastPrice<=so.price     # 空头停止单被触发
+                    longTriggered = ((so.direction == constant.DIRECTION_LONG) and tick.lastPrice>=so.price)      # 多头停止单被触发
+                    shortTriggered = ((so.direction == constant.DIRECTION_SHORT) and tick.lastPrice<=so.price)    # 空头停止单被触发
 
                     if longTriggered or shortTriggered:
                         # 买入和卖出分别以涨停跌停价发单（模拟市价单）
                         # 对于没有涨跌停价格的市场则使用5档报价
-                        if so.direction==DIRECTION_LONG:
+                        if so.direction == constant.DIRECTION_LONG:
                             if tick.upperLimit:
                                 price = tick.upperLimit
                             else:
@@ -359,7 +357,7 @@ class CtaEngine(object):
                         
                         # 发出市价委托
                         vtOrderID = self.sendOrder(so.vtSymbol, so.orderType, 
-                                                   price, so.volume, so.strategy)
+                                                   price, so.volume, so.priceType, so.strategy)
                         
                         # 检查因为风控流控等原因导致的委托失败（无委托号）
                         if vtOrderID:
@@ -398,9 +396,6 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    if tick.datetime.second == 36 and tick.datetime.minute != self.minute_temp:
-                        self.minute_temp = tick.datetime.minute
-                        self.qryAllOrders(strategy.name)
                     
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
@@ -410,40 +405,38 @@ class CtaEngine(object):
         if vtOrderID in self.orderStrategyDict:
             strategy = self.orderStrategyDict[vtOrderID]
 
-            if 'eveningDict' in strategy.syncList:
-                if order.status == STATUS_CANCELLED:
-                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
-                        posName = order.vtSymbol + "_SHORT"
-                        strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
-                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
-                        posName = order.vtSymbol + "_LONG"
-                        strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
+            if order.status == constant.STATUS_CANCELLED:
+                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_CLOSE:
+                    posName = order.vtSymbol + "_SHORT"
+                    strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
+                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_CLOSE:
+                    posName = order.vtSymbol + "_LONG"
+                    strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
 
-                elif order.status == STATUS_ALLTRADED or order.status == STATUS_PARTTRADED:
-                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_OPEN:
-                        posName = order.vtSymbol + "_LONG"
-                        strategy.eveningDict[posName] += order.thisTradedVolume
-                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_OPEN:
-                        posName = order.vtSymbol + "_SHORT"
-                        strategy.eveningDict[posName] += order.thisTradedVolume
-                        
-                elif order.status == STATUS_NOTTRADED:
-                    if order.direction == DIRECTION_LONG and order.offset == OFFSET_CLOSE:
-                        posName = order.vtSymbol + "_SHORT"
-                        strategy.eveningDict[posName] -= order.totalVolume
-                    elif order.direction == DIRECTION_SHORT and order.offset == OFFSET_CLOSE:
-                        posName = order.vtSymbol + "_LONG"
-                        strategy.eveningDict[posName] -= order.totalVolume
+            elif order.status == constant.STATUS_ALLTRADED or order.status == constant.STATUS_PARTTRADED:
+                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_OPEN:
+                    posName = order.vtSymbol + "_LONG"
+                    strategy.eveningDict[posName] += order.thisTradedVolume
+                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_OPEN:
+                    posName = order.vtSymbol + "_SHORT"
+                    strategy.eveningDict[posName] += order.thisTradedVolume
+                    
+            elif order.status == constant.STATUS_NOTTRADED:
+                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_CLOSE:
+                    posName = order.vtSymbol + "_SHORT"
+                    strategy.eveningDict[posName] -= order.totalVolume
+                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_CLOSE:
+                    posName = order.vtSymbol + "_LONG"
+                    strategy.eveningDict[posName] -= order.totalVolume
                 
 
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
-            if order.status in STATUS_FINISHED:
+            if order.status in constant.STATUS_FINISHED:
                 s = self.strategyOrderDict[strategy.name]
                 if vtOrderID in s:
                     s.remove(vtOrderID)
 
             self.callStrategyFunc(strategy, strategy.onOrder, order)
-            # self.saveOrderDetail(strategy,order)
 
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):
@@ -458,16 +451,16 @@ class CtaEngine(object):
             strategy = self.orderStrategyDict[trade.vtOrderID]
 
             # 计算策略持仓
-            if trade.direction == DIRECTION_LONG and trade.offset == OFFSET_OPEN:
+            if trade.direction == constant.DIRECTION_LONG and trade.offset == constant.OFFSET_OPEN:
                 posName = trade.vtSymbol + "_LONG"
                 strategy.posDict[str(posName)] += trade.volume
-            elif trade.direction == DIRECTION_LONG and trade.offset == OFFSET_CLOSE:
+            elif trade.direction == constant.DIRECTION_LONG and trade.offset == constant.OFFSET_CLOSE:
                 posName = trade.vtSymbol + "_SHORT"
                 strategy.posDict[str(posName)] -= trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_CLOSE:
+            elif trade.direction == constant.DIRECTION_SHORT and trade.offset == constant.OFFSET_CLOSE:
                 posName = trade.vtSymbol + "_LONG"
                 strategy.posDict[str(posName)] -= trade.volume
-            elif trade.direction ==DIRECTION_SHORT and trade.offset == OFFSET_OPEN:
+            elif trade.direction == constant.DIRECTION_SHORT and trade.offset == constant.OFFSET_OPEN:
                 posName = trade.vtSymbol + "_SHORT"
                 strategy.posDict[str(posName)] += trade.volume
 
@@ -479,14 +472,14 @@ class CtaEngine(object):
 
         for strategy in self.strategyDict.values():
             if strategy.inited and pos.vtSymbol in strategy.symbolList:
-                if pos.direction == DIRECTION_LONG:
+                if pos.direction == constant.DIRECTION_LONG:
                     posName = pos.vtSymbol + "_LONG"
                     strategy.posDict[str(posName)] = pos.position
                     strategy.eveningDict[str(posName)] = pos.position - pos.frozen
                     if 'CTP' in posName:
                         self.ydPositionDict[str(posName)] = pos.ydPosition
 
-                elif pos.direction == DIRECTION_SHORT:
+                elif pos.direction == constant.DIRECTION_SHORT:
                     posName2 = pos.vtSymbol + "_SHORT"
                     strategy.posDict[str(posName2)] = pos.position
                     strategy.eveningDict[str(posName2)] = pos.position - pos.frozen
@@ -589,8 +582,8 @@ class CtaEngine(object):
             vtSymbolset=setting['symbolList']
             mailAdd = setting['mailAdd']
 
-        except Exception as e:
-            self.writeCtaLog(u'载入策略%s出错：%s' %e)
+        except KeyError as e:
+            self.writeCtaLog(u'载入策略出错：%s' %e)
             return
 
         # 获取策略类
@@ -613,21 +606,6 @@ class CtaEngine(object):
             strategy.symbolList = vtSymbolset
             strategy.mailAdd = mailAdd
             strategy.name = name
-            # d= {}
-            # fileName = os.path.join(self.path,strategy.name+'_syncData.json')
-            # if not os.path.exists(fileName):
-            #     with open(fileName,'w') as f:
-            #         json.dump(d,f)
-            # self.loadSyncData(strategy)
-            # fileName = os.path.join(self.path,strategy.name+'_varData.json')
-            # if not os.path.exists(fileName):
-            #     with open(fileName,'w') as f:
-            #         json.dump(d,f)
-            # fileName = os.path.join(self.path,strategy.name+'_orderSheet.json')
-            # if not os.path.exists(fileName):
-            #     d['orders']=[]
-            #     with open(fileName,'w') as f:
-            #         json.dump(d,f)
 
             # 创建委托号列表
             self.strategyOrderDict[name] = set()
@@ -699,8 +677,7 @@ class CtaEngine(object):
             strategy = self.strategyDict[name]
 
             if strategy.trading:
-                self.writeCtaLog(u'策略%s： 准备停止工作' %name)
-                # self.saveVarData(strategy)
+                self.writeCtaLog(u'策略%s： 准备停止工作' % name)
                 strategy.trading = False
                 self.callStrategyFunc(strategy, strategy.onStop)
 
@@ -860,9 +837,6 @@ class CtaEngine(object):
             # result.append(d[key])
 
         flt['SyncData'] = d
-        fileName = os.path.join(self.path, strategy.name + '_syncData.json')
-        with open(fileName,'w') as f:
-            json.dump(flt,f,indent=4, ensure_ascii=False)
         # self.mainEngine.dbUpdate(POSITION_DB_NAME, strategy.name,
         #                             d, flt, True)
 
@@ -881,10 +855,6 @@ class CtaEngine(object):
 
         flt['VarData'] = d
 
-        fileName = os.path.join(self.path, strategy.name + '_varData.json')
-        with open(fileName,'w') as f:
-            json.dump(flt,f,indent=4, ensure_ascii=False)
-
         # self.mainEngine.dbUpdate(VAR_DB_NAME, strategy.name,
         #                             d, flt, True)
                 
@@ -894,82 +864,24 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadSyncData(self, strategy):
         """从数据库载入策略的持仓情况"""
-        fileName = os.path.join(self.path, strategy.name + '_syncData.json')
-        with open(fileName,'r') as f:
-            syncData = json.load(f)
-
         # flt = {'name': strategy.name,
         # 'posName': str(strategy.symbolList)}
         # syncData = self.mainEngine.dbQuery(POSITION_DB_NAME, strategy.name, flt)
-        
-        if not syncData:
-            self.writeCtaLog(u'策略%s: 当前没有持仓信息'%strategy.name)
-            return
-        for sym in strategy.symbolList:
-            if sym not in syncData['subject']:
-                self.writeCtaLog(u'策略%s: 当前SyncData不属于此策略'%strategy.name)
-                return
-
-        d = syncData['SyncData']
-        for key in strategy.syncList:
-            if key in d:
-                strategy.__setattr__(key, d[key])
+        # d = syncData['SyncData']
+        # for key in strategy.syncList:
+        #     if key in d:
+        #         strategy.__setattr__(key, d[key])
 
     def loadVarData(self, strategy):
         """从数据库载入策略的持仓情况"""
-        fileName = os.path.join(self.path, strategy.name + '_varData.json')
-        with open(fileName,'r') as f:
-            varData = json.load(f)
-
         # flt = {'name': strategy.name,
         # 'posName': str(strategy.symbolList)}
         # varData = self.mainEngine.dbQuery(VAR_DB_NAME, strategy.name, flt)
-        
-        if not varData:
-            self.writeCtaLog(u'策略%s: 当前没有保存的变量信息'%strategy.name)
-            return
+        # d = varData['VarData']
+        # for key in strategy.varList:
+        #     if key in d:
+        #         strategy.__setattr__(key, d[key])
 
-        for sym in strategy.symbolList:
-            if sym not in varData['subject']:
-                self.writeCtaLog(u'策略%s: 当前varData不属于此策略'%strategy.name)
-                return
-        
-        d = varData['VarData']
-        for key in strategy.varList:
-            if key in d:
-                strategy.__setattr__(key, d[key])
-
-    def saveOrderDetail(self, strategy, order):
-        """
-        将订单信息存入数据库
-        """
-        flt = {'name': strategy.name,
-            'vtOrderID':order.vtOrderID,
-            'symbol':order.vtSymbol,
-            'exchageID': order.exchangeOrderID,
-            'direction':order.direction,
-            'offset':order.offset,
-            'price': order.price,
-            'price_avg': order.price_avg,
-            'tradedVolume':order.tradedVolume,
-            'totalVolume':order.totalVolume,
-            'status':order.status,
-            'orderby':order.byStrategy
-            }
-        if order.deliverTime:
-            flt['orderTime'] = order.deliverTime.strftime('%Y%m%d %X')
-        fileName = os.path.join(self.path, strategy.name + '_orderSheet.json')
-        with open(fileName,'r') as f:
-            data = json.load(f)
-            data['orders'].append(flt)
-
-        with open(fileName,'w') as f:
-            json.dump(data,f,indent=4, ensure_ascii=False)
-        
-        # self.mainEngine.dbInsert(ORDER_DB_NAME, strategy.name, flt)
-        content = u'策略%s: 保存%s订单数据成功，本地订单号%s' %(strategy.name, order.vtSymbol, order.vtOrderID)
-        self.writeCtaLog(content)
-        
     #----------------------------------------------------------------------    
     def roundToPriceTick(self, priceTick, price):
         """取整价格到合约最小价格变动"""
@@ -1028,14 +940,11 @@ class CtaEngine(object):
         return histbar
 
     def initPosition(self,strategy):
-        for i in range(len(strategy.symbolList)):
-            symbol = strategy.symbolList[i]
-            if 'posDict' in strategy.syncList:
-                strategy.posDict[symbol+"_LONG"] = 0
-                strategy.posDict[symbol+"_SHORT"] = 0
-            if 'eveningDict' in strategy.syncList:
-                strategy.eveningDict[symbol+"_LONG"] = 0
-                strategy.eveningDict[symbol+"_SHORT"] = 0
+        for symbol in strategy.symbolList:
+            strategy.posDict[symbol+"_LONG"] = 0
+            strategy.posDict[symbol+"_SHORT"] = 0
+            strategy.eveningDict[symbol+"_LONG"] = 0
+            strategy.eveningDict[symbol+"_SHORT"] = 0
 
         # 根据策略的品种信息，查询特定交易所该品种的持仓
         for vtSymbol in strategy.symbolList:
