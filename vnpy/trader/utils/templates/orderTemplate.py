@@ -949,7 +949,7 @@ class OrderTemplate(CtaTemplate):
         if self.currentTime < doi.nextSendTime:
             return
         
-        locked = self.aggOrder(doi.vtOrderIDs, "totalVolume", sum) + self.aggOrder(doi.finishedOrderIDs, 'tradedVolume', sum)
+        locked = self.aggOrder(doi.activeIDs, "totalVolume", sum) + self.aggOrder(doi.closedIDs, 'tradedVolume', sum)
         unlocked = self._round(doi.volume - locked)
         if unlocked <= 0:
             return
