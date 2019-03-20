@@ -131,7 +131,6 @@ class OkexfRestApi(RestClient):
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
-
         data = {
             'client_oid': orderID,
             'instrument_id': self.contractMapReverse[orderReq.symbol],
@@ -200,11 +199,12 @@ class OkexfRestApi(RestClient):
         self.addRequest('GET', '/api/futures/v3/accounts', 
                         callback=self.onQueryAccount)
     #----------------------------------------------------------------------
-    def queryMonoPosition(self, symbol):
+    def queryMonoPosition(self, symbolList):
         """限速规则：20次/2s"""
-        sym = self.contractMapReverse[symbol]
-        self.addRequest('GET', f'/api/futures/v3/{sym}/position', 
-                        callback=self.onQueryMonoPosition)
+        for symbol in symbolList:
+            sym = self.contractMapReverse[symbol]
+            self.addRequest('GET', f'/api/futures/v3/{sym}/position', 
+                            callback=self.onQueryMonoPosition)
     
     def queryPosition(self):
         """限速规则：5次/2s"""

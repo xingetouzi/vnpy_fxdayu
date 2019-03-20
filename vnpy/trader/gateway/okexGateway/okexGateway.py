@@ -35,6 +35,7 @@ class OkexGateway(VtGateway):
 
         self.symbolTypeMap = {}
         self.gatewayMap = {}
+        self.stgMap = {}
 
         self.orderID = 10000
         self.tradeID = 0
@@ -123,12 +124,22 @@ class OkexGateway(VtGateway):
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
         """发单"""
+        strategy_name = self.stgMap.get(orderReq.byStrategy, None)
+        if not strategy_name:
+            # 规定策略名称长度和合法字符
+            alpha='abcdefghijklmnopqrstuvwxyz'
+            filter_text = "0123456789_" + alpha + alpha.upper()
+            new_name = filter(lambda ch: ch in filter_text, orderReq.byStrategy)
+            name = ''.join(list(new_name))[:10]
+            self.stgMap.update({strategy_name:name})
+            strategy_name = name
+            
         symbolType = self.symbolTypeMap.get(orderReq.symbol, None)
         if not symbolType:
             self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}")
         else:
             self.orderID += 1
-            order_id = symbolType + str(self.loginTime + self.orderID)
+            order_id = f"{strategy_name}{symbolType[:4]}{str(self.loginTime + self.orderID)}"
             return self.gatewayMap[symbolType]["REST"].sendOrder(orderReq, order_id)
 
     #----------------------------------------------------------------------
@@ -223,22 +234,22 @@ class OkexGateway(VtGateway):
         """"""
         for subGateway in self.gatewayMap.values():
             subGateway["REST"].queryMonoAccount(subGateway['symbols'])
-            subGateway["REST"].queryPosition()
+            subGateway["REST"].queryMonoPosition(subGateway['symbols'])
             subGateway["REST"].queryOrder()
 
-    def initPosition(self,vtSymbol):
+    def initPosition(self, vtSymbol):
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
         if not symbolType:
             self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
         else:
-            self.gatewayMap[symbolType]["REST"].queryMonoPosition(symbol)
-            self.gatewayMap[symbolType]["REST"].queryMonoAccount(symbol)
+            self.gatewayMap[symbolType]["REST"].queryMonoPosition([symbol])
+            self.gatewayMap[symbolType]["REST"].queryMonoAccount([symbol])
 
     def qryAllOrders(self, vtSymbol, order_id, status=None):
         pass
 
-    def loadHistoryBar(self, vtSymbol, type_, size=None, since=None, end=None):
+    def loadHistoryBar(self, vtSymbol, type_, size = None, since = None, end = None):
         import pandas as pd
         symbol = vtSymbol.split(VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
