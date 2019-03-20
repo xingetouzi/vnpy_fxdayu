@@ -186,10 +186,11 @@ class OkexSwapRestApi(RestClient):
                         callback=self.onQueryContract)
     
     #----------------------------------------------------------------------
-    def queryMonoAccount(self, symbol):
+    def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        self.addRequest('GET', f'/api/swap/v3/{symbol}/accounts', 
-                        callback=self.onQueryMonoAccount)
+        for symbol in symbolList:
+            self.addRequest('GET', f'/api/swap/v3/{symbol}/accounts', 
+                            callback=self.onQueryMonoAccount)
 
     def queryAccount(self):
         """限速规则：1次/10s"""
