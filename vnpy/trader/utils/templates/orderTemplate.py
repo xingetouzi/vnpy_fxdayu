@@ -328,6 +328,7 @@ class OrderTemplate(CtaTemplate):
         self.registerOrderCostumCallback(RependingOrderInfo.TYPE, self.onRependingOrder)
         self.registerOrderCostumCallback(AutoExitInfo.TP_TAG, self.onTakeProfitPending)
         self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onStepOrder)
+        self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onDepthOrder)
         self.registerOrderCostumCallback(JoinedOrderInfo.CHILD_TAG, self.onJoinOrderChild)
     
     def registerOrderCostumCallback(self, co_type, callback):
@@ -1127,7 +1128,7 @@ class OrderTemplate(CtaTemplate):
             if parent.order.tradedVolume >= parent.order.totalVolume:
                 parent.order.status = constant.STATUS_ALLTRADED
             else:
-                parent.order.stauts = constant.STATUS_CANCELLED
+                parent.order.status = constant.STATUS_CANCELLED
         self.onOrder(parent.order)
 
 
@@ -1267,7 +1268,7 @@ class OrderTemplate(CtaTemplate):
             op = self._orderPacks[vtOrderID]
             op.info[self._CANCEL_TAG] = True
             if self.isFake(op):
-                op.order.stauts = constant.STATUS_CANCELLED
+                op.order.status = constant.STATUS_CANCELLED
                 self.onOrder(op.order)
                 return
             
