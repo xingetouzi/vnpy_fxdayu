@@ -219,7 +219,7 @@ OrderTemplate.getCurrentPrice(vtSymbol)
 |targetProfit|float|预期盈利比例，如果有效时间到未达到预期盈利则强平，盈利计算方式：profit = (currentPrice - order.price_avg)/order.price_avg|
 
 
-**`OrderTemplate.stepOrders(orderType, vtSymbol, price, volume, step, expire, wait=0)`**
+**`OrderTemplate.makeStepOrder(orderType, vtSymbol, price, volume, step, expire, wait=0)`**
 
 设置按时间分批下单
 
@@ -235,7 +235,7 @@ OrderTemplate.getCurrentPrice(vtSymbol)
 |return|StepOrderInfo|保存了分批下单相关信息。|
 
 
-**`OrderTemplate.depthOrders(orderType, vtSymbol, price, volume, depth, expire, wait=0)`**
+**`OrderTemplate.makeDepthOrder(orderType, vtSymbol, price, volume, depth, expire, wait=0)`**
 
 设置按盘口分批下单
 
@@ -535,8 +535,6 @@ wait|float|每次下单间隔时间|
 |expire_at|datetime.datetime|撤单时间|
 |nextSendTime|datetime.datetime|下次发单时间，如果当前时间小于下次发单时间则不发。|
 wait|float|每次下单间隔时间|
-
-
 
 ---
 
