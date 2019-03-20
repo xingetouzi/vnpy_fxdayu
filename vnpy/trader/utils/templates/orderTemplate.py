@@ -328,7 +328,7 @@ class OrderTemplate(CtaTemplate):
         self.registerOrderCostumCallback(RependingOrderInfo.TYPE, self.onRependingOrder)
         self.registerOrderCostumCallback(AutoExitInfo.TP_TAG, self.onTakeProfitPending)
         self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onStepOrder)
-        self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onDepthOrder)
+        self.registerOrderCostumCallback(DepthOrderInfo.TYPE, self.onDepthOrder)
         self.registerOrderCostumCallback(JoinedOrderInfo.CHILD_TAG, self.onJoinOrderChild)
     
     def registerOrderCostumCallback(self, co_type, callback):
