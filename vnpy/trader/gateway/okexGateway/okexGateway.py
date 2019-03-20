@@ -132,6 +132,7 @@ class OkexGateway(VtGateway):
             new_name = filter(lambda ch: ch in filter_text, strategy_name)
             name = ''.join(list(new_name))[:10]
             self.stgMap.update({strategy_name:name})
+            strategy_name = name
             
         symbolType = self.symbolTypeMap.get(orderReq.symbol, None)
         if not symbolType:
