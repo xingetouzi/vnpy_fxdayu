@@ -128,7 +128,7 @@ class OkexGateway(VtGateway):
         if not strategy_name:
             # 规定策略名称长度和合法字符
             alpha='abcdefghijklmnopqrstuvwxyz'
-            filter_text = "0123456789_" + alpha + alpha.upper()
+            filter_text = "0123456789" + alpha + alpha.upper()
             new_name = filter(lambda ch: ch in filter_text, orderReq.byStrategy)
             name = ''.join(list(new_name))[:10]
             self.stgMap.update({strategy_name:name})

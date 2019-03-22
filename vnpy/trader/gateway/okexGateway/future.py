@@ -61,6 +61,7 @@ class OkexfRestApi(RestClient):
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
         self.okexIDMap = {}       # store okexID <-> OID
+        self.missing_order_Dict = {} # store missing orders due to network issue
 
         self.contractMap= {}
         self.contractMapReverse = {}
@@ -226,6 +227,15 @@ class OkexfRestApi(RestClient):
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
+        for oid, symbol in self.missing_order_Dict.items():
+            self.queryMonoOrder(symbol, oid)
+
+    def queryMonoOrder(self,symbol,oid):
+        path = f'/api/futures/v3/orders/{symbol}/{oid}'
+        self.addRequest('GET', path, params=None,
+                            callback=self.onQueryMonoOrder,
+                            extra = oid,
+                            onFailed=self.onqueryMonoOrderFailed)
     # ----------------------------------------------------------------------
     def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
@@ -555,6 +565,10 @@ class OkexfRestApi(RestClient):
         if order.thisTradedVolume:
             self.gateway.newTradeObject(order)
 
+        sym = self.missing_order_Dict.get(order.orderID, None)
+        if sym:
+            del self.missing_order_Dict[order.orderID]
+
         if order.status in STATUS_FINISHED:
             finish_id = self.okexIDMap.get(okexID, None)
             if finish_id:
@@ -562,6 +576,20 @@ class OkexfRestApi(RestClient):
             finish_order = self.orderDict.get(oid, None)
             if finish_order:
                 del self.orderDict[oid]
+
+    def onQueryMonoOrder(self,d,request):
+        """reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
+            headers: {'OK-ACCESS-KEY': 'abf4d2bc-6d3e-4bc8-87bc-e4ff925184a1', 
+            'OK-ACCESS-SIGN': b'CVIADeytMotrJ6KyL+R97J9MZAx7sfQ1F0zkvqMYYIo=', 
+            'OK-ACCESS-TIMESTAMP': '2019-03-22T03:22:11.937Z', 'OK-ACCESS-PASSPHRASE': 'okexsb', 
+            'Content-Type': 'application/json'}
+            params: None
+            data: null
+            response:{"instrument_id":"ETH-USD-190628","size":"1","timestamp":"2019-03-22T03:22:13.000Z",
+            "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
+            "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
+            "order_type":"0"}"""
+        self.processOrderData(d)
 
     def onQueryOrder(self, d, request):
         """{'result': True, 'order_info': [
@@ -572,6 +600,17 @@ class OkexfRestApi(RestClient):
         #print(data,"onQueryOrder")
         for data in d['order_info']:
             self.processOrderData(data)
+
+    def onqueryMonoOrderFailed(self, data, request):
+        order = self.orderDict.get(request.extra, None)
+        order.status = STATUS_REJECTED
+        order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
+        self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+        self.gateway.onOrder(order)
+        sym = self.missing_order_Dict.get(order.orderID, None)
+        if sym:
+            del self.missing_order_Dict[order.orderID]
+
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
@@ -583,6 +622,7 @@ class OkexfRestApi(RestClient):
         order.status = STATUS_REJECTED
         order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
@@ -591,10 +631,9 @@ class OkexfRestApi(RestClient):
         """
         self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
         order = request.extra
-        order.status = STATUS_UNKNOWN
-        order.rejectedInfo = "onSendOrderError: OKEX not response or network issue"
-        # str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
-        self.gateway.onOrder(order)
+        self.queryMonoOrder(self.contractMapReverse[order.symbol], order.orderID)
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}')
+        self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
@@ -605,6 +644,7 @@ class OkexfRestApi(RestClient):
         else:
             self.okexIDMap[data['order_id']] = data['client_oid']
             self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
+            
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
         """ 1:{'result': True, 'client_oid': 'FUTURE19030516082610001', 
@@ -622,7 +662,14 @@ class OkexfRestApi(RestClient):
         请求失败处理函数（HttpStatusCode!=2xx）.
         默认行为是打印到stderr
         """
-        print("onfailed, HttpStatusCode!=2xx",request.response)
+        """ reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU1903221126211000 failed because 500:
+            headers: {'OK-ACCESS-KEY': '*********', 
+            'OK-ACCESS-SIGN': b'***********', 
+            'OK-ACCESS-TIMESTAMP': '2019-03-22T03:26:31.892Z', 'OK-ACCESS-PASSPHRASE': '*******', 
+            'Content-Type': 'application/json'}
+            params: None
+            data: null
+            response:{"message":"System error"}"""
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
