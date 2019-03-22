@@ -880,6 +880,8 @@ class OrderTemplate(CtaTemplate):
         for soi in list(pool.values()):
             if soi.expire_at <= self.currentTime:
                 soi.deactivate()
+                parent = self._orderPacks[soi.parentID]
+                self.cancelOrder(parent.vtOrderID)
             
             if soi.isActive():
                 self.execStepOrder(soi)
@@ -947,6 +949,8 @@ class OrderTemplate(CtaTemplate):
         for doi in list(pool.values()):
             if doi.expire_at <= self.currentTime:
                 doi.deactivate()
+                parent = self._orderPacks[doi.parentID]
+                self.cancelOrder(parent.vtOrderID)
 
             if doi.isActive():
                 self.execDepthOrder(doi, tick)
