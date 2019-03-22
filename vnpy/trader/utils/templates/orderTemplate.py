@@ -296,6 +296,8 @@ class OrderTemplate(CtaTemplate):
     _EXPIRE_AT = "_EXPIRE_AT"
     _FINISH_TAG = "_FINISH_TAG"
     _CANCEL_TAG = "_CANCEL_TAG"
+    _CANCEL_TIME = "_CANCEL_TIME"
+    _CANCEL_GAP_TIME = timedelta(seconds=5)
 
     COMPOSORY_EXPIRE = 5
     NDIGITS = 4
@@ -1283,6 +1285,11 @@ class OrderTemplate(CtaTemplate):
         if vtOrderID in self._orderPacks:
             op = self._orderPacks[vtOrderID]
             op.info[self._CANCEL_TAG] = True
+            if self._CANCEL_TIME in op.info:
+                if self.currentTime - op.info[self._CANCEL_TIME] < self._CANCEL_GAP_TIME:
+                    return
+            else:
+                op.info[self._CANCEL_TIME] = self.currentTime
             if self.isFake(op):
                 op.order.status = constant.STATUS_CANCELLING
                 self.onOrder(op.order)
