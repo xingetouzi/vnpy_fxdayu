@@ -133,7 +133,6 @@ class AutoExitInfo(object):
     TYPE = "_AutoExitInfo"
 
     TP_TAG = "_TP_Tag"
-    TP_CANCEL_TAG = "_TP_CANCEL"
 
     def __init__(self, op, stoploss=None, takeprofit=None):
         self.originID = op.vtOrderID if isinstance(op, OrderPack) else op

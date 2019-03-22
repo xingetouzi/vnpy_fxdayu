@@ -71,6 +71,14 @@ class Strategy(OrderTemplate):
 |_barInstance|dict {str(vtSymbol):VtBarData}|根据vtSymbol保存当前最新的bar。|
 |_order_costum_callbacks|dict {str: def function(OrderPack)}|自定义类型订单回调方法，在onOrder收到自定义类型订单回报时会被触发。|
 |_orderPool|dict {str:{str(vtOrderID):OrderPack}}|根据自定义订单类型存储订单信息。|
+|_CLOSE_TAG|str|平仓标记|
+|_OPEN_TAG|str|开仓标记|
+|_EXPIRE_AT|str|订单到期时间标记|
+|_FINISH_TAG|str|订单完成状态标记|
+|_CANCEL_TAG|str|撤单标记|
+|_CANCEL_TIME|str|最近撤单时间|
+|_CANCEL_GAP_TIME|datetime.timedelta|最小撤单间隔时间|
+
 
 ### 构造方法
 
@@ -373,10 +381,19 @@ OrderPack.info 用于记录自定义信息，但是有一些字段已被占用�
 |:-|:-|:-|:-|
 |_CLOSE|OrderTemplate._CLOSE_TAG|set|用于记录与该订单关联的平仓单订单号|
 |_OPEN|OrderTemplate._OPEN_TAG|str|用于记录与该订单关联的开仓单订单号|
-|_EXPIRE_AT|OrderTemplate._EXPIRE_AT|datetime.datetime|用于记录时限单和强平单的限制时间|
+|_EXPIRE_AT|OrderTemplate._EXPIRE_AT|datetime.datetime|用于记录时限单和强平单的限制时间。|
+|_FINISH_TAG|OrderTemplate._FINISH_TAG|bool|订单是否已完成，已完成的订单再收到推送时不处理。|
+|_CANCEL_TAG|OrderTemplate._CANCEL_TAG|bool|是否本策略发送撤掉，用于收到撤单时的相关处理。|
+|_CANCEL_TIME|OrderTemplate._CANCEL_TIME|datetime.datetime|最近一次本策略对该订单的撤单时间。|
 |_TimeLimitOrderInfo|TimeLimitOrderInfo.TYPE|TimeLimitOrderInfo|记录限时单相关信息|
 |_ComposoryOrderInfo|ComposoryOrderInfo.TYPE|ComposoryOrderInfo|记录强制单相关信息|
 |_AutoExitInfo|AutoExitInfo.TYPE|AutoExitInfo|止损止盈信息|
+|_TP_Tag|AutoExitInfo.TP_TAG|AutoExitInfo|止盈单标志|
+|_ConditionalOrderClose|ConditionalOrderClose.TYPE|ConditionalOrderClose|条件出场信息|
+|_JoinedOrderInfo_C|JoinedOrderInfo.CHILD_TAG|JoinedOrderInfo|合并订单信息(子单)|
+|_StepOrderInfo|StepOrderInfo.TYPE|StepOrderInfo|分批下单信息(母单)|
+|_DepthOrderInfo|DepthOrderInfo.TYPE|DepthOrderInfo|盘口下单信息(母单)|
+
 
 ## `class` TimeLimitOrderInfo
 
