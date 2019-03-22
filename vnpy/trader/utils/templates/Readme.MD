@@ -464,6 +464,17 @@ TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 |validIDs|set(str)|有效(有成交)的合并子单订单号|
 
 
+### 构造方法
+
+`JoinedOrderInfo.isActive()`
+
+合并订单是否有效，与cancel订单有关。
+
+`JoinedOrderInfo.deactivate()`
+
+使合并订单失效。
+
+
 ## `class` BatchOrderInfo(JoinedOrderInfo)
 
 基于合单逻辑的分批下单信息基类，记录分批下单通用信息。
@@ -476,16 +487,6 @@ TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 |vtSymbol|str|品种名。|
 |price|float|限制价格。|
 |volume|float|下单总数。|
-
-### 构造方法
-
-`BatchOrderInfo.isActive()`
-
-分批下单是否有效。无效时策略模板会撤销所有未成交的分批下单并停止继续下单。
-
-`BatchOrderInfo.deactivate()`
-
-使分批下单失效。
 
 
 ## `class` StepOrderInfo(BatchOrderInfo)
@@ -513,6 +514,14 @@ TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 wait|float|每次下单间隔时间|
 
 
+### 构造方法
+
+`StepOrderInfo.deactivate()`
+
+使分批下单失效，然后策略撤掉相关挂单。
+
+
+
 ## `class` DepthOrderInfo(StepOrderInfo)
 
 盘口深度下单信息，继承BatchOrderInfo。
@@ -535,6 +544,14 @@ wait|float|每次下单间隔时间|
 |expire_at|datetime.datetime|撤单时间|
 |nextSendTime|datetime.datetime|下次发单时间，如果当前时间小于下次发单时间则不发。|
 wait|float|每次下单间隔时间|
+
+### 构造方法
+
+`DepthOrderInfo.deactivate()`
+
+使盘口下单失效，然后策略撤掉相关挂单。
+
+
 
 ---
 
