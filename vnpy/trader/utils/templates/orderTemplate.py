@@ -212,12 +212,23 @@ class JoinedOrderInfo(object):
         self.validIDs = set()
         for child in children:
             self.addChild(child)
+        self._active = True
+    
+    def isActive(self):
+        return self._active
+    
+    def deactivate(self):
+        self._active = False
     
     def addChild(self, op):
         assert self.parentID != op.vtOrderID, "Parent can not be add as a child: %s" % self.parentID
-        self.childIDs.add(op.vtOrderID)
-        self.activeIDs.add(op.vtOrderID)
-        op.addTrack(self.CHILD_TAG, self) 
+        if self._active:
+            self.childIDs.add(op.vtOrderID)
+            self.activeIDs.add(op.vtOrderID)
+            op.addTrack(self.CHILD_TAG, self) 
+            return True
+        else:
+            return False
     
     def onChild(self, op):
         if op.vtOrderID in self.activeIDs:
@@ -237,13 +248,6 @@ class BatchOrderInfo(JoinedOrderInfo):
         self.vtSymbol = order.vtSymbol
         self.price = order.price
         self.volume = order.totalVolume
-        self._active = True
-    
-    def isActive(self):
-        return self._active
-    
-    def deactivate(self):
-        self._active = False
 
 
 class StepOrderInfo(BatchOrderInfo):
@@ -872,8 +876,10 @@ class OrderTemplate(CtaTemplate):
         if not pool:
             return
         for soi in list(pool.values()):
+            if soi.expire_at <= self.currentTime:
+                soi.deactivate()
             
-            if soi.isActive() and (soi.expire_at > self.currentTime):
+            if soi.isActive():
                 self.execStepOrder(soi)
             elif soi.activeIDs:
                 for op in self.findOrderPacks(soi.activeIDs):
@@ -898,8 +904,11 @@ class OrderTemplate(CtaTemplate):
                     
     def onStepOrder(self, op):
         soi = op.info[StepOrderInfo.TYPE]
-        if op.order.status in STATUS_FINISHED:
+        if op.order.status == constant.STATUS_CANCELLING:
             soi.deactivate()
+            if not soi.activeIDs:
+                op.order.status = constant.STATUS_CANCELLED
+                self.onOrder(op.order)
 
     def makeStepOrder(self, orderType, vtSymbol, price, volume, step, expire, wait=0):
         expire_at = self.currentTime + timedelta(seconds=expire)
@@ -934,7 +943,10 @@ class OrderTemplate(CtaTemplate):
             return
         tick = self._tickInstance[vtSymbol]
         for doi in list(pool.values()):
-            if doi.isActive() and (doi.expire_at > self.currentTime):
+            if doi.expire_at <= self.currentTime:
+                doi.deactivate()
+
+            if doi.isActive():
                 self.execDepthOrder(doi, tick)
             elif doi.activeIDs:
                 for op in self.findOrderPacks(doi.activeIDs):
@@ -975,8 +987,11 @@ class OrderTemplate(CtaTemplate):
 
     def onDepthOrder(self, op):
         doi = op.info[DepthOrderInfo.TYPE]
-        if op.order.status in STATUS_FINISHED:
+        if op.order.status == constant.STATUS_CANCELLING:
             doi.deactivate()
+            if not doi.activeIDs:
+                op.order.status = constant.STATUS_CANCELLED
+                self.onOrder(op.order)
 
     def aggOrder(self, vtOrderIDs, name, func):
         l = []
@@ -1127,8 +1142,11 @@ class OrderTemplate(CtaTemplate):
         if not joi.activeIDs:
             if parent.order.tradedVolume >= parent.order.totalVolume:
                 parent.order.status = constant.STATUS_ALLTRADED
+                joi.deactivate()
+            elif not joi.isActive():
+                parent.order.status = constant.STATUS_CANCELLED
+            
         self.onOrder(parent.order)
-
 
     def checkOnPeriodStart(self, bar):
         self.checkComposoryOrders()
@@ -1266,7 +1284,7 @@ class OrderTemplate(CtaTemplate):
             op = self._orderPacks[vtOrderID]
             op.info[self._CANCEL_TAG] = True
             if self.isFake(op):
-                op.order.status = constant.STATUS_CANCELLED
+                op.order.status = constant.STATUS_CANCELLING
                 self.onOrder(op.order)
                 return
             
