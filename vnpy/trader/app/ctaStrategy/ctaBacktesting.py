@@ -68,7 +68,8 @@ class BacktestingEngine(object):
 
         self.dbClient = None  # 数据库客户端
         self.dbURI = ''       # 回测数据库地址
-        self.dbName = ''
+        self.bardbName = ''   # bar数据库名
+        self.tickdbName = ''  # tick数据库名
         self.dbCursor = None  # 数据库指针
         self.hdsClient = None  # 历史数据服务器客户端
 
@@ -161,8 +162,9 @@ class BacktestingEngine(object):
         """设置历史数据所用的数据库"""
         self.dbURI = dbURI
 
-    def setDatabase(self,dbName):
-        self.dbName = dbName
+    def setDatabase(self, bardbName=None, tickdbName=None):
+        self.bardbName = bardbName
+        self.tickdbName = tickdbName
 
     # ----------------------------------------------------------------------
     def setCapital(self, capital):
@@ -221,18 +223,18 @@ class BacktestingEngine(object):
         self.hdsClient.start()
 
     # ----------------------------------------------------------------------
-    def loadHistoryData(self, symbolList, startDate, endDate=None):
+    def loadHistoryData(self, symbolList, startDate, endDate=None, dataMode="bar"):
         """载入历史数据:数据范围[start:end)"""
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
 
         # 根据回测模式，确认要使用的数据类
-        if self.mode == self.BAR_MODE:
+        if dataMode == self.BAR_MODE:
             dataClass = VtBarData
             datetime_list = get_minutes_list(start=startDate, end=endDate)
         else:
             dataClass = VtTickData
-            datetime_list = get_date_list(start=startDate, end=endDate)
+            datetime_list = [date.strftime(constant.DATE) for date in get_date_list(start=startDate, end=endDate)]
 
         start = startDate.strftime(constant.DATETIME)
         end = endDate.strftime(constant.DATETIME)
@@ -243,7 +245,7 @@ class BacktestingEngine(object):
         df_cached = {}
         # 优先从本地文件缓存读取数据
         symbols_no_data = dict()  # 本地缓存没有的数据
-        save_path = os.path.join(self.cachePath, self.mode)
+        save_path = os.path.join(self.cachePath, dataMode)
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
         for symbol in symbolList:
@@ -254,11 +256,11 @@ class BacktestingEngine(object):
                 pkl_file = open(pkl_file_path, 'rb')
                 df_cached[symbol] = pickle.load(pkl_file)
                 pkl_file.close()
-                df_acquired =  df_cached[symbol][
+                df_acquired = df_cached[symbol][
                     (df_cached[symbol].datetime >= start) & (df_cached[symbol].datetime < end)
                     ]
                 dataList += [self.parseData(dataClass, item) for item in df_acquired.to_dict("record")]
-                if self.mode == self.BAR_MODE:
+                if dataMode == self.BAR_MODE:
                     dt_list_acquired = set(df_acquired['datetime'])  # bar 回测按实际的datetime
                 else:
                     dt_list_acquired = set(df_acquired['date'])  # tick 回测按日
@@ -274,19 +276,20 @@ class BacktestingEngine(object):
 
         # 如果没有完全从本地文件加载完数据, 则尝试从指定的mongodb下载数据, 并缓存到本地
         if self.dbURI:
-            # try:
             import pymongo
-            self.dbClient = pymongo.MongoClient(self.dbURI)[self.dbName]
+            if dataMode == self.BAR_MODE:
+                dbName = self.bardbName
+            else:
+                dbName = self.tickdbName
+            self.dbClient = pymongo.MongoClient(self.dbURI)[dbName]
             for symbol, need_datetimes in symbols_no_data.items():
                 if len(need_datetimes) > 0:  # 需要从数据库取数据
                     if symbol in self.dbClient.collection_names():
                         collection = self.dbClient[symbol]
-
-                        if self.mode == self.BAR_MODE:
+                        if dataMode == self.BAR_MODE:
                             Cursor = collection.find({"datetime": {"$in": need_datetimes}})  # 按时间回测检索
                         else:
                             Cursor = collection.find({"date": {"$in": need_datetimes}})  # 按日回测检索
-                        
                         data_df = pd.DataFrame(list(Cursor))
                         if data_df.size > 0:
                             del data_df["_id"]
@@ -308,12 +311,8 @@ class BacktestingEngine(object):
                     else:
                         self.output("数据库没有 %s 这个品种" % symbol)
                         self.output("这些品种在我们的数据库里: %s" % self.dbClient.collection_names())
-            # except:
-            #     self.output('当前仅使用本地缓存数据, 请注意计算数据量。')
-            #     import traceback
-            #     traceback.print_exc()
         else:
-            self.output('没有设置数据库URI, 请在回测设置 engine.setDB_URI("mongodb://localhost:27017")')
+            self.output('没有设置回测数据库URI, 无法回补缓存数据。请在回测设置 engine.setDB_URI("mongodb://localhost:27017")')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: x.datetime)
@@ -344,6 +343,7 @@ class BacktestingEngine(object):
         # 策略初始化
         self.output(u'策略初始化')
         # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
+
         if self.strategyStartDate != self.dataStartDate:
             self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
             self.output(u'初始化预加载数据成功, 数据长度:%s' % (len(self.initData)))
@@ -362,7 +362,7 @@ class BacktestingEngine(object):
         while start < stop:
             end = min(start + timedelta(dataDays), stop)
             self.output(u'当前回放的时间段:[%s,%s)' % (start.strftime(constant.DATETIME), end.strftime(constant.DATETIME)))
-            self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end)
+            self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
             if len(self.backtestData) == 0:
                 break
             else:
@@ -1175,7 +1175,7 @@ class BacktestingEngine(object):
                                                  targetName, self.mode,
                                                  self.startDate, self.initHours, self.endDate,
                                                  self.slippage, self.rate, self.size, self.priceTick,
-                                                 self.dbURI, self.dbName, self.symbol)))
+                                                 self.dbURI, self.bardbName, self.tickdbName, self.symbol)))
         pool.close()
         pool.join()
 
@@ -1516,7 +1516,7 @@ class OptimizationSetting(object):
             return
 
         if step <= 0:
-            print(u'参数布进必须大于0')
+            print(u'参数步进必须大于0')
             return
 
         l = []
@@ -1620,7 +1620,7 @@ def formatNumber(n):
 def optimize(backtestEngineClass, strategyClass, setting, targetName,
              mode, startDate, initHours, endDate,
              slippage, rate, size, priceTick,
-             db_URI, dbName, symbol):
+             db_URI, bardbName, tickdbName, symbol):
     """多进程优化时跑在每个进程中运行的函数"""
     engine = backtestEngineClass()
     engine.setBacktestingMode(mode)
@@ -1631,7 +1631,7 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
     engine.setSize(size)
     engine.setPriceTick(priceTick)
     engine.setDB_URI(db_URI)
-    engine.setDatabase(dbName)
+    engine.setDatabase(bardbName, tickdbName)
 
     engine.initStrategy(strategyClass, setting)
     engine.runBacktesting()
@@ -1664,7 +1664,7 @@ def get_date_list(start=None, end=None):
     if end is None:
         end = datetime.now()
     data = []
-    for d in gen_dates(start, (end - start).days):
+    for d in gen_dates(start, (end - start).days + 1):
         data.append(d)
     return data
 
