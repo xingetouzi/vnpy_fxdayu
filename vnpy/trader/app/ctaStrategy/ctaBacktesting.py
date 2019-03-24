@@ -223,12 +223,14 @@ class BacktestingEngine(object):
         self.hdsClient.start()
 
     # ----------------------------------------------------------------------
-    def loadHistoryData(self, symbolList, startDate, endDate=None, dataMode="bar"):
+    def loadHistoryData(self, symbolList, startDate, endDate=None, dataMode=None):
         """载入历史数据:数据范围[start:end)"""
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
 
         # 根据回测模式，确认要使用的数据类
+        if dataMode is None:
+            dataMode = self.mode
         if dataMode == self.BAR_MODE:
             dataClass = VtBarData
             datetime_list = get_minutes_list(start=startDate, end=endDate)
@@ -238,7 +240,7 @@ class BacktestingEngine(object):
 
         start = startDate.strftime(constant.DATETIME)
         end = endDate.strftime(constant.DATETIME)
-        self.output(f"准备载入数据：时间段:[{start} , {end})")
+        self.output(f"准备载入数据：时间段:[{start} , {end}), 模式: {dataMode}")
 
         # 下载数据
         dataList = []

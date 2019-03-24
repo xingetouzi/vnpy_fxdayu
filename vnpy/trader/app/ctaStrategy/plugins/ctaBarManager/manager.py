@@ -392,21 +392,19 @@ class HistoryData1MinBarCache(object):
 
     def fetch(self, start, end):
         symbol = self._symbol
+        mode = self._engine.BAR_MODE
         if self._bars is None:
-            self.bars = self._engine.loadHistoryData([symbol], start, end)
-            self._start = start 
+            self.bars = self._engine.loadHistoryData([symbol], start, end, dataMode=mode)
+            self._start = start
             self._end = end
         else:
             if self._start <= end and self._end >= start:  # insect
                 if start < self._start:
-                    bars = self._engine.loadHistoryData([symbol], start, self._start - timedelta(microseconds=1))
+                    bars = self._engine.loadHistoryData([symbol], start, self._start - timedelta(microseconds=1), dataMode=mode)
                     self._start = start
                     self.bars = bars + self._bars
                 if end > self._end:
-                    if self._engine.mode == 'tick':
-                        bars = self._engine.loadHistoryData([symbol], self._end + timedelta(microseconds=1), end)
-                    else:
-                        bars = self._engine.loadHistoryData([symbol], self._end + timedelta(minutes=1), end)
+                    bars = self._engine.loadHistoryData([symbol], self._end + timedelta(minutes=1), end, dataMode=mode)
                     self._end = end
                     self.bars = self._bars + bars
             else:
@@ -503,8 +501,6 @@ class BarManager(object):
         # FIXME: unify the frequancy representation.
         # FIXME: unify interface in backtesting and realtrading.
         if self.is_backtesting():
-            if self._engine.mode == self._engine.TICK_MODE:
-                return None, None
             return self._load_history_bar_backtesting(symbol, freq, size)
         else:
             symbol_, gateway_name = symbol.split(VN_SEPARATOR)

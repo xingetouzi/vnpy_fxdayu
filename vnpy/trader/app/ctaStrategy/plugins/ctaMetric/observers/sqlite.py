@@ -11,8 +11,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import NumpyEncoder
-from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.senders.sqlite import OpenFalconMetric as OpenFalconMetricModel 
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.senders.sqlite import OpenFalconMetric as OpenFalconMetricModel
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import OpenFalconMetric
+
 
 class HandleMetric(object):
     def __init__(self, filepath):
@@ -25,14 +26,18 @@ class HandleMetric(object):
         Session = sessionmaker()
         Session.configure(bind=engine)
         self.session = Session()
-    
+
     def has_table(self):
-        return self.engine.dialect.has_table(self.engine, OpenFalconMetricModel.__tablename__)
+        return self.engine.dialect.has_table(
+            self.engine, OpenFalconMetricModel.__tablename__)
 
     def get_metrics(self):
         if self.has_table():
             metrics = self.session.query(OpenFalconMetricModel).all()
-            metrics = [OpenFalconMetric.from_dict(metric.__dict__) for metric in metrics]
+            metrics = [
+                OpenFalconMetric.from_dict(metric.__dict__)
+                for metric in metrics
+            ]
             return metrics
         else:
             return []
@@ -77,7 +82,7 @@ class FileEventHandler(RegexMatchingEventHandler):
 
     def on_created(self, event):
         self.handle_file(event.src_path)
-    
+
     def on_modified(self, event):
         pass
 
@@ -91,7 +96,8 @@ class SqliteMetricObserver(object):
         self._observer = Observer()
         self._handler = FileEventHandler(self._root, self.reg)
         self._observer.schedule(self._handler, self._root, True)
-        self._url = url or os.environ.get("OPEN_FALCON_URL", "http://localhost:1988/v1/push")
+        self._url = url or os.environ.get("OPEN_FALCON_URL",
+                                          "http://localhost:1988/v1/push")
 
     def run(self):
         self._observer.start()
