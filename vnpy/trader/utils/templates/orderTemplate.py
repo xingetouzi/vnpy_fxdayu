@@ -1294,7 +1294,7 @@ class OrderTemplate(CtaTemplate):
             else:
                 op.info[self._CANCEL_TIME] = self.currentTime
             if self.isFake(op):
-                if op.order.stauts not in STATUS_FINISHED:
+                if op.order.status not in STATUS_FINISHED:
                     op.order.status = constant.STATUS_CANCELLING
                     self.onOrder(op.order)
                 return
