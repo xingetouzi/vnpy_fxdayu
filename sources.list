@@ -6,5 +6,5 @@ deb https://mirrors.tuna.tsinghua.edu.cn/debian/ jessie-backports main contrib n
 # deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ jessie-backports main contrib non-free
 deb https://mirrors.tuna.tsinghua.edu.cn/debian-security jessie/updates main contrib non-free
 # deb-src https://mirrors.tuna.tsinghua.edu.cn/debian-security jessie/updates main contrib non-free
-dep https://mirrors.ustc.edu.cn/debian/
-dep http://ftp2.cn.debian.org/debian/
+deb https://mirrors.ustc.edu.cn/debian/
+deb http://ftp2.cn.debian.org/debian/
