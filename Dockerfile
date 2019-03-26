@@ -1,7 +1,7 @@
 FROM continuumio/anaconda3:5.0.0
 
-ADD ./sources.list /etc/apt/sources.list
-
+ADD ./sources.list .
+RUN cat ./sources.list >> /etc/apt/sources.list
 RUN apt-get update 
 RUN apt-get install -y tar
 
