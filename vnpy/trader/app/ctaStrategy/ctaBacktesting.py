@@ -228,6 +228,8 @@ class BacktestingEngine(object):
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
 
+        modeMap = {self.BAR_MODE:"datetime",self.TICK_MODE:"date"}
+
         # 根据回测模式，确认要使用的数据类
         if dataMode is None:
             dataMode = self.mode
@@ -268,10 +270,7 @@ class BacktestingEngine(object):
                         (df_cached[symbol][file_].datetime >= start) & (df_cached[symbol][file_].datetime < end)
                         ]
                     dataList += [self.parseData(dataClass, item) for item in df_acquired.to_dict("record")]
-                    if dataMode == self.BAR_MODE:
-                        dt_list_acquired += list(set(df_acquired['datetime']))  # bar 回测按实际的datetime
-                    else:
-                        dt_list_acquired += list(set(df_acquired['date']))  # tick 回测按日
+                    dt_list_acquired += list(set(df_acquired[modeMap[dataMode]]))  # bar 回测按datetime, tick 回测按date
 
             symbols_no_data[symbol] = list(set(dt_list_acquired) ^ (set(datetime_list)))
             acq, need = len(dt_list_acquired), len(datetime_list)
@@ -289,10 +288,7 @@ class BacktestingEngine(object):
                 if len(need_datetimes) > 0:  # 需要从数据库取数据
                     if symbol in self.dbClient.collection_names():
                         collection = self.dbClient[symbol]
-                        if dataMode == self.BAR_MODE:
-                            Cursor = collection.find({"datetime": {"$in": need_datetimes}})  # 按时间回测检索
-                        else:
-                            Cursor = collection.find({"date": {"$in": need_datetimes}})  # 按日回测检索
+                        Cursor = collection.find({modeMap[dataMode]: {"$in": need_datetimes}})  # 按时间回测检索
                         data_df = pd.DataFrame(list(Cursor))
                         if data_df.size > 0:
                             del data_df["_id"]
@@ -312,7 +308,7 @@ class BacktestingEngine(object):
                                 if update_df.size > 0:
                                     update_df.to_hdf(f"{save_path}/{date}.hd5", "/", append=True)
 
-                            acq, need = len(list(data_df['datetime'])), len(need_datetimes)
+                            acq, need = len(list(set(data_df[modeMap[dataMode]]))), len(need_datetimes)
                             self.output(f"{symbol}： 从数据库存取了{acq}, 应补{need}, 缺失了{need-acq}")
                         else:
                             self.output(f"{symbol}： 数据库也没能补到缺失的数据")
