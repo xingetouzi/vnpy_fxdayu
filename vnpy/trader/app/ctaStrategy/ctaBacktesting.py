@@ -234,9 +234,13 @@ class BacktestingEngine(object):
         if dataMode == self.BAR_MODE:
             dataClass = VtBarData
             datetime_list = get_minutes_list(start=startDate, end=endDate)
+            date_list = list(set([date.strftime(constant.DATE) for date in datetime_list]))
+            need_files = [f"{d}.hd5" for d in date_list]
         else:
             dataClass = VtTickData
             datetime_list = [date.strftime(constant.DATE) for date in get_date_list(start=startDate, end=endDate)]
+            need_files = [f"{d}.hd5" for d in datetime_list]
+        need_files = list(set(need_files))
 
         start = startDate.strftime(constant.DATETIME)
         end = endDate.strftime(constant.DATETIME)
@@ -247,32 +251,29 @@ class BacktestingEngine(object):
         df_cached = {}
         # 优先从本地文件缓存读取数据
         symbols_no_data = dict()  # 本地缓存没有的数据
-        save_path = os.path.join(self.cachePath, dataMode)
-        if not os.path.isdir(save_path):
-            os.makedirs(save_path)
+        
         for symbol in symbolList:
             # 如果存在缓存文件，则读取日期列表和bar数据，否则初始化df_cached和dates_cached
-            pkl_file_path = f'{save_path}/{symbol.replace(":", "_")}.pkl'
-            if os.path.isfile(pkl_file_path):
-                # 读取 pkl
-                pkl_file = open(pkl_file_path, 'rb')
-                df_cached[symbol] = pickle.load(pkl_file)
-                pkl_file.close()
-                df_acquired = df_cached[symbol][
-                    (df_cached[symbol].datetime >= start) & (df_cached[symbol].datetime < end)
-                    ]
-                dataList += [self.parseData(dataClass, item) for item in df_acquired.to_dict("record")]
-                if dataMode == self.BAR_MODE:
-                    dt_list_acquired = set(df_acquired['datetime'])  # bar 回测按实际的datetime
-                else:
-                    dt_list_acquired = set(df_acquired['date'])  # tick 回测按日
+            save_path = os.path.join(self.cachePath, dataMode, symbol.replace(":", "_"))
+            symbols_no_data[symbol] = datetime_list
+            df_cached[symbol] = {}
+            dt_list_acquired = []
 
-                symbols_no_data[symbol] = list(dt_list_acquired ^ (set(datetime_list)))
-            else:
-                df_cached[symbol] = pd.DataFrame([])
-                dt_list_acquired = []
-                symbols_no_data[symbol] = datetime_list
+            for file_ in need_files:
+                hd5_file_path = f'{save_path}/{file_}'
+                if os.path.isfile(hd5_file_path):
+                    # 读取 hd5
+                    df_cached[symbol][file_] = pd.read_hdf(hd5_file_path)
+                    df_acquired = df_cached[symbol][file_][
+                        (df_cached[symbol][file_].datetime >= start) & (df_cached[symbol][file_].datetime < end)
+                        ]
+                    dataList += [self.parseData(dataClass, item) for item in df_acquired.to_dict("record")]
+                    if dataMode == self.BAR_MODE:
+                        dt_list_acquired += list(set(df_acquired['datetime']))  # bar 回测按实际的datetime
+                    else:
+                        dt_list_acquired += list(set(df_acquired['date']))  # tick 回测按日
 
+            symbols_no_data[symbol] = list(set(dt_list_acquired) ^ (set(datetime_list)))
             acq, need = len(dt_list_acquired), len(datetime_list)
             self.output(f"{symbol}： 从本地缓存文件实取{acq}, 最大应取{need}, 还需从数据库取{need-acq}")
 
@@ -300,12 +301,17 @@ class BacktestingEngine(object):
                                             data_df[(data_df.datetime >= start) & (data_df.datetime < end)].to_dict(
                                                 "record")]
                             # 缓存到本地文件
-                            update_df = df_cached[symbol].append(data_df)
-                            output = open(f'{save_path}/{symbol.replace(":", "_")}.pkl', 'wb')
-                            update_df.sort_values(by='datetime', ascending=True, inplace=True)
-                            
-                            pickle.dump(update_df, output)
-                            output.close()
+                            if not os.path.isdir(save_path):
+                                os.makedirs(save_path)
+
+                            if dataMode == self.BAR_MODE:
+                                dates = [datetimes.strftime(constant.DATE) for datetimes in symbols_no_data[symbol]]
+                                symbols_no_data[symbol] = list(set(dates))
+                            for date in symbols_no_data[symbol]:
+                                update_df = data_df[data_df["date"] == date]
+                                if update_df.size > 0:
+                                    update_df.to_hdf(f"{save_path}/{date}.hd5", "/", append=True)
+
                             acq, need = len(list(data_df['datetime'])), len(need_datetimes)
                             self.output(f"{symbol}： 从数据库存取了{acq}, 应补{need}, 缺失了{need-acq}")
                         else:
@@ -325,7 +331,7 @@ class BacktestingEngine(object):
             return []
 
     # ----------------------------------------------------------------------
-    def runBacktesting(self):
+    def runBacktesting(self, prepared_data = []):
         """运行回测"""
 
         dataLimit = 1000000
@@ -340,14 +346,15 @@ class BacktestingEngine(object):
 
         self.output(u'开始回测')
 
-        self.initData = []  # 清空内存里的数据
-        self.backtestData = []  # 清空内存里的数据
         # 策略初始化
         self.output(u'策略初始化')
         # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
 
         if self.strategyStartDate != self.dataStartDate:
-            self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
+            if not prepared_data:
+                self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
+            else:
+                self.initData = prepared_data[0]
             self.output(u'初始化预加载数据成功, 数据长度:%s' % (len(self.initData)))
         self.strategy.inited = True
         self.strategy.onInit()
@@ -361,10 +368,15 @@ class BacktestingEngine(object):
         begin = start = self.dataStartDate
         stop = self.dataEndDate
         self.output(u'回测时间范围:[%s,%s)' % (begin.strftime(constant.DATETIME), stop.strftime(constant.DATETIME)))
+        i = 1 # 缓存回测数据的起始位置
         while start < stop:
             end = min(start + timedelta(dataDays), stop)
             self.output(u'当前回放的时间段:[%s,%s)' % (start.strftime(constant.DATETIME), end.strftime(constant.DATETIME)))
-            self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
+            if not prepared_data:
+                self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
+            else:
+                self.backtestData = prepared_data[i]
+                i+=1
             if len(self.backtestData) == 0:
                 break
             else:
@@ -386,6 +398,26 @@ class BacktestingEngine(object):
             dataframe.to_csv(filename, index=False, sep=',', encoding="utf_8_sig")
             self.output(u'策略日志已生成')
 
+    def prepare_data(self):
+        prepared_data = []
+        self.output("预加载优化数据")
+        dataLimit = 1000000
+        if self.mode == self.BAR_MODE:
+            func = self.newBar
+            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60), 1)
+        else:
+            func = self.newTick
+            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60 * 60 * 5), 1)
+        if self.strategyStartDate != self.dataStartDate:
+            prepared_data += self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
+        
+        start = self.dataStartDate
+        stop = self.dataEndDate
+        while start < stop:
+            end = min(start + timedelta(dataDays), stop)
+            prepared_data += self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
+        
+        return prepared_data
     # ----------------------------------------------------------------------
 
     def newBar(self, bar):
@@ -1157,7 +1189,7 @@ class BacktestingEngine(object):
         return resultList
 
     # ----------------------------------------------------------------------
-    def runParallelOptimization(self, strategyClass, optimizationSetting):
+    def runParallelOptimization(self, strategyClass, optimizationSetting, prepared_data = []):
         """并行优化参数"""
         # 获取优化设置        
         settingList = optimizationSetting.generateSetting()
@@ -1168,7 +1200,7 @@ class BacktestingEngine(object):
             self.output(u'优化设置有问题，请检查')
 
         # 多进程优化，启动一个对应CPU核心数量的进程池
-        pool = multiprocessing.Pool(multiprocessing.cpu_count())
+        pool = multiprocessing.Pool(multiprocessing.cpu_count()-1)
         l = []
 
         for setting in settingList:
@@ -1177,7 +1209,8 @@ class BacktestingEngine(object):
                                                  targetName, self.mode,
                                                  self.startDate, self.initHours, self.endDate,
                                                  self.slippage, self.rate, self.size, self.priceTick,
-                                                 self.dbURI, self.bardbName, self.tickdbName, self.symbol)))
+                                                 self.dbURI, self.bardbName, self.tickdbName, 
+                                                 self.symbol, prepared_data)))
         pool.close()
         pool.join()
 
@@ -1622,7 +1655,7 @@ def formatNumber(n):
 def optimize(backtestEngineClass, strategyClass, setting, targetName,
              mode, startDate, initHours, endDate,
              slippage, rate, size, priceTick,
-             db_URI, bardbName, tickdbName, symbol):
+             db_URI, bardbName, tickdbName, symbol, prepared_data = []):
     """多进程优化时跑在每个进程中运行的函数"""
     engine = backtestEngineClass()
     engine.setBacktestingMode(mode)
@@ -1636,7 +1669,7 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
     engine.setDatabase(bardbName, tickdbName)
 
     engine.initStrategy(strategyClass, setting)
-    engine.runBacktesting()
+    engine.runBacktesting(prepared_data)
 
     df = engine.calculateDailyResult()
     df, d = engine.calculateDailyStatistics(df)
