@@ -1,4 +1,4 @@
-FROM continuumio/anaconda3:5.0.0
+FROM continuumio/anaconda3:4.3.0
 
 ADD ./sources.list /etc/apt/sources.list
 RUN apt-get update 
