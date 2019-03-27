@@ -382,19 +382,22 @@ class BacktestingEngine(object):
         dataLimit = 1000000
         if self.mode == self.BAR_MODE:
             func = self.newBar
-            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60), 1)
+            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60), 1)
         else:
             func = self.newTick
-            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60 * 60 * 5), 1)
+            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60 * 60 * 5), 1)
         if self.strategyStartDate != self.dataStartDate:
-            prepared_data += self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
+            prepared_data.append(self.loadHistoryData(self.contracts.keys(), self.strategyStartDate, self.dataStartDate))
         
         start = self.dataStartDate
         stop = self.dataEndDate
         while start < stop:
             end = min(start + timedelta(dataDays), stop)
-            prepared_data += self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
-        
+            prepared_data.append(self.loadHistoryData(self.contracts.keys(), start, end, self.mode))
+            if len(prepared_data) == 0:
+                break
+            else:
+                start = end
         return prepared_data
     # ----------------------------------------------------------------------
     def newBar(self, bar):
@@ -1165,7 +1168,7 @@ class BacktestingEngine(object):
         return resultList
 
     # ----------------------------------------------------------------------
-    def runParallelOptimization(self, strategyClass, optimizationSetting, prepared_data = []):
+    def runParallelOptimization(self, strategyClass, optimizationSetting, strategySetting = {}, prepared_data = []):
         """并行优化参数"""
         # 获取优化设置        
         settingList = optimizationSetting.generateSetting()
@@ -1180,6 +1183,7 @@ class BacktestingEngine(object):
         l = []
 
         for setting in settingList:
+            setting.update(strategySetting)
             self.clearBacktestingResult()  # 清空策略的所有状态（指如果多次运行同一个策略产生的状态）
             l.append(pool.apply_async(optimize, (self.__class__, strategyClass, setting,
                                                  targetName, self.mode,
