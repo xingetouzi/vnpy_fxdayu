@@ -40,4 +40,4 @@ conda install -y python-snappy
 pip install -r requirements.txt
 
 #Install vn.py
-python setup.py install
+# python setup.py install
