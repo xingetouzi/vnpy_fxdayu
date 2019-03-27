@@ -311,7 +311,7 @@ class BacktestingEngine(object):
             return []
 
     # ----------------------------------------------------------------------
-    def runBacktesting(self, prepared_data = []):
+    def runBacktesting(self, prepared_data = [], cache_data =False):
         """运行回测"""
 
         dataLimit = 1000000
@@ -319,16 +319,30 @@ class BacktestingEngine(object):
         # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
         if self.mode == self.BAR_MODE:
             func = self.newBar
-            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60), 1)
+            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60), 1)
         else:
             func = self.newTick
-            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60 * 60 * 5), 1)
+            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60 * 60 * 5), 1)
+        
+        if cache_data:  # 为优化缓存数据到内存中
+            self.output("预加载优化数据到内存中")
+            if self.strategyStartDate != self.dataStartDate:
+                prepared_data.append(self.loadHistoryData(self.contracts.keys(), self.strategyStartDate, self.dataStartDate))
+            start = self.dataStartDate
+            stop = self.dataEndDate
+            while start < stop:
+                end = min(start + timedelta(dataDays), stop)
+                backtest_data = self.loadHistoryData(self.contracts.keys(), start, end, self.mode)
+                prepared_data.append(backtest_data)
+                if len(backtest_data) == 0:
+                    break
+                else:
+                    start = end
+            return prepared_data
 
+        # 开始回测, 加载初始化数据, 数据范围:[self.strategyStartDate,self.dataStartDate)
         self.output(u'开始回测')
-
-        # 策略初始化
         self.output(u'策略初始化')
-        # 加载初始化数据.数据范围:[self.strategyStartDate,self.dataStartDate)
 
         if self.strategyStartDate != self.dataStartDate:
             if not prepared_data:
@@ -376,29 +390,6 @@ class BacktestingEngine(object):
             dataframe.to_csv(filename, index=False, sep=',', encoding="utf_8_sig")
             self.output(u'策略日志已生成')
 
-    def prepare_data(self):
-        prepared_data = []
-        self.output("预加载优化数据")
-        dataLimit = 1000000
-        if self.mode == self.BAR_MODE:
-            func = self.newBar
-            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60), 1)
-        else:
-            func = self.newTick
-            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60 * 60 * 5), 1)
-        if self.strategyStartDate != self.dataStartDate:
-            prepared_data.append(self.loadHistoryData(self.contracts.keys(), self.strategyStartDate, self.dataStartDate))
-        
-        start = self.dataStartDate
-        stop = self.dataEndDate
-        while start < stop:
-            end = min(start + timedelta(dataDays), stop)
-            prepared_data.append(self.loadHistoryData(self.contracts.keys(), start, end, self.mode))
-            if len(prepared_data) == 0:
-                break
-            else:
-                start = end
-        return prepared_data
     # ----------------------------------------------------------------------
     def newBar(self, bar):
         """新的K线"""
