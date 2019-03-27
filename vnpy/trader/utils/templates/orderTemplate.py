@@ -1263,7 +1263,7 @@ class OrderTemplate(CtaTemplate):
             contract = self.ctaEngine.mainEngine.getContract(vtSymbol)
             result = self.ctaEngine.roundToPriceTick(contract.priceTick, price)
         elif mode == ctaBase.ENGINETYPE_BACKTESTING:
-            result = self.ctaEngine.roundToPriceTick(price)
+            result = self.ctaEngine.roundToPriceTick(vtSymbol, price)
         else:
             result = price
         
