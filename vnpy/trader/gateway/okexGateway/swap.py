@@ -66,6 +66,7 @@ class OkexSwapRestApi(RestClient):
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
         self.okexIDMap = {}       # store okexID <-> OID
+        self.missing_order_Dict = {} # store missing orders due to network issue
     
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
@@ -221,7 +222,14 @@ class OkexSwapRestApi(RestClient):
             path = f'/api/swap/v3/orders/{symbol}'
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
+        for oid, symbol in self.missing_order_Dict.items():
+            self.queryMonoOrder(symbol, oid)
 
+    def queryMonoOrder(self,symbol,oid):
+        path = f'/api/swap/v3/orders/{symbol}/{oid}'
+        self.addRequest('GET', path, params=None,
+                            callback=self.onQueryMonoOrder,
+                            extra = oid)
     # ----------------------------------------------------------------------
     def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
@@ -485,6 +493,10 @@ class OkexSwapRestApi(RestClient):
         if order.thisTradedVolume:
             self.gateway.newTradeObject(order)
 
+        sym = self.missing_order_Dict.get(order.orderID, None)
+        if sym:
+            del self.missing_order_Dict[order.orderID]
+
         if order.status in STATUS_FINISHED:
             finish_id = self.okexIDMap.get(okexID, None)
             if finish_id:
@@ -504,6 +516,37 @@ class OkexSwapRestApi(RestClient):
         for data in d['order_info']:
             self.processOrderData(data)
 
+    def onQueryMonoOrder(self,d,request):
+        """{"instrument_id":"ETH-USD-190628","size":"1","timestamp":"2019-03-22T03:22:13.000Z",
+            "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
+            "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
+            "order_type":"0"}"""
+        """ GET 200 {'code': 35029, 'message': 'Order does not exist'} """
+        errorcode = d.get("code", None)
+        if errorcode:
+            order = self.orderDict.get(request.extra, None)
+            order.status = STATUS_REJECTED
+            order.rejectedInfo = str(d['code']) + d['message']
+            self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+            self.gateway.onOrder(order)
+            sym = self.missing_order_Dict.get(order.orderID, None)
+            if sym:
+                del self.missing_order_Dict[order.orderID]
+        else:
+            self.processOrderData(d)     
+
+    def onqueryMonoOrderFailed(self, data, request):
+        """ {'code': 35029, 'message': 'Order does not exist'} """
+        order = self.orderDict.get(request.extra, None)
+        if order:
+            order.status = STATUS_REJECTED
+            order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
+            self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+            self.gateway.onOrder(order)
+            sym = self.missing_order_Dict.get(order.orderID, None)
+            if sym:
+                del self.missing_order_Dict[order.orderID]
+
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
@@ -514,6 +557,7 @@ class OkexSwapRestApi(RestClient):
         order.status = STATUS_REJECTED
         order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
         self.gateway.onOrder(order)
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
@@ -522,10 +566,9 @@ class OkexSwapRestApi(RestClient):
         """
         self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
         order = request.extra
-        order.status = STATUS_UNKNOWN
-        order.rejectedInfo = "onSendOrderError: OKEX not response or network issue"
-        #str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
-        self.gateway.onOrder(order)
+        self.queryMonoOrder(order.symbol, order.orderID)
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}')
+        self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
