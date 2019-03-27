@@ -20,19 +20,16 @@ if [ "$var1" = "y" ]; then
 fi
 
 #Install Ta-Lib
-python -c "import talib"
-if [ $? -nq 0 ]; then
-    wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
-    tar -xzf ta-lib-0.4.0-src.tar.gz
-    pushd ta-lib/
-    ./configure --prefix=/usr
-    make
-    make install
-    pip install ta-lib
-    popd
-    rm ta-lib-0.4.0-src.tar.gz
-    rm -rf ta-lib
-fi
+wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+tar -xzf ta-lib-0.4.0-src.tar.gz
+pushd ta-lib/
+./configure --prefix=/usr
+make
+make install
+pip install ta-lib
+popd
+rm ta-lib-0.4.0-src.tar.gz
+rm -rf ta-lib
 
 conda install -y python-snappy
 
