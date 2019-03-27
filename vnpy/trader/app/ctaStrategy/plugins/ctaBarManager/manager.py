@@ -400,7 +400,7 @@ class HistoryData1MinBarCache(object):
         else:
             if self._start <= end and self._end >= start:  # insect
                 if start < self._start:
-                    bars = self._engine.loadHistoryData([symbol], start, self._start - timedelta(microseconds=1), dataMode=mode)
+                    bars = self._engine.loadHistoryData([symbol], start, self._start - timedelta(minutes=1), dataMode=mode)
                     self._start = start
                     self.bars = bars + self._bars
                 if end > self._end:
