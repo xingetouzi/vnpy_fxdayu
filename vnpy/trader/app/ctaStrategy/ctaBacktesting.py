@@ -311,7 +311,7 @@ class BacktestingEngine(object):
             return []
 
     # ----------------------------------------------------------------------
-    def runBacktesting(self, prepared_data = [], cache_data =False):
+    def runBacktesting(self):
         """运行回测"""
 
         dataLimit = 1000000
@@ -323,32 +323,16 @@ class BacktestingEngine(object):
         else:
             func = self.newTick
             dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60 * 60 * 5), 1)
-        
-        if cache_data:  # 为优化缓存数据到内存中
-            self.output("预加载优化数据到内存中")
-            if self.strategyStartDate != self.dataStartDate:
-                prepared_data.append(self.loadHistoryData(self.contracts.keys(), self.strategyStartDate, self.dataStartDate))
-            start = self.dataStartDate
-            stop = self.dataEndDate
-            while start < stop:
-                end = min(start + timedelta(dataDays), stop)
-                backtest_data = self.loadHistoryData(self.contracts.keys(), start, end, self.mode)
-                prepared_data.append(backtest_data)
-                if len(backtest_data) == 0:
-                    break
-                else:
-                    start = end
-            return prepared_data
 
         # 开始回测, 加载初始化数据, 数据范围:[self.strategyStartDate,self.dataStartDate)
         self.output(u'开始回测')
         self.output(u'策略初始化')
+        # 清空历史数据
+        self.initData = []
+        self.backtestData = []
 
         if self.strategyStartDate != self.dataStartDate:
-            if not prepared_data:
-                self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
-            else:
-                self.initData = prepared_data[0]
+            self.initData = self.loadHistoryData(self.strategy.symbolList, self.strategyStartDate, self.dataStartDate)
             self.output(u'初始化预加载数据成功, 数据长度:%s' % (len(self.initData)))
         self.strategy.inited = True
         self.strategy.onInit()
@@ -362,15 +346,11 @@ class BacktestingEngine(object):
         begin = start = self.dataStartDate
         stop = self.dataEndDate
         self.output(u'回测时间范围:[%s,%s)' % (begin.strftime(constant.DATETIME), stop.strftime(constant.DATETIME)))
-        i = 1 # 缓存回测数据的起始位置
         while start < stop:
             end = min(start + timedelta(dataDays), stop)
             self.output(u'当前回放的时间段:[%s,%s)' % (start.strftime(constant.DATETIME), end.strftime(constant.DATETIME)))
-            if not prepared_data:
-                self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
-            else:
-                self.backtestData = prepared_data[i]
-                i+=1
+            self.backtestData = self.loadHistoryData(self.strategy.symbolList, start, end, self.mode)
+
             if len(self.backtestData) == 0:
                 break
             else:
@@ -423,6 +403,8 @@ class BacktestingEngine(object):
         self.strategy.name = self.strategy.className
         if not self.contracts:
             self.strategy.symbolList = setting['symbolList']
+            for symbol in self.strategy.symbolList:
+                self.contracts.update({symbol:{}})
         else:
             self.strategy.symbolList = list(self.contracts.keys())
         self.initPosition(self.strategy)

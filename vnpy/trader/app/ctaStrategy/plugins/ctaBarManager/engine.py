@@ -81,16 +81,13 @@ class BacktestingEngine(OriginBacktestingEngine):
     def getArrayManager(self, symbol, freq="1m"):
         return self.barManager.get_array_manager(symbol, freq=freq)
 
-    def runBacktesting(self, prepared_data = [], cache_data =False):
+    def runBacktesting(self):
         if isinstance(self.strategy, CtaTemplate):
             self.barManager = BarManager(self)
             self.barManager.set_mode(self.mode)
             self.barManager.register_strategy(self.strategy)
             self.__prev_bars = {}
-        if cache_data:
-            return super(BacktestingEngine, self).runBacktesting(prepared_data, cache_data)
-        else:
-            super(BacktestingEngine, self).runBacktesting(prepared_data)
+        super(BacktestingEngine, self).runBacktesting()
 
     def newBar(self, bar):
         if isinstance(self.strategy, CtaTemplate):
