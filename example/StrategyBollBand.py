@@ -1,8 +1,7 @@
-from __future__ import division
 from vnpy.trader.vtConstant import *
-from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate,
-                                                     BarGenerator,
-                                                     ArrayManager)
+from vnpy.trader.app.ctaStrategy.ctaTemplate import CtaTemplate
+from vnpy.trader.vtUtility import BarGenerator, ArrayManager
+
 import talib as ta
 
 ########################################################################

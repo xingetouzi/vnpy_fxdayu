@@ -1,13 +1,4 @@
-# encoding: UTF-8
-
-# 重载sys模块，设置默认字符串编码方式为utf8
-# try:
-#     reload         # Python 2
-# except NameError:  # Python 3
-#     from importlib import reload
 import sys
-# reload(sys)
-# sys.setdefaultencoding('utf8')
 
 # 判断操作系统
 import platform
@@ -19,11 +10,8 @@ from vnpy.trader.vtEngine import MainEngine
 from vnpy.trader.uiQt import createQApp
 
 # 加载底层接口
-from vnpy.trader.gateway import (huobiGateway,binanceGateway,okexfGateway)
-                                #  , bitfinexGateway,
-                                #  bitmexGateway, fcoinGateway,
-                                #  bigoneGateway, lbankGateway,
-                                #  coinbaseGateway, ccxtGateway)
+from vnpy.trader.gateway import (huobiGateway,binanceGateway,okexGateway)
+                                # bitfinexGateway, bitmexGateway)
 
 # 加载上层应用
 from vnpy.trader.app import (algoTrading,ctaStrategy)
@@ -51,7 +39,7 @@ def main():
     # me.addGateway(fcoinGateway)
     # me.addGateway(bitmexGateway)
     me.addGateway(huobiGateway)
-    me.addGateway(okexfGateway)
+    me.addGateway(okexGateway)
     me.addGateway(binanceGateway)
     # me.addGateway(bitfinexGateway)
     
@@ -65,7 +53,6 @@ def main():
 
     # 在主线程中启动Qt事件循环
     sys.exit(qApp.exec_())
-
 
 if __name__ == '__main__':
     main()

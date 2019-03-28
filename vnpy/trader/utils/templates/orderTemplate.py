@@ -5,6 +5,7 @@ from vnpy.trader.language import constant
 from vnpy.trader.app.ctaStrategy import ctaBase
 from datetime import datetime, timedelta
 from collections import Iterable
+import numpy as np
 import logging
 
 
@@ -132,7 +133,6 @@ class AutoExitInfo(object):
     TYPE = "_AutoExitInfo"
 
     TP_TAG = "_TP_Tag"
-    TP_CANCEL_TAG = "_TP_CANCEL"
 
     def __init__(self, op, stoploss=None, takeprofit=None):
         self.originID = op.vtOrderID if isinstance(op, OrderPack) else op
@@ -196,45 +196,83 @@ class AssembleOrderInfo(object):
         self.originID = op.vtOrderID
         op.info[self.TYPE] = self
         op.info[self.TAG] = self.ORIGIN
-    
 
-class StepOrderInfo(object):
+
+class JoinedOrderInfo(object):
+
+    PARENT_TAG = "_JoinedOrderInfo_P"
+    CHILD_TAG = "_JoinedOrderInfo_C"
+
+    def __init__(self, parent, *children):
+        self.parentID = parent.vtOrderID
+        self.childIDs = set()
+        self.activeIDs = set()
+        self.closedIDs = set()
+        self.validIDs = set()
+        for child in children:
+            self.addChild(child)
+        self._active = True
+    
+    def isActive(self):
+        return self._active
+    
+    def deactivate(self):
+        self._active = False
+    
+    def addChild(self, op):
+        assert self.parentID != op.vtOrderID, "Parent can not be add as a child: %s" % self.parentID
+        if self._active:
+            self.childIDs.add(op.vtOrderID)
+            self.activeIDs.add(op.vtOrderID)
+            op.addTrack(self.CHILD_TAG, self) 
+            return True
+        else:
+            return False
+    
+    def onChild(self, op):
+        if op.vtOrderID in self.activeIDs:
+            if op.order.status in STATUS_FINISHED:
+                self.activeIDs.discard(op.vtOrderID)
+                self.closedIDs.add(op.vtOrderID)
+            if op.order.tradedVolume:
+                self.validIDs.add(op.vtOrderID)
+
+
+class BatchOrderInfo(JoinedOrderInfo):
+
+    def __init__(self, parent, *children):
+        super().__init__(parent, *children)
+        order = parent.order
+        self.orderType = ORDERTYPE_MAP[order.offset][order.direction]
+        self.vtSymbol = order.vtSymbol
+        self.price = order.price
+        self.volume = order.totalVolume
+
+
+class StepOrderInfo(BatchOrderInfo):
     TYPE = "_StepOrderInfo"
 
-    def __init__(self, orderType, vtSymbol, price, volume, step, expire_at, wait=0):
-        self.orderType = orderType
-        self.vtSymbol = vtSymbol
-        self.price = price
-        self.volume = volume
+    def __init__(self, parent, step, expire_at, wait=0):
+        super().__init__(parent)
         self.step = step
         self.expire_at = expire_at
         self.wait = wait
         self.nextSendTime = datetime.fromtimestamp(86400)
-        self.vtOrderIDs = set()
-        self.finishedOrderIDs = set()
-        self.invalidOrderIDs = set()
-    
-    def add(self, op):
-        self.vtOrderIDs.add(op.vtOrderID)
-    
-    def finish(self, op):
-        if op.vtOrderID in self.vtOrderIDs:
-            self.vtOrderIDs.remove(op.vtOrderID)
-            if op.order.tradedVolume:
-                self.finishedOrderIDs.add(op.vtOrderID)
-            else:
-                self.invalidOrderIDs.add(op.vtOrderID)
 
-class DepthOrderInfo(StepOrderInfo):
+
+class DepthOrderInfo(BatchOrderInfo):
 
     TYPE = "_DepthOrderInfo"
 
-    def __init__(self, orderType, vtSymbol, price, volume, depth, expire_at, wait=0):
-        super().__init__(orderType, vtSymbol, price, volume, None, expire_at, wait)
+    def __init__(self, parent, depth, expire_at, wait=0):
+        super().__init__(parent)
         assert isinstance(depth, int) and (depth > 0)
         self.depth = depth
+        self.expire_at = expire_at
+        self.wait = wait
+        self.nextSendTime = datetime.fromtimestamp(86400)
         self.keys = []
-        direction = DIRECTION_MAP[orderType]
+        direction = DIRECTION_MAP[self.orderType]
         self.direction = 1
         if direction == constant.DIRECTION_LONG:
             self.direction = 1
@@ -248,6 +286,7 @@ class DepthOrderInfo(StepOrderInfo):
     def isPriceExecutable(self, price):
         return price and ((self.price - price)*self.direction >= 0)
 
+
 class OrderTemplate(CtaTemplate):
 
     
@@ -256,6 +295,8 @@ class OrderTemplate(CtaTemplate):
     _EXPIRE_AT = "_EXPIRE_AT"
     _FINISH_TAG = "_FINISH_TAG"
     _CANCEL_TAG = "_CANCEL_TAG"
+    _CANCEL_TIME = "_CANCEL_TIME"
+    _CANCEL_GAP_TIME = timedelta(seconds=5)
 
     COMPOSORY_EXPIRE = 5
     NDIGITS = 4
@@ -275,6 +316,7 @@ class OrderTemplate(CtaTemplate):
         self._currentTime = datetime(2000, 1, 1)
         self._tickInstance = {}
         self._barInstance = {}
+        self._fakeOrderCount = 0
         self._order_costum_callbacks = {}
         self._infoPool = {
             TimeLimitOrderInfo.TYPE: {},
@@ -291,6 +333,8 @@ class OrderTemplate(CtaTemplate):
         self.registerOrderCostumCallback(RependingOrderInfo.TYPE, self.onRependingOrder)
         self.registerOrderCostumCallback(AutoExitInfo.TP_TAG, self.onTakeProfitPending)
         self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onStepOrder)
+        self.registerOrderCostumCallback(DepthOrderInfo.TYPE, self.onDepthOrder)
+        self.registerOrderCostumCallback(JoinedOrderInfo.CHILD_TAG, self.onJoinOrderChild)
     
     def registerOrderCostumCallback(self, co_type, callback):
         self._order_costum_callbacks[co_type] = callback
@@ -398,6 +442,34 @@ class OrderTemplate(CtaTemplate):
             order.datetime = self.currentTime
             op.order = order
         return packs
+
+    _FAKE_ORDER_TAG = "_FOT"
+
+    def fakeOrder(self,  orderType, vtSymbol, price, volume, priceType=constant.PRICETYPE_LIMITPRICE, **info):
+        order = VtOrderData()
+        order.vtOrderID = self.nextFakeOrderID()
+        order.vtSymbol = vtSymbol
+        order.price = price
+        order.totalVolume = volume
+        order.status = constant.STATUS_NOTTRADED
+        order.direction = DIRECTION_MAP[orderType]
+        order.offset = OFFSET_MAP[orderType]
+        order.datetime = self.currentTime
+        order.priceType = priceType
+        op = OrderPack(order.vtOrderID)
+        op.order = order
+        op.info.update(info)
+        op.info[self._FAKE_ORDER_TAG] = True
+        self._orderPacks[op.vtOrderID] = op
+        return op
+
+    def isFake(self, op):
+        return op.info.get(self._FAKE_ORDER_TAG, False)
+
+    def nextFakeOrderID(self):
+        fakeOrderID = "%s-%s" % (self.__class__.__name__, self._fakeOrderCount)
+        self._fakeOrderCount += 1
+        return fakeOrderID
 
     def composoryClose(self, op, expire=None):
         if expire is None:
@@ -712,9 +784,6 @@ class OrderTemplate(CtaTemplate):
         if ae.stoploss or ae.takeprofit:
             self._autoExitInfo[op.vtOrderID] = op
             logging.info("%s | %s | setAutoExit", self.currentTime, ae)
-        elif op.vtOrderID in self._autoExitInfo:
-            self._autoExitInfo.pop(op.vtOrderID)
-            logging.info("%s | %s | cancelAutoExit", self.currentTime, ae)
         return ae
 
     def execAutoExit(self, origin, ask, bid, check_tp=False):
@@ -808,60 +877,67 @@ class OrderTemplate(CtaTemplate):
         if not pool:
             return
         for soi in list(pool.values()):
+            if soi.expire_at <= self.currentTime:
+                soi.deactivate()
+                parent = self._orderPacks[soi.parentID]
+                self.cancelOrder(parent.vtOrderID)
             
-            if soi.expire_at < self.currentTime:
+            if soi.isActive():
+                self.execStepOrder(soi)
+            elif soi.activeIDs:
+                for op in self.findOrderPacks(soi.activeIDs):
+                    if op.order.status not in STATUS_FINISHED:
+                        self.cancelOrder(op.vtOrderID)
+            else:
                 pool.pop(id(soi))
-                continue
-            self.execStepOrder(soi)
 
     def execStepOrder(self, soi):
         assert isinstance(soi, StepOrderInfo)
         if self.currentTime < soi.nextSendTime:
             return
-        
-        locked = self.aggOrder(soi.vtOrderIDs, "totalVolume", sum) + self.aggOrder(soi.finishedOrderIDs, 'tradedVolume', sum)
+        locked = self.aggOrder(soi.activeIDs, "totalVolume", sum) + self.aggOrder(soi.closedIDs, 'tradedVolume', sum)
         locked = self._round(locked)
         if locked < soi.volume:
             
             volume = soi.step if locked + soi.step <= soi.volume else soi.volume - locked
             tlo = self.timeLimitOrder(soi.orderType, soi.vtSymbol, soi.price, volume, (soi.expire_at - self.currentTime).total_seconds())
             for pack in self.findOrderPacks(tlo.vtOrderIDs):
-                pack.addTrack(StepOrderInfo.TYPE, soi)
-                soi.add(pack)
+                soi.addChild(pack)
             soi.nextSendTime = self.currentTime + timedelta(seconds=soi.wait)
                     
     def onStepOrder(self, op):
         soi = op.info[StepOrderInfo.TYPE]
-        if op.order.status in STATUS_FINISHED:
-            soi.finish(op)
-            traded = self._round(self.aggOrder(soi.finishedOrderIDs, "tradedVolume", sum))
+        if op.order.status == constant.STATUS_CANCELLING:
+            soi.deactivate()
+            if not soi.activeIDs:
+                op.order.status = constant.STATUS_CANCELLED
+                self.onOrder(op.order)
 
-            if not soi.vtOrderIDs and (traded == soi.volume):
-                self._infoPool[StepOrderInfo.TYPE].get(op.order.vtSymbol, {}).pop(id(soi), None)
-            
     def makeStepOrder(self, orderType, vtSymbol, price, volume, step, expire, wait=0):
         expire_at = self.currentTime + timedelta(seconds=expire)
         volume = self._round(volume)
-        soi = StepOrderInfo(orderType, vtSymbol, price, volume, step, expire_at, wait)
+        fakeOp = self.fakeOrder(orderType, vtSymbol, price, volume)
+        soi = StepOrderInfo(fakeOp, step, expire_at, wait)
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
             self._infoPool[StepOrderInfo.TYPE].setdefault(vtSymbol, {})[id(soi)] = soi
         else:
             vtOrderIDs = self.timeLimitOrder(orderType, vtSymbol, price, volume, expire).vtOrderIDs
             for pack in self.findOrderPacks(vtOrderIDs):
-                pack.addTrack(soi.TYPE, soi)
-                soi.add(pack)
+                soi.addChild(pack)
+        fakeOp.addTrack(soi.TYPE, soi)
         return soi
     
     def makeDepthOrder(self, orderType, vtSymbol, price, volume, depth, expire, wait=0):
         expire_at = self.currentTime + timedelta(seconds=expire)
-        doi = DepthOrderInfo(orderType, vtSymbol, price, volume, depth, expire_at, wait)
+        fakeOp = self.fakeOrder(orderType, vtSymbol, price, volume)
+        doi = DepthOrderInfo(fakeOp, depth, expire_at, wait)
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
             self._infoPool[DepthOrderInfo.TYPE].setdefault(vtSymbol, {})[id(doi)] = doi
         else:
             vtOrderIDs = self.timeLimitOrder(orderType, vtSymbol, price, volume, expire).vtOrderIDs
             for pack in self.findOrderPacks(vtOrderIDs):
-                pack.addTrack(doi.TYPE, doi)
-                doi.add(pack)
+                doi.addChild(pack)
+        fakeOp.addTrack(doi.TYPE, doi)
         return doi
     
     def checkDepthOrders(self, vtSymbol):
@@ -870,11 +946,19 @@ class OrderTemplate(CtaTemplate):
             return
         tick = self._tickInstance[vtSymbol]
         for doi in list(pool.values()):
-            
-            if doi.expire_at < self.currentTime:
+            if doi.expire_at <= self.currentTime:
+                doi.deactivate()
+                parent = self._orderPacks[doi.parentID]
+                self.cancelOrder(parent.vtOrderID)
+
+            if doi.isActive():
+                self.execDepthOrder(doi, tick)
+            elif doi.activeIDs:
+                for op in self.findOrderPacks(doi.activeIDs):
+                    if op.order.status not in STATUS_FINISHED:
+                        self.cancelOrder(op.vtOrderID)
+            else:
                 pool.pop(id(doi))
-                continue
-            self.execDepthOrder(doi, tick)
 
     def execDepthOrder(self, doi, tick):
         assert isinstance(tick, VtTickData)
@@ -883,7 +967,7 @@ class OrderTemplate(CtaTemplate):
         if self.currentTime < doi.nextSendTime:
             return
         
-        locked = self.aggOrder(doi.vtOrderIDs, "totalVolume", sum) + self.aggOrder(doi.finishedOrderIDs, 'tradedVolume', sum)
+        locked = self.aggOrder(doi.activeIDs, "totalVolume", sum) + self.aggOrder(doi.closedIDs, 'tradedVolume', sum)
         unlocked = self._round(doi.volume - locked)
         if unlocked <= 0:
             return
@@ -903,14 +987,16 @@ class OrderTemplate(CtaTemplate):
         
         tlo = self.timeLimitOrder(doi.orderType, doi.vtSymbol, doi.price, executable, (doi.expire_at - self.currentTime).total_seconds())
         for pack in self.findOrderPacks(tlo.vtOrderIDs):
-            pack.addTrack(DepthOrderInfo.TYPE, doi)
-            doi.add(pack)
+            doi.addChild(pack)
         doi.nextSendTime = self.currentTime + timedelta(seconds=doi.wait)
 
     def onDepthOrder(self, op):
         doi = op.info[DepthOrderInfo.TYPE]
-        if op.order.status in STATUS_FINISHED:
-            doi.finish(op)
+        if op.order.status == constant.STATUS_CANCELLING:
+            doi.deactivate()
+            if not doi.activeIDs:
+                op.order.status = constant.STATUS_CANCELLED
+                self.onOrder(op.order)
 
     def aggOrder(self, vtOrderIDs, name, func):
         l = []
@@ -1045,6 +1131,28 @@ class OrderTemplate(CtaTemplate):
 
                 pool.pop(op.vtOrderID, None)
 
+    def onJoinOrderChild(self, op):
+        joi = op.info[JoinedOrderInfo.CHILD_TAG]
+        joi.onChild(op)
+        parent = self._orderPacks[joi.parentID]
+        tradedVolume = 0
+        tradedAmount = 0
+        for child in self.findOrderPacks(joi.validIDs):
+            order = child.order
+            tradedVolume += order.tradedVolume
+            tradedAmount += order.tradedVolume * order.price_avg
+        parent.order.tradedVolume = self._round(tradedVolume)
+        if tradedVolume:
+            parent.order.price_avg = tradedAmount / tradedVolume
+        if not joi.activeIDs:
+            if parent.order.tradedVolume >= parent.order.totalVolume:
+                parent.order.status = constant.STATUS_ALLTRADED
+                joi.deactivate()
+            elif not joi.isActive():
+                parent.order.status = constant.STATUS_CANCELLED
+            
+        self.onOrder(parent.order)
+
     def checkOnPeriodStart(self, bar):
         self.checkComposoryOrders()
         self.checkTimeLimitOrders()
@@ -1155,7 +1263,7 @@ class OrderTemplate(CtaTemplate):
             contract = self.ctaEngine.mainEngine.getContract(vtSymbol)
             result = self.ctaEngine.roundToPriceTick(contract.priceTick, price)
         elif mode == ctaBase.ENGINETYPE_BACKTESTING:
-            result = self.ctaEngine.roundToPriceTick(price)
+            result = self.ctaEngine.roundToPriceTick(vtSymbol, price)
         else:
             result = price
         
@@ -1178,8 +1286,29 @@ class OrderTemplate(CtaTemplate):
     
     def cancelOrder(self, vtOrderID):
         if vtOrderID in self._orderPacks:
-            self._orderPacks[vtOrderID].info[self._CANCEL_TAG] = True
+            op = self._orderPacks[vtOrderID]
+            op.info[self._CANCEL_TAG] = True
+            if self._CANCEL_TIME in op.info:
+                if self.currentTime - op.info[self._CANCEL_TIME] < self._CANCEL_GAP_TIME:
+                    return
+            else:
+                op.info[self._CANCEL_TIME] = self.currentTime
+            if self.isFake(op):
+                op.order.status = constant.STATUS_CANCELLING
+                self.onOrder(op.order)
+                return
+            
         return super().cancelOrder(vtOrderID)
-    
+
     def isCancel(self, op):
         return op.info.get(self._CANCEL_TAG, False)
+
+    def maximumOrderVolume(self, vtSymbol, orderType, price=None):
+        return np.inf
+
+    def isOrderVolumeValid(self, vtSymbol, orderType, volume, price=None):
+        if volume <=0:
+            return False
+        
+        maximum = self.maximumOrderVolume(vtSymbol, orderType, price)
+        return maximum >= volume

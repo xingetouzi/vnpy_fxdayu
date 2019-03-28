@@ -15,7 +15,7 @@ from vnpy.trader.uiQt import createQApp
 from vnpy.trader.uiMainWindow import MainWindow
 
 # 加载底层接口
-from vnpy.trader.gateway import (okexfGateway,huobiGateway,binanceGateway,ctpGateway)
+from vnpy.trader.gateway import (okexGateway,huobiGateway,binanceGateway,ctpGateway)
 
 # 加载上层应用
 from vnpy.trader.app import (riskManager, 
@@ -42,7 +42,7 @@ def main():
     me = MainEngine(ee)
 
     # 添加交易接口
-    me.addGateway(okexfGateway)
+    me.addGateway(okexGateway)
     me.addGateway(huobiGateway)
     me.addGateway(binanceGateway)
     me.addGateway(ctpGateway)

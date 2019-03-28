@@ -1,32 +1,20 @@
-# encoding: UTF-8
-
-from __future__ import print_function
-import sys
-try:
-    reload(sys)  # Python 2
-    sys.setdefaultencoding('utf8')
-except NameError:
-    pass         # Python 3
-
 import multiprocessing
+import os
 from time import sleep
 from datetime import datetime, time
 
 from vnpy.event import EventEngine2
 from vnpy.trader.vtEvent import EVENT_LOG, EVENT_ERROR
 from vnpy.trader.vtEngine import MainEngine, LogEngine
-from vnpy.trader.gateway import okexfGateway
+from vnpy.trader.gateway import okexGateway
 from vnpy.trader.app import ctaStrategy
 from vnpy.trader.app.ctaStrategy.ctaBase import EVENT_CTA_LOG
 
-#----------------------------------------------------------------------
-def processErrorEvent(event):
-    """
-    处理错误事件
-    错误信息在每次登陆后，会将当日所有已产生的均推送一遍，所以不适合写入日志
-    """
-    error = event.dict_['data']
-    print(u'错误代码：%s，错误信息：%s' %(error.errorID, error.errorMsg))
+def findConnectKey():
+    files=os.listdir(".")
+    for file in files:
+        if file.find("_connect.json")>=0:
+            return file.replace("_connect.json","")
     
 #----------------------------------------------------------------------
 def runChildProcess():
@@ -45,16 +33,16 @@ def runChildProcess():
     le.info(u'事件引擎创建成功')
     
     me = MainEngine(ee)
-    me.addGateway(okexfGateway)
+    me.addGateway(okexGateway)
     me.addApp(ctaStrategy)
     le.info(u'主引擎创建成功')
     
     ee.register(EVENT_LOG, le.processLogEvent)
     ee.register(EVENT_CTA_LOG, le.processLogEvent)
-    ee.register(EVENT_ERROR, processErrorEvent)
     le.info(u'注册日志事件监听')
     
-    me.connect('OKEXF_Pat')
+    KEY = findConnectKey()
+    me.connect(KEY)
     le.info(u'连接行情和交易接口')
     
     sleep(5)                        # 等待接口初始化
