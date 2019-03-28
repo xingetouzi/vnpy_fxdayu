@@ -880,11 +880,11 @@ class OrderTemplate(CtaTemplate):
             if soi.expire_at <= self.currentTime:
                 soi.deactivate()
                 parent = self._orderPacks[soi.parentID]
-                self.cancelOrder(parent.vtOrderID)
             
             if soi.isActive():
                 self.execStepOrder(soi)
             elif soi.activeIDs:
+                self.cancelOrder(parent.vtOrderID)
                 for op in self.findOrderPacks(soi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
@@ -949,11 +949,11 @@ class OrderTemplate(CtaTemplate):
             if doi.expire_at <= self.currentTime:
                 doi.deactivate()
                 parent = self._orderPacks[doi.parentID]
-                self.cancelOrder(parent.vtOrderID)
 
             if doi.isActive():
                 self.execDepthOrder(doi, tick)
             elif doi.activeIDs:
+                self.cancelOrder(parent.vtOrderID)
                 for op in self.findOrderPacks(doi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
@@ -1294,8 +1294,9 @@ class OrderTemplate(CtaTemplate):
             else:
                 op.info[self._CANCEL_TIME] = self.currentTime
             if self.isFake(op):
-                op.order.status = constant.STATUS_CANCELLING
-                self.onOrder(op.order)
+                if op.order.status not in STATUS_FINISHED:
+                    op.order.status = constant.STATUS_CANCELLING
+                    self.onOrder(op.order)
                 return
             
         return super().cancelOrder(vtOrderID)
