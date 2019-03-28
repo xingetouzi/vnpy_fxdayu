@@ -290,7 +290,7 @@ class BacktestingEngine(object):
                             for date in symbols_no_data[symbol]:
                                 update_df = data_df[data_df["date"] == date]
                                 if update_df.size > 0:
-                                    update_df.to_hdf(f"{save_path}/{date}.hd5", "/", append=True)
+                                    update_df.to_hdf(f"{save_path}/{date}.hd5", "/", format = "table", append=True, complevel=9)
 
                             acq, need = len(list(set(data_df[modeMap[dataMode]]))), len(need_datetimes)
                             self.output(f"{symbol}： 从数据库存取了{acq}, 应补{need}, 缺失了{need-acq}")
