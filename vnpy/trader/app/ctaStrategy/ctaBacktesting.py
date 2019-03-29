@@ -69,7 +69,8 @@ class BacktestingEngine(object):
         self.hdsClient = None   # 历史数据服务器客户端
 
         self.initData = []      # 初始化用的数据
-        self.contracts = {}     # 回测集合名
+        self.contracts = []     # 回测集合名
+        self.contracts_info = {}# portfolio
         self.backtestData = []  # 回测用历史数据
 
         self.cachePath = os.path.join(os.path.expanduser("~"), "vnpy_data")  # 本地数据缓存地址
@@ -107,7 +108,7 @@ class BacktestingEngine(object):
     # ----------------------------------------------------------------------
     def roundToPriceTick(self, vtSymbol, price):
         """取整价格到合约最小价格变动"""
-        priceTick = self.contracts[vtSymbol].get("priceTick", 0)
+        priceTick = self.contracts_info[vtSymbol].get("priceTick", 0)
         if not priceTick:
             return price
 
@@ -319,10 +320,10 @@ class BacktestingEngine(object):
         # 首先根据回测模式，确认要使用的数据类,以及数据的分批回放范围
         if self.mode == self.BAR_MODE:
             func = self.newBar
-            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60), 1)
+            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60), 1)
         else:
             func = self.newTick
-            dataDays = max(dataLimit // (len(self.contracts.keys()) * 24 * 60 * 60 * 5), 1)
+            dataDays = max(dataLimit // (len(self.strategy.symbolList) * 24 * 60 * 60 * 5), 1)
 
         # 开始回测, 加载初始化数据, 数据范围:[self.strategyStartDate,self.dataStartDate)
         self.output(u'开始回测')
@@ -401,9 +402,13 @@ class BacktestingEngine(object):
         """
         if not self.contracts:
             for symbol in setting['symbolList']:
-                self.contracts.update({symbol:{}})
+                self.contracts_info.update({symbol:{}})
         else:
-            setting['symbolList'] = list(self.contracts.keys())
+            symbolList = []
+            for symbol_info in self.contracts:
+                symbolList.append(symbol_info["symbol"])
+                self.contracts_info.update({symbol_info["symbol"]:symbol_info})
+            setting['symbolList'] = symbolList
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
         self.initPosition(self.strategy)
@@ -825,7 +830,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, entryTrade.orderID,
                                                exitTrade.price, exitTrade.tradeDatetime,exitTrade.orderID,
-                                               -closedVolume, self.contracts[trade.vtSymbol])
+                                               -closedVolume, self.contracts_info[trade.vtSymbol])
                         resultList.append(result)
                         r = result.__dict__
                         r.update({"symbol":trade.vtSymbol})
@@ -873,7 +878,7 @@ class BacktestingEngine(object):
                         closedVolume = min(exitTrade.volume, entryTrade.volume)
                         result = TradingResult(entryTrade.price, entryTrade.tradeDatetime, entryTrade.orderID,
                                                exitTrade.price, exitTrade.tradeDatetime, exitTrade.orderID,
-                                               closedVolume, self.contracts[trade.vtSymbol])
+                                               closedVolume, self.contracts_info[trade.vtSymbol])
                         resultList.append(result)
                         r = result.__dict__
                         r.update({"symbol":trade.vtSymbol})
@@ -917,7 +922,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.tradeDatetime, trade.orderID, endPrice, self.dt, "LastDay",
-                                       trade.volume, self.contracts[symbol])
+                                       trade.volume, self.contracts_info[symbol])
 
                 resultList.append(result)
                 r = result.__dict__
@@ -933,7 +938,7 @@ class BacktestingEngine(object):
 
             for trade in tradeList:
                 result = TradingResult(trade.price, trade.tradeDatetime, trade.orderID, endPrice, self.dt, "LastDay",
-                                       -trade.volume, self.contracts[symbol])
+                                       -trade.volume, self.contracts_info[symbol])
                 resultList.append(result)
                 r = result.__dict__
                 r.update({"symbol":symbol})
@@ -1161,7 +1166,7 @@ class BacktestingEngine(object):
                                                  targetName, self.mode,
                                                  self.startDate, self.initHours, self.endDate,
                                                  self.dbURI, self.bardbName, self.tickdbName, 
-                                                 self.contracts, prepared_data)))
+                                                 self.contracts_info, prepared_data)))
         pool.close()
         pool.join()
 
@@ -1214,7 +1219,7 @@ class BacktestingEngine(object):
                 dailyResult.previousClose = previousClose
                 previousClose = dailyResult.closePrice
 
-                dailyResult.calculatePnl(openPosition, self.contracts[symbol])
+                dailyResult.calculatePnl(openPosition, self.contracts_info[symbol])
                 openPosition = dailyResult.closePosition
 
             # 生成DataFrame
