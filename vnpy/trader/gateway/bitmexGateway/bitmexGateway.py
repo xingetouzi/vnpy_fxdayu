@@ -327,6 +327,7 @@ class WebsocketApi(BitmexWebsocketApi):
         
         self.apiKey = ''
         self.apiSecret = ''
+        self.symbols = []
         
         self.callbackDict = {
             'trade': self.onTick,
@@ -338,6 +339,7 @@ class WebsocketApi(BitmexWebsocketApi):
             'instrument': self.onContract
         }
         
+        self.depthDict = {}
         self.tickDict = {}
         self.accountDict = {}
         self.orderDict = {}
@@ -348,6 +350,7 @@ class WebsocketApi(BitmexWebsocketApi):
         """"""
         self.apiKey = apiKey
         self.apiSecret = apiSecret
+        self.symbols = symbols
         
         for symbol in symbols:
             tick = VtTickData()
@@ -356,6 +359,7 @@ class WebsocketApi(BitmexWebsocketApi):
             tick.exchange = EXCHANGE_BITMEX
             tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
             self.tickDict[symbol] = tick
+            self.depthDict[symbol] = {"datetime": datetime(1, 1, 1), "count": 0}
             
         self.start()
     
@@ -384,7 +388,7 @@ class WebsocketApi(BitmexWebsocketApi):
             name = data['table']
             callback = self.callbackDict[name]
             
-            if isinstance(data['data'], list):
+            if isinstance(data['data'], list):    
                 for d in data['data']:
                     callback(d)
             else:
@@ -428,36 +432,50 @@ class WebsocketApi(BitmexWebsocketApi):
     #----------------------------------------------------------------------
     def subscribe(self):
         """"""
-        req = {
-            'op': 'subscribe',
-            'args': ['instrument', 'trade', 'orderBook10', 'execution', 'order', 'position', 'margin']
-        }
-        self.sendReq(req)
+        for symbol in self.symbols:
+            req = {
+                'op': 'subscribe',
+                'args': ['instrument:%s'%symbol, 'trade:%s'%symbol, 'orderBook10:%s'%symbol, 'execution', 'order', 'position', 'margin']
+            }
+            self.sendReq(req)
     
     #----------------------------------------------------------------------
     def onTick(self, d):
-        """"""
+        """
+        {'timestamp': '2019-01-09T08:56:00.000Z', 'symbol': '.XBTBON', 'side': 'Buy', 'size': 0, 
+        'price': 0.0003, 'tickDirection': 'ZeroMinusTick', 'foreignNotional': None,
+        'trdMatchID': '00000000-0000-0000-0000-000000000000', 'grossValue': None, 'homeNotional': None} 
+        """
+        #print(d,'----')
         symbol = d['symbol']
 
-        tick = self.tickDict.get(symbol, None)
-        if not tick:
-            return
-        
+        #tick = self.tickDict.get(symbol, None)
+        #if not tick:
+        #    return
+        tick = self.tickDict[symbol]
         tick.lastPrice = d['price']
-        
+        tick.type = str.lower(d['side'])
+        tick.lastVolume = float(d['size'])
+        tick.volumeChange = 1
         date, time = str(d['timestamp']).split('T')
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
-        self.gateway.onTick(tick)
+        tick.localTime = datetime.now()
+        tick.trdMatchID = d["trdMatchID"]
+        if tick.askPrice1:
+            newtick = copy(tick)
+            self.gateway.onTick(newtick)
 
     #----------------------------------------------------------------------
     def onDepth(self, d):
         """"""
         symbol = d['symbol']
-        tick = self.tickDict.get(symbol, None)
-        if not tick:
-            return
+        #tick = self.tickDict.get(symbol, None)
+        #if not tick:
+        #    return
+        tick = self.tickDict[symbol]
+        depthDict = self.depthDict[symbol]
         
         for n, buf in enumerate(d['bids'][:5]):
             price, volume = buf
@@ -473,8 +491,20 @@ class WebsocketApi(BitmexWebsocketApi):
         tick.date = date.replace('-', '')
         tick.time = time.replace('Z', '')
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
-        
-        self.gateway.onTick(tick)
+        tick.volumeChange = 0
+        tick.localTime = datetime.now()
+
+        if depthDict["datetime"] != tick.datetime:
+            depthDict["datetime"] = tick.datetime
+            tick.trdMatchID = "0"
+            depthDict["count"] = 0
+        else:
+            depthDict["count"] += 1
+            tick.trdMatchID = str(depthDict["count"])
+
+        if tick.lastPrice:
+            newtick = copy(tick)
+            self.gateway.onTick(newtick)
     
     #----------------------------------------------------------------------
     def onTrade(self, d):
