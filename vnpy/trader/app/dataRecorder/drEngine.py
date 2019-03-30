@@ -128,7 +128,7 @@ class DrEngine(object):
                 for setting in l:
                     symbol = setting[0]
                     gateway = setting[1]
-                    vtSymbol = "%s:%s" % (setting[0], setting[1])
+                    vtSymbol = symbol
 
                     req = VtSubscribeReq()
                     req.symbol = symbol                    
