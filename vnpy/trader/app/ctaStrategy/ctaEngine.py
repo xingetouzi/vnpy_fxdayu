@@ -583,7 +583,6 @@ class CtaEngine(object):
             name = setting['name']
             className = setting['className']
             vtSymbolset=setting['symbolList']
-            mailAdd = setting['mailAdd']
 
         except KeyError as e:
             self.writeCtaLog(u'载入策略出错：%s' %e)
@@ -607,7 +606,7 @@ class CtaEngine(object):
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
             strategy.symbolList = vtSymbolset
-            strategy.mailAdd = mailAdd
+            strategy.mailAdd = setting.get("mailAdd",None)
             strategy.name = name
 
             # 创建委托号列表
