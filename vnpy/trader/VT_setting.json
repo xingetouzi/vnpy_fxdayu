@@ -10,7 +10,7 @@
 	"language": "chinese",
 
 	"logActive": true,
-	"logLevel": "debug",
+	"logLevel": "info",
 	"logConsole": true,
 	"logFile": true,
 
@@ -18,5 +18,6 @@
 	"mailAccount":"",
 	"mailPass":"",
 	"mailServer":"",
-	"mailPort":""	
+	"mailPort":"",
+	"dingding":""
 }
