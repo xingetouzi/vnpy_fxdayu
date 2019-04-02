@@ -16,6 +16,8 @@ from vnpy.trader.vtEngine import LogEngine
 from vnpy.trader.app import ctaStrategy
 from vnpy.trader.app.ctaStrategy.ctaBase import EVENT_CTA_LOG
 
+from vnpy.trader.app.ctaStrategy.plugins.ctaStrategyInfo import CtaStrategyInfoPlugin
+
 
 #----------------------------------------------------------------------
 def processErrorEvent(event):
@@ -48,7 +50,7 @@ class App(object):
                         gateways.append(gw)
         return gateways
 
-    def run(self):
+    def run(self, monitor=False):
         print('-' * 30)
         self.running = True
         # 创建日志引擎
@@ -85,6 +87,8 @@ class App(object):
         cta.loadSetting()
         le.info(u"初始化所有策略")
         cta.initAll()
+        if monitor:
+            cta.enablePlugin(CtaStrategyInfoPlugin)
         le.info(u"开始所有策略")
         cta.startAll()
 
@@ -114,11 +118,13 @@ class DaemonApp(object):
         self.running = False
         self.le = None
         self.pmain, self.pchild = multiprocessing.Pipe()
+        self._run_with_monitor = None
 
-    def run(self):
+    def run(self, monitor=False):
         if self.running:
             return
         self.running = True
+        self._run_with_monitor = monitor
         le = LogEngine()
         self.le = le
         le.setLogLevel(le.LEVEL_INFO)
@@ -152,7 +158,9 @@ class DaemonApp(object):
                 self.le.info(u'启动子进程')
                 self.app = App()
                 self.process = multiprocessing.Process(
-                    target=self._run_child, args=(self.pchild, ))
+                    target=self._run_child,
+                    args=(self.pchild, ),
+                    kwargs={"monitor": self._run_with_monitor})
                 self.process.start()
                 self.le.info(u'子进程启动成功')
 
@@ -163,7 +171,7 @@ class DaemonApp(object):
         self.le.info("停止CTA策略守护父进程")
 
     @staticmethod
-    def _run_child(p):
+    def _run_child(p, monitor=False):
         import signal
 
         def interrupt(signal, event):
@@ -173,7 +181,7 @@ class DaemonApp(object):
         try:
             app = App()
             p.send("start")
-            app.run()
+            app.run(monitor=monitor)
             while app.running:
                 has_data = p.poll(1)
                 if has_data:
@@ -213,7 +221,7 @@ class DaemonApp(object):
         self._stop_child()
 
 
-def main():
+def main(monitor=False):
     import signal
 
     def interrupt(signal, event):
@@ -222,7 +230,7 @@ def main():
     signal.signal(signal.SIGINT, interrupt)
     app = DaemonApp()
     try:
-        app.run()
+        app.run(monitor=monitor)
         app.join()
     except KeyboardInterrupt:
         app.stop()
