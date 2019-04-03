@@ -255,7 +255,7 @@ class CtaTemplate(object):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
             pass
         else:
-            msg = notify(my_context,self)
+            notify(my_context,self)
             # self.writeCtaLog('%s'%msg)
 
     def initBacktesingData(self):
