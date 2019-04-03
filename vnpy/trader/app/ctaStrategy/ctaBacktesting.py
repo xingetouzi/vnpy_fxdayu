@@ -75,8 +75,7 @@ class BacktestingEngine(object):
 
         self.cachePath = os.path.join(os.path.expanduser("~"), "vnpy_data")  # 本地数据缓存地址
         self.logActive = False  # 回测日志开关
-        self.logFolderName = u'策略报告_' + datetime.now().strftime("%Y%m%d-%H%M%S")  # 当次日志文件夹名称
-        self.logPath = os.path.join(os.getcwd(), "Backtest_Log", self.logFolderName)  # 回测日志自定义路径
+        self.logPath = os.path.join(os.getcwd(), "Backtest_Log")  # 回测日志自定义路径
 
         self.dataStartDate = None  # 回测数据开始日期，datetime对象
         self.dataEndDate = None  # 回测数据结束日期，datetime对象
@@ -176,11 +175,9 @@ class BacktestingEngine(object):
     def setLog(self, active=False, path=None):
         """设置是否出交割单和日志"""
         if path:
-            self.logPath = os.path.join(path, self.logFolderName)
+            self.logPath = path
         self.logActive = active
-        if self.logActive:
-            if not os.path.isdir(self.logPath):
-                os.makedirs(self.logPath)
+        
     # -------------------------------------------------
     def setCachePath(self, path):
         self.cachePath = path
@@ -282,6 +279,7 @@ class BacktestingEngine(object):
                                             data_df[(data_df.datetime >= start) & (data_df.datetime < end)].to_dict(
                                                 "record")]
                             # 缓存到本地文件
+                            save_path = os.path.join(self.cachePath, dataMode, symbol.replace(":", "_"))
                             if not os.path.isdir(save_path):
                                 os.makedirs(save_path)
 
@@ -394,6 +392,12 @@ class BacktestingEngine(object):
 
         self.updateDailyClose(tick.vtSymbol, tick.datetime, tick.lastPrice)
 
+    def filter_name(self, input_text):
+        alpha='abcdefghijklmnopqrstuvwxyz'
+        filter_text = "0123456789._-" + alpha + alpha.upper()
+        new_name = filter(lambda ch: ch in filter_text, input_text)
+        name = ''.join(list(new_name))
+        return name
     # ----------------------------------------------------------------------
     def initStrategy(self, strategyClass, setting=None):
         """
@@ -412,6 +416,14 @@ class BacktestingEngine(object):
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
         self.initPosition(self.strategy)
+
+        # 初始化日志文件夹
+        if self.logActive:
+            symbol_name = self.filter_name(setting['symbolList'])
+            Folder_Name = f'{self.strategy.name}_{symbol_name}_{datetime.now().strftime("%y%m%d%H%M")}'
+            path = os.path.join(self.logPath, Folder_Name[:50])
+            if not os.path.isdir(path):
+                os.makedirs(path)
 
     # ----------------------------------------------------------------------
     def crossLimitOrder(self, data):
