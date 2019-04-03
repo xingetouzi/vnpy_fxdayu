@@ -10,10 +10,10 @@
 	"language": "chinese",
 
 	"logActive": true,
-	"logLevel": "info",
+	"logLevel": "debug",
 	"logConsole": true,
 	"logFile": true,
-	"streamLevel": "debug",
+	"streamLevel": "info",
 
 	"tdPenalty": ["IF", "IH", "IC"],
 	"mailAccount":"",
