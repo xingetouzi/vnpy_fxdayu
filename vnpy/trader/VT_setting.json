@@ -13,6 +13,7 @@
 	"logLevel": "info",
 	"logConsole": true,
 	"logFile": true,
+	"streamLevel": "debug",
 
 	"tdPenalty": ["IF", "IH", "IC"],
 	"mailAccount":"",
