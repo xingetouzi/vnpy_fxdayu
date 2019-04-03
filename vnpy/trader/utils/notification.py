@@ -132,7 +132,16 @@ class DingSender(object):
         String_textMsg=json.dumps(String_textMsg)
 
         try:
-            requests.post(url, data=String_textMsg, headers=HEADERS, params = params)
+            """
+            {"errmsg":"ok","errcode":0}
+            {"errmsg":"send too fast","errcode":130101}
+            {"errmsg":"缺少参数 access_token","errcode":40035}
+            """
+            ret = requests.post(url, data=String_textMsg, headers=HEADERS, params = params)
+            ret = eval(ret.text)
+            err = ret.get("errcode", 0)
+            if err:
+                raise ValueError(ret['errmsg'])
         except Exception as e:
             raise e
 
@@ -234,6 +243,6 @@ class MultiprocessEmailHelper(EmailHelper):
 def notify(content, strategy):
     helper = MultiprocessEmailHelper()
     if not content:
-        helper.warn("Email content from strategy [%s] is empty, skip", strategy.name)
+        helper.warn("Notification content from strategy [%s] is empty, skip", strategy.name)
         return
     helper.send(content, strategy)
