@@ -345,6 +345,8 @@ class MainEngine(object):
         }
         level = levelDict.get(globalSetting["logLevel"], LogEngine.LEVEL_CRITICAL)
         self.logEngine.setLogLevel(level)
+        streamLevel = levelDict.get(globalSetting["streamLevel"], LogEngine.LEVEL_CRITICAL)
+        self.logEngine.setStreamLevel(streamLevel)
         
         # 设置输出
         if globalSetting['logConsole']:
@@ -656,6 +658,7 @@ class LogEngine(object):
         self.logger = logging.getLogger()        
         self.formatter = logging.Formatter('%(asctime)s  %(levelname)s: %(message)s')
         self.level = self.LEVEL_CRITICAL
+        self.streamLevel = self.LEVEL_CRITICAL
         
         self.consoleHandler = None
         self.fileHandler = None
@@ -678,13 +681,16 @@ class LogEngine(object):
         """设置日志级别"""
         self.logger.setLevel(level)
         self.level = level
+
+    def setStreamLevel(self,level):
+        self.streamLevel = level
     
     #----------------------------------------------------------------------
     def addConsoleHandler(self):
         """添加终端输出"""
         if not self.consoleHandler:
             self.consoleHandler = logging.StreamHandler()
-            self.consoleHandler.setLevel(self.level)
+            self.consoleHandler.setLevel(self.streamLevel)
             self.consoleHandler.setFormatter(self.formatter)
             self.logger.addHandler(self.consoleHandler)
             

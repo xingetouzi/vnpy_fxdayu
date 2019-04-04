@@ -21,12 +21,13 @@ if __name__ == '__main__':
     engine.setEndDate('20190314 23:00:00')
 
     # 设置产品相关参数
-    contracts = {"eos.usd.q:okef":{
+    contracts = [
+        {"symbol":"eos.usd.q:okef",
         "size" : 10,
         "priceTick" : 0.001,
         "rate" : 5/10000,
         "slippage" : 0.005
-    }}
+        }]
 
     engine.setContracts(contracts)     # 设置回测合约相关数据
     

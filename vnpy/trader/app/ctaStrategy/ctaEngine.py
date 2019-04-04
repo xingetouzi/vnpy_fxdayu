@@ -31,7 +31,7 @@ from vnpy.trader.language import constant
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
-from vnpy.trader.utils.email import mail
+from vnpy.trader.utils.notification import notify
 from decimal import *
 
 from .ctaBase import *
@@ -95,6 +95,7 @@ class CtaEngine(object):
         
         # 上期所昨持仓缓存
         self.ydPositionDict = {}  
+
     #----------------------------------------------------------------------
     def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
         """发单"""
@@ -508,7 +509,9 @@ class CtaEngine(object):
             if strategy.inited:
                 for sym in strategy.symbolList:
                     if error.gatewayName in sym:
-                        self.writeCtaLog(u'ProcessError，错误码：%s，错误信息：%s' %(error.errorID, error.errorMsg))        # 待扩展
+                        msg = f'ProcessError，错误码：{error.errorID}，错误信息：{error.errorMsg}'
+                        self.writeCtaLog(msg)        # 待扩展
+                        notify(msg,strategy) 
                         return
 
     #--------------------------------------------------
@@ -580,7 +583,6 @@ class CtaEngine(object):
             name = setting['name']
             className = setting['className']
             vtSymbolset=setting['symbolList']
-            mailAdd = setting['mailAdd']
 
         except KeyError as e:
             self.writeCtaLog(u'载入策略出错：%s' %e)
@@ -604,7 +606,7 @@ class CtaEngine(object):
             strategy = strategyClass(self, setting)
             self.strategyDict[name] = strategy
             strategy.symbolList = vtSymbolset
-            strategy.mailAdd = mailAdd
+            strategy.mailAdd = setting.get("mailAdd",None)
             strategy.name = name
 
             # 创建委托号列表
@@ -820,7 +822,7 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            mail(content,strategy)
+            notify(content,strategy)
             self.writeCtaLog(content)
 
     #----------------------------------------------------------------------------------------

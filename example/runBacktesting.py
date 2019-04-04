@@ -18,26 +18,29 @@ if __name__ == '__main__':
     engine.setDatabase('VnTrader_1Min_Db')
 
     # 设置回测用的数据起始日期，initHours 默认值为 0
-    engine.setStartDate('20181214 23:00:00',initHours=120)   
+    engine.setStartDate('20181214 23:00:00', initHours=120)   
     engine.setEndDate('20190314 23:00:00')
 
     # 设置产品相关参数
     engine.setCapital(1000000)  # 设置起始资金，默认值是1,000,000
-    contracts = {"eos.usd.q:okef":{
+    contracts = [
+        {"symbol":"eos.usd.q:okef",
         "size" : 10,
         "priceTick" : 0.001,
         "rate" : 5/10000,
         "slippage" : 0.005
-    }}
+        }]
     engine.setContracts(contracts)     # 设置回测合约相关数据
     
-    # 策略报告默认不输出，默认文件夹生成于当前文件夹下
-    engine.setLog(True)        # 设置是否输出日志和交割单, 默认值是不输出False
-    engine.setCachePath("D:\\vnpy_data\\") # 设置本地数据缓存的路径，默认存在用户文件夹内
+    # 策略报告默认为False不输出，True为输出，且默认输出目录路径于当前文件夹下
+    # engine.setLog(True, path = "D:\\vnpy_data\\") 
+    
+    # 设置本地数据缓存的路径，默认数据缓存存放目录: ~/vnpy_data 
+    # engine.setCachePath("D:\\vnpy_data\\") 
     
     # 在引擎中创建策略对象
     with open("CTA_setting.json") as parameterDict:
-        setting = json.load(parameterDict)
+        setting = json.load(parameterDict)[0]
     engine.initStrategy(BollBandsStrategy, setting)
     
     # 开始跑回测

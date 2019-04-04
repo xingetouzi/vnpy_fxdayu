@@ -13,11 +13,12 @@
 	"logLevel": "debug",
 	"logConsole": true,
 	"logFile": true,
+	"streamLevel": "info",
 
 	"tdPenalty": ["IF", "IH", "IC"],
-
 	"mailAccount":"",
 	"mailPass":"",
 	"mailServer":"",
-	"mailPort":""	
+	"mailPort":"",
+	"dingding":""
 }

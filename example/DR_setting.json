@@ -4,14 +4,14 @@
     "tick":
     [
 
-        ["cu1811:SHFE", "CTP"],
-        ["btc_next_week:OKEX", "OKEX"]
+        ["cu1811:CTP", "CTP"],
+        ["BTC-NEXT-WEEK:OKEX", "OKEX"]
     ],
 
     "bar":
     [
-        ["cu1811:SHFE", "CTP"],
-        ["btc_next_week:OKEX", "OKEX"]
+        ["cu1811:CTP", "CTP"],
+        ["BTC-NEXT-WEEK:OKEX", "OKEX"]
     ],
 
     "active":

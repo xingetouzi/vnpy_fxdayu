@@ -12,7 +12,7 @@ from collections import defaultdict
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtUtility import BarGenerator, ArrayManager
-from vnpy.trader.utils.email import mail
+from vnpy.trader.utils.notification import notify
 
 from .ctaBase import *
 
@@ -255,8 +255,8 @@ class CtaTemplate(object):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
             pass
         else:
-            msg = mail(my_context,self)
-            self.writeCtaLog('%s'%msg)
+            notify(my_context,self)
+            # self.writeCtaLog('%s'%msg)
 
     def initBacktesingData(self):
         if self.ctaEngine.engineType == ENGINETYPE_BACKTESTING:
