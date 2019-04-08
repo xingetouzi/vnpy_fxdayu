@@ -27,6 +27,8 @@ statusMapReverse['failure'] = STATUS_REJECTED
 # 方向和开平映射
 typeMap = {}
 typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = 'buy'
+typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = 'buy'
+typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = 'sell'
 typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 'sell'
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
