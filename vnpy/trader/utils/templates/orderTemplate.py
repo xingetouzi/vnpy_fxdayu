@@ -708,9 +708,11 @@ class OrderTemplate(CtaTemplate):
             if not tlo.vtOrderIDs:
                 pool.pop(id(tlo))
     
-    def checkComposoryOrders(self):
+    def checkComposoryOrders(self, vtSymbol):
         pool = self._infoPool[ComposoryOrderInfo.TYPE]
         for cpo in list(pool.values()):
+            if cpo.vtSymbol != vtSymbol:
+                continue
             for op in self.iterValidOrderPacks(*cpo.vtOrderIDs):
                 self.onComposoryOrder(op, True)
             if not cpo.vtOrderIDs:
@@ -1155,7 +1157,7 @@ class OrderTemplate(CtaTemplate):
         self.onOrder(parent.order)
 
     def checkOnPeriodStart(self, bar):
-        self.checkComposoryOrders()
+        self.checkComposoryOrders(bar.vtSymbol)
         self.checkTimeLimitOrders()
         self.checkAutoExit(bar.vtSymbol)
         self.checkConditionalClose()
