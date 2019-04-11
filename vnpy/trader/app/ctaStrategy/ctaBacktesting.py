@@ -260,12 +260,13 @@ class BacktestingEngine(object):
             self.output(f"{symbol}： 从本地缓存文件实取{acq}, 最大应取{need}, 还需从数据库取{need-acq}")
 
         # 如果没有完全从本地文件加载完数据, 则尝试从指定的mongodb下载数据, 并缓存到本地
-        if self.dbURI:
+        dbName = None
+        if dataMode == self.BAR_MODE:
+            dbName = self.bardbName
+        else:
+            dbName = self.tickdbName
+        if self.dbURI and dbName is not None: # 有设置从指定数据库和表取数据
             import pymongo
-            if dataMode == self.BAR_MODE:
-                dbName = self.bardbName
-            else:
-                dbName = self.tickdbName
             self.dbClient = pymongo.MongoClient(self.dbURI)[dbName]
             for symbol, need_datetimes in symbols_no_data.items():
                 if len(need_datetimes) > 0:  # 需要从数据库取数据
@@ -300,7 +301,7 @@ class BacktestingEngine(object):
                         self.output("数据库没有 %s 这个品种" % symbol)
                         self.output("这些品种在我们的数据库里: %s" % self.dbClient.collection_names())
         else:
-            self.output('没有设置回测数据库URI, 无法回补缓存数据。请在回测设置 engine.setDB_URI("mongodb://localhost:27017")')
+            self.output('没有设置回测数据库相关信息, 无法回补缓存数据。请在回测入口设置 engine.setDB_URI 和 engine.setDatabase')
 
         if len(dataList) > 0:
             dataList.sort(key=lambda x: x.datetime)
