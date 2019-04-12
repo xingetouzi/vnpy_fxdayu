@@ -487,6 +487,7 @@ class OkexSwapRestApi(RestClient):
         if int(data['order_type'])>1:
             order.priceType = priceTypeMapReverse[data['order_type']]
 
+        order= copy(order)
         self.gateway.onOrder(order)
         self.orderDict[oid] = order
 
