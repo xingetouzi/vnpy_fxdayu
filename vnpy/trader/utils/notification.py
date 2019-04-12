@@ -116,7 +116,7 @@ class MailSender(object):
                 time.sleep(self.interval)
 
 class DingSender(object):
-    interval = 10
+    interval = 600
 
     def __init__(self):
         self.token = globalSetting['dingding']
