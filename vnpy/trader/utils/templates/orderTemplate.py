@@ -388,6 +388,8 @@ class OrderTemplate(CtaTemplate):
         else:
             if op.info.get(self._FINISH_TAG, False):
                 return
+            if order.status in STATUS_FINISHED:
+                op.info[self._FINISH_TAG] = True
             op.order = order
         
         for name in op.tracks:
@@ -399,10 +401,6 @@ class OrderTemplate(CtaTemplate):
                 method(op)
 
         self.onOrderPack(op)
-
-        if op.order.status in STATUS_FINISHED:
-            op.info[self._FINISH_TAG] = True
-        
 
     def onOrderPack(self, op):
         pass
