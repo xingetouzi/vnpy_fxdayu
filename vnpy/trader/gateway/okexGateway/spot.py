@@ -459,7 +459,8 @@ class OkexSpotRestApi(RestClient):
         if int(data['order_type'])>1:
             order.priceType = priceTypeMapReverse[data['order_type']]
 
-        self.gateway.onOrder(copy(order))
+        order = copy(order)
+        self.gateway.onOrder(order)
         self.orderDict[oid] = order
 
         if order.thisTradedVolume:
