@@ -878,18 +878,17 @@ class OrderTemplate(CtaTemplate):
         if not pool:
             return
         for soi in list(pool.values()):
+            parent = self._orderPacks[soi.parentID]
             if soi.expire_at <= self.currentTime:
                 soi.deactivate()
-                parent = self._orderPacks[soi.parentID]
-            
+                
             if soi.isActive():
                 self.execStepOrder(soi)
-            elif soi.activeIDs:
+            else:
                 self.cancelOrder(parent.vtOrderID)
                 for op in self.findOrderPacks(soi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
-            else:
                 pool.pop(id(soi))
 
     def execStepOrder(self, soi):
@@ -947,18 +946,17 @@ class OrderTemplate(CtaTemplate):
             return
         tick = self._tickInstance[vtSymbol]
         for doi in list(pool.values()):
+            parent = self._orderPacks[doi.parentID]
             if doi.expire_at <= self.currentTime:
                 doi.deactivate()
-                parent = self._orderPacks[doi.parentID]
 
             if doi.isActive():
                 self.execDepthOrder(doi, tick)
-            elif doi.activeIDs:
+            else:
                 self.cancelOrder(parent.vtOrderID)
                 for op in self.findOrderPacks(doi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
-            else:
                 pool.pop(id(doi))
 
     def execDepthOrder(self, doi, tick):
