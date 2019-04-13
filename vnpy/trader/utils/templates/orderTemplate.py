@@ -388,6 +388,8 @@ class OrderTemplate(CtaTemplate):
         else:
             if op.info.get(self._FINISH_TAG, False):
                 return
+            if order.status in STATUS_FINISHED:
+                op.info[self._FINISH_TAG] = True
             op.order = order
         
         for name in op.tracks:
@@ -399,10 +401,6 @@ class OrderTemplate(CtaTemplate):
                 method(op)
 
         self.onOrderPack(op)
-
-        if op.order.status in STATUS_FINISHED:
-            op.info[self._FINISH_TAG] = True
-        
 
     def onOrderPack(self, op):
         pass
@@ -418,9 +416,10 @@ class OrderTemplate(CtaTemplate):
     
     def makeOrder(self, orderType, vtSymbol, price, volume, priceType=constant.PRICETYPE_LIMITPRICE, stop=False, **info):
         volume = self._round(volume)
-        assert volume > 0
+        assert volume > 0, volume
+        
         price = self.adjustPrice(vtSymbol, price, "send order")
-        assert price > 0
+        assert price > 0, price
         vtOrderIDList = self.sendOrder(orderType, vtSymbol, price, volume, priceType, stop)
         logging.debug("%s | makeOrder: %s, %s, %s, %s | into: %s", self.currentTime, orderType, vtSymbol, price, volume, info)
 
@@ -707,9 +706,11 @@ class OrderTemplate(CtaTemplate):
             if not tlo.vtOrderIDs:
                 pool.pop(id(tlo))
     
-    def checkComposoryOrders(self):
+    def checkComposoryOrders(self, vtSymbol):
         pool = self._infoPool[ComposoryOrderInfo.TYPE]
         for cpo in list(pool.values()):
+            if cpo.vtSymbol != vtSymbol:
+                continue
             for op in self.iterValidOrderPacks(*cpo.vtOrderIDs):
                 self.onComposoryOrder(op, True)
             if not cpo.vtOrderIDs:
@@ -1041,7 +1042,7 @@ class OrderTemplate(CtaTemplate):
     def getExecPrice(self, vtSymbol, orderType):
         if orderType in self._ORDERTYPE_LONG:
             if vtSymbol in self._tickInstance:
-                return self._tickInstance[vtSymbol].upperLimit*0.99
+                return self._tickInstance[vtSymbol].lastPrice * 1.02
             elif vtSymbol in self._barInstance:
                 return self._barInstance[vtSymbol].high
             else:
@@ -1049,7 +1050,7 @@ class OrderTemplate(CtaTemplate):
 
         elif orderType in self._ORDERTYPE_SHORT:
             if vtSymbol in self._tickInstance:
-                return self._tickInstance[vtSymbol].lowerLimit*1.01
+                return self._tickInstance[vtSymbol].lastPrice * 0.98
             elif vtSymbol in self._barInstance:
                 return self._barInstance[vtSymbol].low
             else:
@@ -1154,7 +1155,7 @@ class OrderTemplate(CtaTemplate):
         self.onOrder(parent.order)
 
     def checkOnPeriodStart(self, bar):
-        self.checkComposoryOrders()
+        self.checkComposoryOrders(bar.vtSymbol)
         self.checkTimeLimitOrders()
         self.checkAutoExit(bar.vtSymbol)
         self.checkConditionalClose()

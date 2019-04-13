@@ -1,4 +1,4 @@
-from vnpy.trader.utils.templates.orderTemplate import OrderTemplate, DIRECTION_MAP, ctaBase, constant
+from vnpy.trader.utils.templates.orderTemplate import OrderTemplate, DIRECTION_MAP, ctaBase, constant, STATUS_FINISHED, showOrder
 import numpy as np
 
 
@@ -14,6 +14,8 @@ SPOT_POS_MAP = {
 class SpotOrderTemplate(OrderTemplate):
 
     _MAXIMUM_VOLUME_ADJUST = 1
+
+    _ORIGIN_TRADED_VOLUME = "_ORIGIN_TRADED_VOLUME"
 
     def maximumOrderVolume(self, vtSymbol, orderType, price=None):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
@@ -48,3 +50,11 @@ class SpotOrderTemplate(OrderTemplate):
             return int(volume/contract.minVolume) * contract.minVolume
         else:
             return volume
+        
+    def composoryClose(self, op, expire=None, volume=None):
+        if volume:
+            if op.order.status not in STATUS_FINISHED:
+                raise ValueError("Order not finished: %s" % showOrder(op.order, "vtOrderID", "status", "tradedVolume"))
+            op.order.tradedVolume = volume
+            op.info[self._ORIGIN_TRADED_VOLUME] = op.order.tradedVolume
+        return super().composoryClose(op, expire)

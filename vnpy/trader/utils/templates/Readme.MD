@@ -410,13 +410,17 @@ OrderPack.info 用于记录自定义信息，但是有一些字段已被占用�
 |price|float|限制价格。|
 |volume|float|下单数。|
 |expire|float|存在时间，秒数|
-|vtOrderIDs|set|与该信息绑定的订单号|
+|vtOrderIDs|set|与该信息绑定的未结束的订单号|
+|closedOrderIDs|set|结束/有成交的订单号|
+|inValidOrderIDs|set|结束/无成交的订单号|
+
 
 ### 构造方法
 
 **`
 TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 `**
+
 |name|type|description|
 |:-|:-|:-|
 |orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
@@ -434,11 +438,16 @@ TimeLimitOrderInfo.__init__(vtSymbol, orderType, volume, price, expire)
 
 基础属性继承自TimeLimitOrderInfo
 
-额外属性：
-
 |name|type|description|
 |:-|:-|:-|
 |TYPE|str: "_ComposoryOrderInfo"|强制单单标记字段|
+|orderType|str|发单类型，支持ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER, ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT。|
+|vtSymbol|str|品种名。|
+|volume|float|下单数。|
+|expire|float|存在时间，秒数|
+|vtOrderIDs|set|与该信息绑定的未结束的订单号|
+|closedOrderIDs|set|结束/有成交的订单号|
+|inValidOrderIDs|set|结束/无成交的订单号|
 
 
 ## `class` AutoExitInfo

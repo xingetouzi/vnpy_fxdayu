@@ -27,6 +27,8 @@ statusMapReverse['failure'] = STATUS_REJECTED
 # 方向和开平映射
 typeMap = {}
 typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = 'buy'
+typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = 'buy'
+typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = 'sell'
 typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 'sell'
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
@@ -740,9 +742,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.volume = float(data['quote_volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-            tick.date = tick.datetime.strftime('%Y%m%d')
-            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -772,9 +772,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
                 tick.__setattr__(f'bidPrice{(idx + 1)}', float(price))
                 tick.__setattr__(f'bidVolume{(idx + 1)}', float(volume))
             
-            tick.datetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
-            tick.date = tick.datetime.strftime('%Y%m%d')
-            tick.time = tick.datetime.strftime('%H:%M:%S.%f')
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -792,6 +790,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.lastTradedTime = data['timestamp']
             tick.type = data['side']
             tick.volumeChange = 1
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
             tick.localTime = datetime.now()
             if tick.askPrice1:
                 tick=copy(tick)
