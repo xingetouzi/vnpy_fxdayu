@@ -889,7 +889,8 @@ class OrderTemplate(CtaTemplate):
                 for op in self.findOrderPacks(soi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
-                pool.pop(id(soi))
+                if not soi.activeIDs:
+                    pool.pop(id(soi))
 
     def execStepOrder(self, soi):
         assert isinstance(soi, StepOrderInfo)
@@ -957,7 +958,9 @@ class OrderTemplate(CtaTemplate):
                 for op in self.findOrderPacks(doi.activeIDs):
                     if op.order.status not in STATUS_FINISHED:
                         self.cancelOrder(op.vtOrderID)
-                pool.pop(id(doi))
+
+                if not doi.activeIDs:
+                    pool.pop(id(doi))
 
     def execDepthOrder(self, doi, tick):
         assert isinstance(tick, VtTickData)
