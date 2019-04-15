@@ -520,7 +520,7 @@ class OkexSpotRestApi(RestClient):
         self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}")
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = str(eval(request.response.text)['error_code']) + ' ' + eval(request.response.text)['error_message']
         self.gateway.onOrder(order)
         self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
     
@@ -540,6 +540,8 @@ class OkexSpotRestApi(RestClient):
         """1:{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}
            2: http400 if rejected
         """
+        if data['order_id'] =='-1':
+            self.onSendOrderFailed(data, request)
         self.okexIDMap[data['order_id']] = data['client_oid']
         self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
 
