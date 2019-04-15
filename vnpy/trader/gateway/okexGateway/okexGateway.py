@@ -8,10 +8,11 @@ from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-from .future import OkexfRestApi, OkexfWebsocketApi 
-from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
-from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
+from .future import  OkexfWebsocketApi 
+from .swap import  OkexSwapWebsocketApi
+from .spot import  OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
+import pymongo
 
 REST_HOST = 'https://www.okex.com'
 WEBSOCKET_HOST = 'wss://real.okex.com:10442/ws/v3'
@@ -60,8 +61,9 @@ class OkexGateway(VtGateway):
             self.passphrase = str(setting['passphrase'])
             sessionCount = int(setting['sessionCount'])
             subscrib_symbols = setting['symbols']
-        except KeyError:
-            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查")
+            key_name = setting["note"]
+        except KeyError as e:
+            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查{e}")
             return
 
         # 记录订阅的交易品种类型
@@ -80,38 +82,39 @@ class OkexGateway(VtGateway):
                 spot_list.append(symbol)
 
         # 创建行情和交易接口对象
-        future_leverage = setting.get('future_leverage', 10)
-        swap_leverage = setting.get('swap_leverage', 1)
-        margin_token = setting.get('margin_token', 0) 
+        # future_leverage = setting.get('future_leverage', 10)
+        # swap_leverage = setting.get('swap_leverage', 1)
+        # margin_token = setting.get('margin_token', 0) 
+        db = pymongo.MongoClient("mongodb://127.0.0.1:27017")
 
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())
         if "FUTURE" in gateway_type:
-            restfutureApi = OkexfRestApi(self)
+            # restfutureApi = OkexfRestApi(self)
             wsfutureApi = OkexfWebsocketApi(self)     
-            self.gatewayMap['FUTURE'] = {"REST":restfutureApi, "WS":wsfutureApi, "leverage":future_leverage, "symbols":contract_list}
+            self.gatewayMap['FUTURE'] = {"key_name":key_name, "WS":wsfutureApi, "mongodb":db["dayu-orders"]["future"], "symbols":contract_list,"REST":""}
         if "SWAP" in gateway_type:
-            restSwapApi = OkexSwapRestApi(self)
+            # restSwapApi = OkexSwapRestApi(self)
             wsSwapApi = OkexSwapWebsocketApi(self)
-            self.gatewayMap['SWAP'] = {"REST":restSwapApi, "WS":wsSwapApi, "leverage":swap_leverage, "symbols":swap_list}
+            self.gatewayMap['SWAP'] = {"key_name":key_name, "WS":wsSwapApi, "mongodb":db["dayu-orders"]["swap"], "symbols":swap_list,"REST":""}
         if "SPOT" in gateway_type:
-            restSpotApi = OkexSpotRestApi(self)
+            # restSpotApi = OkexSpotRestApi(self)
             wsSpotApi = OkexSpotWebsocketApi(self)
-            self.gatewayMap['SPOT'] = {"REST":restSpotApi, "WS":wsSpotApi, "leverage":margin_token, "symbols":spot_list}
+            self.gatewayMap['SPOT'] = {"key_name":key_name, "WS":wsSpotApi, "mongodb":db["dayu-orders"]["spot"], "symbols":spot_list,"REST":""}
 
         self.connectSubGateway(sessionCount)
 
-        setQryEnabled = setting.get('setQryEnabled', None)
-        self.setQryEnabled(setQryEnabled)
+        # setQryEnabled = setting.get('setQryEnabled', None)
+        # self.setQryEnabled(setQryEnabled)
 
-        setQryFreq = setting.get('setQryFreq', 60)
-        self.initQuery(setQryFreq)
+        # setQryFreq = setting.get('setQryFreq', 60)
+        # self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def connectSubGateway(self, sessionCount):
         for subGateway in self.gatewayMap.values():
-            subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
-            subGateway["WS"].connect(WEBSOCKET_HOST)
+            # subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
+            subGateway["WS"].connect(WEBSOCKET_HOST, subGateway["key_name"], subGateway["mongodb"])
 
     def subscribe(self, subscribeReq):
         """订阅行情"""

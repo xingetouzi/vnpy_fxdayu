@@ -608,6 +608,8 @@ class OkexSpotWebsocketApi(WebsocketClient):
 
         self.callbackDict = {}
         self.tickDict = {}
+        self.key_name = ""
+        self.db = None
     
     #----------------------------------------------------------------------
     def unpackData(self, data):
@@ -615,11 +617,13 @@ class OkexSpotWebsocketApi(WebsocketClient):
         return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
         
     #----------------------------------------------------------------------
-    def connect(self, WEBSOCKET_HOST):
+    def connect(self, WEBSOCKET_HOST,key_name,mongodb):
         """"""
         self.restGateway = self.gateway.gatewayMap[SUBGATEWAY_NAME]["REST"]
         self.init(WEBSOCKET_HOST)
         self.start()
+        self.key_name =key_name
+        self.db = mongodb
         
     #----------------------------------------------------------------------
     def onConnected(self):
@@ -728,8 +732,8 @@ class OkexSpotWebsocketApi(WebsocketClient):
         self.callbackDict['spot/account'] = self.onAccount
 
         for currency in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:
-            self.subscribe(currency)
-            self.sendPacket({'op': 'subscribe', 'args': f'spot/account:{currency.split("-")[0]}'})
+            # self.subscribe(currency)
+            # self.sendPacket({'op': 'subscribe', 'args': f'spot/account:{currency.split("-")[0]}'})
             self.sendPacket({'op': 'subscribe', 'args': f'spot/order:{currency}'})
     #----------------------------------------------------------------------
     def onSpotTick(self, d):
@@ -809,7 +813,11 @@ class OkexSpotWebsocketApi(WebsocketClient):
             'timestamp': '2019-03-05T03:30:00.000Z', 'type': 'limit'}]
         }"""
         for idx, data in enumerate(d):
-            self.restGateway.processOrderData(data)
+            data["account"] = self.key_name
+            data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME)[0] if "client_oid" in data.keys() else ""
+            self.db.insert_one(data)
+            
+            # self.restGateway.processOrderData(data)
         
     #----------------------------------------------------------------------
     def onAccount(self, d):
