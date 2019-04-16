@@ -85,7 +85,7 @@ class OkexGateway(VtGateway):
         # future_leverage = setting.get('future_leverage', 10)
         # swap_leverage = setting.get('swap_leverage', 1)
         # margin_token = setting.get('margin_token', 0) 
-        db = pymongo.MongoClient("mongodb://127.0.0.1:27017")
+        db = pymongo.MongoClient("mongodb://okex:Xinger520@localhost:27017/dayu-orders")
 
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())

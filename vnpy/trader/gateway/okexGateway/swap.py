@@ -888,7 +888,9 @@ class OkexSwapWebsocketApi(WebsocketClient):
         for idx, data in enumerate(d):
             data["account"] = self.key_name
             data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME)[0] if "client_oid" in data.keys() else ""
+            data["datetime"],a,b = self.gateway.convertDatetime(data["timestamp"])
             self.db.insert_one(data)
+            self.gateway.writeLog(data)
 
     #----------------------------------------------------------------------
     def onAccount(self, d):
