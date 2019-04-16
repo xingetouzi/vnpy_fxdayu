@@ -9,3 +9,4 @@ aiohttp
 requests
 watchdog
 pycurl
+filelock
