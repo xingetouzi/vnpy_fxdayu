@@ -10,10 +10,12 @@ import importlib
 import requests
 import pycurl
 
-from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import CtaMerticPlugin, CtaEngine as CtaEngineMetric
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import (
+    CtaMerticPlugin, CtaEngine as CtaEngineMetric)
 from vnpy.trader.vtFunction import getJsonPath
 from vnpy.trader.utils import LoggerMixin
 from ..ctaPlugin import CtaEnginePlugin
+from ..utils import handle_url
 from .config import *
 
 
@@ -28,13 +30,15 @@ def bash64_encode(s):
 
 class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
     ETCD_PREFIX = "/vnpy/strategy"
+    ETCD_URL_PATH = "/v3beta/kv/put"
     MAX_RETRY = 5
 
     def __init__(self):
         super(CtaStrategyInfoPlugin, self).__init__()
         LoggerMixin.__init__(self)
-        self._etcd_url = os.environ.get("ETCD_URL",
-                                        "http://localhost:2379/v3beta/kv/put")
+        self._etcd_url = handle_url(os.environ.get("ETCD_URL",
+                                                   "http://localhost:2379"),
+                                    default_path=self.ETCD_URL_PATH)
         self.ctaEngine = None
 
     def register(self, engine):
@@ -150,12 +154,11 @@ class CtaStrategyInfoPlugin(CtaEnginePlugin, LoggerMixin):
         while True:
             try:
                 self.info(u"推送策略%s的配置信息到etcd", name)
-                r = requests.post(
-                    self._etcd_url,
-                    json={
-                        "key": bash64_encode(k),
-                        "value": bash64_encode(v)
-                    })
+                r = requests.post(self._etcd_url,
+                                  json={
+                                      "key": bash64_encode(k),
+                                      "value": bash64_encode(v)
+                                  })
                 r.raise_for_status()
                 self.info(u"成功推送策略%s的配置信息, 返回: %s", name, r.content)
                 break
