@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import NumpyEncoder
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.senders.sqlite import OpenFalconMetric as OpenFalconMetricModel
 from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.base import OpenFalconMetric
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observers.utils import get_open_falcon_url
 
 
 class HandleMetric(object):
@@ -96,19 +97,19 @@ class SqliteMetricObserver(object):
         self._observer = Observer()
         self._handler = FileEventHandler(self._root, self.reg)
         self._observer.schedule(self._handler, self._root, True)
-        self._url = url or os.environ.get("OPEN_FALCON_URL",
-                                          "http://localhost:1988/v1/push")
+        self._url = get_open_falcon_url(url)
 
     def run(self):
         self._observer.start()
-        try:
-            while True:
+        while True:
+            try:
                 time.sleep(self.interval)
                 self.push_metrics(self._handler.get_metrics())  # 每5秒push一次
-        except KeyboardInterrupt:
-            self._observer.stop()
-        except Exception as e:
-            logging.exception(e)
+            except KeyboardInterrupt:
+                self._observer.stop()
+                break
+            except Exception as e:
+                logging.exception(e)
         self._observer.join()
 
     def dump_metrics(self, metrics):
@@ -121,6 +122,6 @@ class SqliteMetricObserver(object):
 
 
 if __name__ == "__main__":
-    from utils import run_observer
+    from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observers.utils import run_observer
 
     run_observer(SqliteMetricObserver, ".")

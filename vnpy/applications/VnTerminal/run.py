@@ -2,12 +2,15 @@
 from __future__ import print_function
 import sys
 import os
+import logging
 import signal
 import multiprocessing
 import multiprocessing.queues
 import traceback
+import json
 from time import sleep
 from datetime import datetime, time
+from urllib.parse import urlparse, urlunparse
 
 from vnpy.event import EventEngine2
 from vnpy.trader.vtEvent import EVENT_LOG, EVENT_ERROR
@@ -17,6 +20,8 @@ from vnpy.trader.app import ctaStrategy
 from vnpy.trader.app.ctaStrategy.ctaBase import EVENT_CTA_LOG
 
 from vnpy.trader.app.ctaStrategy.plugins.ctaStrategyInfo import CtaStrategyInfoPlugin
+
+from .utils import VNPY_RS_SETTING_FILE, get_portids, release_portids
 
 
 #----------------------------------------------------------------------
@@ -50,6 +55,49 @@ class App(object):
                         gateways.append(gw)
         return gateways
 
+    def get_rs_name(self):
+        return os.path.abspath(os.getcwd()).replace(os.path.sep, '-').strip("-")
+
+    def handle_rs_setting(self):
+        path = os.path.join(os.path.abspath(os.getcwd()), VNPY_RS_SETTING_FILE)
+        name = self.get_rs_name()
+        if os.path.isfile(path):
+            with open(path) as f:
+                data = json.load(f)
+            r_req = urlparse(data["repAddress"])
+            r_pub = urlparse(data["pubAddress"])
+            old = [r_req.port, r_pub.port]
+        else:
+            r_req = urlparse("tcp://*")
+            r_pub = urlparse("tcp://*")
+            old = None
+            
+        ports = get_portids(name, 2, old)
+        assert len(ports) == 2
+        new_rep_port, new_pub_port = ports
+        self.le.info(f"为RS服务分配REP端口[{new_rep_port}],PUB端口[{new_pub_port}]")
+        if new_rep_port == r_req.port and new_pub_port == r_pub.port:
+            self.le.info("RS_setting文件未变动")
+            return
+        if os.path.isfile(path):
+            try:
+                self.le.info("旧的RS被移动到./RS_setting.bak")
+                os.rename(path, path + ".bak")
+            except Exception as e:
+                self.le.exception(e)
+
+        new_data = {
+            "repAddress": urlunparse(r_req._replace(netloc=f"{r_req.hostname}:{new_rep_port}")),
+            "pubAddress": urlunparse(r_pub._replace(netloc=f"{r_pub.hostname}:{new_pub_port}"))
+        }
+        self.le.info("保存新的RS_setting文件")
+        with open(path, "w") as f:
+            json.dump(new_data, f)
+
+    def release_rs_setting(self):
+        name = self.get_rs_name()
+        release_portids(name)
+
     def run(self, monitor=False):
         print('-' * 30)
         self.running = True
@@ -65,6 +113,8 @@ class App(object):
         ee = EventEngine2()
         self.ee = ee
         le.info(u'事件引擎创建成功')
+
+        self.handle_rs_setting()
 
         me = initialize_main_engine(ee)
         self.me = me
@@ -102,6 +152,7 @@ class App(object):
             if self.le and self.cta:
                 wait = 5
                 self.le.info(u"停止所有策略,%s后关闭程序" % wait)
+                self.release_rs_setting()
                 self.cta.stopAll()
                 sleep(wait)
             if self.le:

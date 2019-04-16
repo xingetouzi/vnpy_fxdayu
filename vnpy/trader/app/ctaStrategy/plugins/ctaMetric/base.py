@@ -15,7 +15,8 @@ import pandas as pd
 from vnpy.trader.vtEvent import EVENT_TIMER
 
 from ..ctaPlugin import CtaEngineWithPlugins, CtaEnginePlugin
-from ...ctaTemplate import CtaTemplate
+from ..utils import handle_url
+from ...ctaTemplate import CtaTemplate as OriginCtaTemplate
 
 
 class OpenFalconMetricCounterType(Enum):
@@ -25,13 +26,13 @@ class OpenFalconMetricCounterType(Enum):
 
 class NumpyEncoder(json.JSONEncoder):
     """ Special json encoder for numpy types """
+
     def default(self, obj):
-        if isinstance(obj, (np.int_, np.intc, np.intp, np.int8,
-            np.int16, np.int32, np.int64, np.uint8,
-            np.uint16, np.uint32, np.uint64)):
+        if isinstance(obj,
+                      (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32,
+                       np.int64, np.uint8, np.uint16, np.uint32, np.uint64)):
             return int(obj)
-        elif isinstance(obj, (np.float_, np.float16, np.float32, 
-            np.float64)):
+        elif isinstance(obj, (np.float_, np.float16, np.float32, np.float64)):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
@@ -69,13 +70,16 @@ class OpenFalconMetricFactory(object):
         self.endpoint = endpoint
         self.step = step
 
+    def get_metric_name(self, metric_name):
+        return ".".join([self.PREFIX, metric_name]) if self.PREFIX else metric_name # yapf: disable
+
     def new(self, value, metric_name, tags=None, step=None, counter_type=None):
         counter_type = counter_type or OpenFalconMetricCounterType.GAUGE
         counter_type = OpenFalconMetricCounterType(counter_type).value
         metric = OpenFalconMetric()
         metric.endpoint = self.endpoint
         metric.step = step or self.step
-        metric.metric = ".".join([self.PREFIX, metric_name]) if self.PREFIX else metric_name
+        metric.metric = self.get_metric_name(metric_name)
         metric.value = value
         metric.timestamp = int(time.time())
         metric.counterType = counter_type
@@ -104,7 +108,7 @@ class MetricAggregator(object):
     @property
     def engine(self):
         return self._plugin.ctaEngine
-   
+
     @property
     def plugin(self):
         return self._plugin
@@ -114,6 +118,7 @@ class MetricAggregator(object):
         return self._plugin.metricFactory
 
     def _get_aggregate_funcs(self):
+        # yapf: disable
         if self.aggregatePositionEvents != types.MethodType(MetricAggregator.aggregatePositionEvents, self):
             self.addAggregateFuncs(self.aggregatePositionEvents, self._plugin.getPositionEvents)
         if self.aggregateAccountEvents != types.MethodType(MetricAggregator.aggregateAccountEvents, self):
@@ -122,6 +127,7 @@ class MetricAggregator(object):
             self.addAggregateFuncs(self.aggregateOrderEvents, self._plugin.getOrderEvents)
         if self.aggregateTradeEvents != types.MethodType(MetricAggregator.aggregateTradeEvents, self):
             self.addAggregateFuncs(self.aggregateTradeEvents, self._plugin.getTradeEvents)
+        # yapf: enable
 
     def addMetrics(self):
         # do aggregate
@@ -133,9 +139,9 @@ class MetricAggregator(object):
         metrics = self.getMetrics() or []
         self._plugin.addMetrics(metrics)
 
-    def getMetrics(self): 
+    def getMetrics(self):
         return []
-    
+
     def addAggregateFuncs(self, func, data):
         self._aggregate_funcs[func] = data
 
@@ -158,9 +164,13 @@ class MetricSender(object):
 
 
 class DefaultMetricSender(MetricSender):
+    OPEN_FALCON_URL_PATH = "/v1/push"
+
     def __init__(self):
         super(DefaultMetricSender, self).__init__()
-        self.url = os.environ.get("OPEN_FALCON_URL", "http://localhost:1988/v1/push")
+        self.url = handle_url(os.environ.get("OPEN_FALCON_URL",
+                                             "http://localhost:1988"),
+                              default_path=self.OPEN_FALCON_URL_PATH)
 
     def dumpMetrics(self, metrics):
         payload = [metric.__dict__ for metric in metrics]
@@ -170,11 +180,13 @@ class DefaultMetricSender(MetricSender):
         r = requests.post(self.url, data=self.dumpMetrics(metrics))
         print(r.content)
 
+
 def register_aggregator(cls):
-    assert issubclass(cls, MetricAggregator) 
+    assert issubclass(cls, MetricAggregator)
     if cls not in CtaMerticPlugin.aggregator_classes:
         CtaMerticPlugin.aggregator_classes.append(cls)
     return cls
+
 
 def set_sender(cls):
     assert issubclass(cls, MetricSender)
@@ -219,7 +231,7 @@ class CtaMerticPlugin(CtaEnginePlugin):
     def register(self, engine):
         super(CtaMerticPlugin, self).register(engine)
         self.ctaEngine = engine
-        engine.eventEngine.register(EVENT_TIMER, self.processTimeEvent)        
+        engine.eventEngine.register(EVENT_TIMER, self.processTimeEvent)
 
     def getHostName(self):
         return socket.gethostname()
@@ -228,34 +240,34 @@ class CtaMerticPlugin(CtaEnginePlugin):
         if not dataframe:
             return self._positionEvents
         if self._positionDataFrame is None:
-            self._positionDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._positionEvents])
+            self._positionDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._positionEvents]) # yapf: disable
         return self._positionDataFrame
-    
+
     def getAccountEvents(self, dataframe=True):
         if not dataframe:
             return self._accountEvents
         if self._accountDataFrame is None:
-            self._accountDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._accountEvents])
+            self._accountDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._accountEvents]) # yapf: disable
         return self._accountDataFrame
 
     def getOrderEvents(self, dataframe=True):
         if not dataframe:
             return self._orderEvents
         if self._orderDataFrame is None:
-            self._orderDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._orderEvents])
+            self._orderDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._orderEvents]) # yapf: disable
         return self._orderDataFrame
 
     def getTradeEvents(self, dataframe=True):
         if not dataframe:
             return self._tradeEvents
         if self._tradeDataFrame is None:
-            self._tradeDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._tradeEvents])
-        return self._tradeDataFrame    
+            self._tradeDataFrame = pd.DataFrame([e.dict_["data"].__dict__ for e in self._tradeEvents]) # yapf: disable
+        return self._tradeDataFrame
 
     @property
     def metricFuncs(self):
         return self._metricFuncs
-    
+
     def addMetricFunc(self, func):
         self._metricFuncs.append(func)
 
@@ -264,7 +276,7 @@ class CtaMerticPlugin(CtaEnginePlugin):
         for func in self._metricFuncs:
             try:
                 func()
-            except: # prevent stop eventengine's thread
+            except:  # prevent stop eventengine's thread
                 self.ctaEngine.error(traceback.format_exc())
         st = time.time()
         try:
@@ -272,7 +284,8 @@ class CtaMerticPlugin(CtaEnginePlugin):
         except:
             self.ctaEngine.error(traceback.format_exc())
         et = time.time()
-        self.ctaEngine.debug("推送%s个监控指标,耗时%s", len(self._metricCaches), et - st)
+        self.ctaEngine.debug("推送%s个监控指标,耗时%s", len(self._metricCaches),
+                             et - st)
         self.clearCache()
 
     def clearCache(self):
@@ -286,7 +299,7 @@ class CtaMerticPlugin(CtaEnginePlugin):
         self._orderEvents.clear()
         self._orderDataFrame = None
 
-    def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None):
+    def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None): # yapf: disable
         # auto add strategy tag
         if strategy:
             tag_set = set(tags.split(",")) if tags else set()
@@ -298,7 +311,11 @@ class CtaMerticPlugin(CtaEnginePlugin):
             if need_add:
                 tag_set.add("strategy=%s" % strategy)
                 tags = ",".join(list(tag_set))
-        metric = self.metricFactory.new(value, metric, tags=tags, step=step, counter_type=counter_type)
+        metric = self.metricFactory.new(value,
+                                        metric,
+                                        tags=tags,
+                                        step=step,
+                                        counter_type=counter_type)
         self._metricCaches.append(metric)
         # add strategy endpoint
         if strategy:
@@ -336,19 +353,31 @@ class CtaEngine(CtaEngineWithPlugins):
         self.addPlugin(CtaMerticPlugin())
         self.disablePlugin(CtaMerticPlugin)
 
-    def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None):
+    def addMetric(self, value, metric, tags=None, step=None, counter_type=None, strategy=None): # yapf: disable
         plugin = self.getPlugin(CtaMerticPlugin)
-        plugin.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=strategy)
+        plugin.addMetric(value,
+                         metric,
+                         tags=tags,
+                         step=step,
+                         counter_type=counter_type,
+                         strategy=strategy)
 
     def stopStrategy(self, name):
-        super(CtaEngineWithPlugins, self).stopStrategy(name)
+        super(CtaEngine, self).stopStrategy(name)
         plugin = self.getPlugin(CtaMerticPlugin)
         if plugin.is_enabled():
             plugin.pushMetrics()
 
-class CtaTemplate(CtaTemplate):
-    def addMetric(self, value, metric, tags=None, step=None, counter_type=None):
+
+class CtaTemplate(OriginCtaTemplate):
+    def addMetric(self, value, metric, tags=None, step=None, counter_type=None): # yapf: disable
         if not isinstance(self.ctaEngine, CtaEngine):
-            self.writeCtaLog("推送指标失败,ctaEngine不是一个合法的%s对象" % CtaEngine.__name__)
+            self.writeCtaLog("推送指标失败,ctaEngine不是一个合法的%s对象" %
+                             CtaEngine.__name__)
             return
-        self.ctaEngine.addMetric(value, metric, tags=tags, step=step, counter_type=counter_type, strategy=self.name)
+        self.ctaEngine.addMetric(value,
+                                 metric,
+                                 tags=tags,
+                                 step=step,
+                                 counter_type=counter_type,
+                                 strategy=self.name)

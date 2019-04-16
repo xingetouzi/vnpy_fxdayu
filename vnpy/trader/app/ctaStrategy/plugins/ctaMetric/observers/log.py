@@ -9,6 +9,8 @@ from watchdog.observers import Observer
 from watchdog.events import RegexMatchingEventHandler
 import pandas as pd
 
+from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observers.utils import get_open_falcon_url
+
 
 class HandleMetric(object):
     def __init__(self, metric_file):
@@ -30,7 +32,8 @@ class HandleMetric(object):
                     if not line.strip():
                         break
                     elif '|' in line:
-                        self.data.append(json.loads(line.strip().split('|')[-1]))
+                        self.data.append(
+                            json.loads(line.strip().split('|')[-1]))
                     else:
                         pass
             self.get_last()
@@ -39,7 +42,7 @@ class HandleMetric(object):
         self.data = []
 
     def data_order(self, data):
-        return data.loc[data.groupby(self.groupByTag).timestamp.idxmax().values]
+        return data.loc[data.groupby(self.groupByTag).timestamp.idxmax().values] # yapf: disable
 
     def get_last(self):
         if self.data:
@@ -47,7 +50,8 @@ class HandleMetric(object):
                 self.df_last_data = self.data_order(pd.DataFrame(self.data))
             elif not self.df_last_data.empty:
                 temp = self.data_order(pd.DataFrame(self.data))
-                self.df_last_data = self.data_order(self.df_last_data.append(temp, ignore_index=True))
+                self.df_last_data = self.data_order(
+                    self.df_last_data.append(temp, ignore_index=True))
         self.clear_data()
 
 
@@ -73,7 +77,8 @@ class FileEventHandler(RegexMatchingEventHandler):
         elif self.df_total is None:
             self.df_total = data.df_last_data
         else:
-            self.df_total = data.data_order(self.df_total.append(data.df_last_data, ignore_index=True))
+            self.df_total = data.data_order(
+                self.df_total.append(data.df_last_data, ignore_index=True))
 
     def handle_file(self, path):
         if path not in self.handlers:
@@ -83,9 +88,9 @@ class FileEventHandler(RegexMatchingEventHandler):
 
     def on_created(self, event):
         self.handle_file(event.src_path)
-    
+
     def on_modified(self, event):
-        path =event.src_path
+        path = event.src_path
         if path not in self.handlers:
             self.handle_file(path)
         handler = self.handlers[path]
@@ -102,16 +107,19 @@ class LogFileMetricObserver(object):
         self._observer = Observer()
         self._handler = FileEventHandler(self._root, self.reg)
         self._observer.schedule(self._handler, self._root, True)
-        self._url = url or os.environ.get("OPEN_FALCON_URL", "http://localhost:1988/v1/push")
+        self._url = get_open_falcon_url(url)
 
     def run(self):
         self._observer.start()
-        try:
-            while True:
+        while True:
+            try:
                 time.sleep(self.interval)
                 self.push_metric(self._handler.df_total)  # 每5秒push一次
-        except KeyboardInterrupt:
-            self._observer.stop()
+            except KeyboardInterrupt:
+                self._observer.stop()
+                break
+            except Exception as e:
+                logging.exception(e)
         self._observer.join()
 
     def push_metric(self, df):
@@ -124,7 +132,7 @@ class LogFileMetricObserver(object):
             push_data = {
                 "endpoint": row['endpoint'],
                 "metric": row['metric'],
-                "timestamp": int(time.time()), # update the local time
+                "timestamp": int(time.time()),  # update the local time
                 "step": row['step'],
                 "value": row['value'],
                 "counterType": row['counterType'],
@@ -137,6 +145,6 @@ class LogFileMetricObserver(object):
 
 
 if __name__ == "__main__":
-    from utils import run_observer
+    from vnpy.trader.app.ctaStrategy.plugins.ctaMetric.observers.utils import run_observer
 
     run_observer(LogFileMetricObserver, ".")
