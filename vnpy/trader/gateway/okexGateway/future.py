@@ -491,7 +491,7 @@ class OkexfWebsocketApi(WebsocketClient):
             rc.table = str.lower(SUBGATEWAY_NAME)
             rc.info = data
             # self.db.insert_one(data)
-            self.gateway.writeLog(data)
+            self.gateway.writeLog(str(data))
             self.gateway.onRecorder(rc)
         
     #----------------------------------------------------------------------

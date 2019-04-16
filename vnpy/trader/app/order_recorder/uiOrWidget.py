@@ -6,7 +6,7 @@
 
 from vnpy.event import Event
 from vnpy.trader.uiQt import QtWidgets, QtCore
-from .drBase import EVENT_DATARECORDER_LOG
+from .orBase import EVENT_DATARECORDER_LOG
 from .language import text
 
 
@@ -33,7 +33,7 @@ class TableCell(QtWidgets.QTableWidgetItem):
 
 
 ########################################################################
-class DrEngineManager(QtWidgets.QWidget):
+class OrEngineManager(QtWidgets.QWidget):
     """行情数据记录引擎管理组件"""
     signal = QtCore.Signal(type(Event()))
 

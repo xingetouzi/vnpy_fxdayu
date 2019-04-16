@@ -16,10 +16,11 @@ from vnpy.trader.app.ctaStrategy.ctaTemplate import BarGenerator
 # from vnpy.trader.app.ctaStrategy.ctaTemplate import BarManager
 # from .orBase import *
 from .language import text
+from .ding import notify
 
 
 ########################################################################
-class DrEngine(object):
+class OrEngine(object):
     """数据记录引擎"""
     
     settingFileName = 'OR_setting.json'
@@ -47,7 +48,7 @@ class DrEngine(object):
         self.loadSetting()
         
         # 启动数据插入线程
-        self.start()
+        # self.start()
     
         # 注册事件监听
         self.registerEvent()  
@@ -114,11 +115,19 @@ class DrEngine(object):
     #----------------------------------------------------------------------
     def queryInfo(self):
         """"""
+        
         for table,info in self.cacheDict.items():
             if info:
-                for order in info:
-                    print(f"kk{order}","\n")
-            self.cacheDict[table] = []
+                msg = f"#### {table}完全成交订单" + "\n"
+                if table in ["future","swap"]:
+                    for order in info:
+                        if order["status"] =='2':
+                            txt = f"> {order['datetime']},{order['strategy']},{order['type']},{order['filled_qty']}@{order['price_avg']}"
+                            txt += "\n"
+                            msg+=txt
+                self.cacheDict[table] = []
+                notify(f"订单收集", msg) 
+
     #----------------------------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
