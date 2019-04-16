@@ -1,0 +1,5 @@
+{
+    "mongouri": "mongodb://okex:Xinger520@45.76.160.187:27017/dayu-orders",
+
+    "interval" : 60
+}

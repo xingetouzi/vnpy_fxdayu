@@ -107,7 +107,12 @@ class VtGateway(object):
         # 通用事件
         event1 = Event(type_=EVENT_CONTRACT)
         event1.dict_['data'] = contract
-        self.eventEngine.put(event1)        
+        self.eventEngine.put(event1)       
+
+    def onRecorder(self, recorder):
+        event1 = Event(type_ = EVENT_RECORDER)
+        event1.dict_['data'] = recorder
+        self.eventEngine.put(event1)
     
     #----------------------------------------------------------------------
     def connect(self):

@@ -370,4 +370,15 @@ class VtCancelOrderReq(object):
         self.orderID = EMPTY_STRING             # 报单号
         self.frontID = EMPTY_STRING             # 前置机号
         self.sessionID = EMPTY_STRING           # 会话号
+
+########################################################################
+class VtRecorder(object):
+    """撤单时传入的对象类"""
+
+    #----------------------------------------------------------------------
+    def __init__(self):
+        """Constructor"""
+        self.table = EMPTY_STRING              # 代码
+        self.info = None
+        self.account = ""
    
