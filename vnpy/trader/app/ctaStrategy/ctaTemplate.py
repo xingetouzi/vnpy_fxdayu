@@ -194,8 +194,12 @@ class CtaTemplate(object):
     # ----------------------------------------------------------------------
     def writeCtaLog(self, content):
         """记录CTA日志"""
-        content = self.name + ':' + content
+        content = self.name + ': ' + content
         self.ctaEngine.writeCtaLog(content)
+
+    def writeLog(self, content, level=logging.INFO):
+        content = f"{self.name}: {content}"
+        self.ctaEngine.writeLog(content, level)
 
     # ----------------------------------------------------------------------
     def putEvent(self):
