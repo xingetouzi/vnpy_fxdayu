@@ -226,8 +226,6 @@ class OkexfWebsocketApi(WebsocketClient):
                 
         self.callbackDict = {}
         self.tickDict = {}
-        self.key_name = ""
-        self.db = None
     
     #----------------------------------------------------------------------
     def unpackData(self, data):
@@ -235,13 +233,11 @@ class OkexfWebsocketApi(WebsocketClient):
         return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
         
     #----------------------------------------------------------------------
-    def connect(self, WEBSOCKET_HOST,key_name,mongodb):
+    def connect(self, WEBSOCKET_HOST):
         """"""
         self.restGateway = self.gateway.gatewayMap[SUBGATEWAY_NAME]["REST"]
         self.init(WEBSOCKET_HOST)
         self.start()
-        self.key_name = key_name
-        self.db = mongodb
     
     #----------------------------------------------------------------------
     def onConnected(self):
@@ -368,6 +364,7 @@ class OkexfWebsocketApi(WebsocketClient):
         self.callbackDict['futures/order'] = self.onTrade
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:
             self.sendPacket({'op': 'subscribe', 'args': f'futures/order:{contracts[contract]}'})
+            self.sendPacket({'op': 'subscribe', 'args': f'futures/account:{contract.split("-")[0]}'})
             
     #----------------------------------------------------------------------
     def onFuturesTick(self, d):
@@ -483,14 +480,14 @@ class OkexfWebsocketApi(WebsocketClient):
         'size': '1', 'price': '50.0', 'contract_val': '10', 'order_id': '2398741637121024', 
         'order_type': '0', 'timestamp': '2019-02-28T07:11:32.657Z', 'status': '0'},]}"""
         for idx, data in enumerate(d):
-            data["account"] = self.key_name
+            data["account"] = self.gatewayName
             data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME[:4])[0] if "client_oid" in data.keys() else ""
             data["datetime"],a,b = self.gateway.convertDatetime(data["timestamp"])
+
             rc = VtRecorder()
-            rc.account = self.key_name
+            rc.account = self.gatewayName
             rc.table = str.lower(SUBGATEWAY_NAME)
             rc.info = data
-            # self.db.insert_one(data)
             self.gateway.writeLog(str(data))
             self.gateway.onRecorder(rc)
         
@@ -516,7 +513,13 @@ class OkexfWebsocketApi(WebsocketClient):
             }}]}"""
         for idx, data in enumerate(d):
             for currency, account_info in data.items():
-                self.restGateway.processAccountData(account_info, currency)
+                account_data = {currency:account_info["equity"]}
+                rc = VtRecorder()
+                rc.account = self.gatewayName
+                rc.table = "account"
+                rc.info = account_data
+                self.gateway.writeLog(str(account_data))
+                self.gateway.onRecorder(rc)
     
     #----------------------------------------------------------------------
     def onPosition(self, d):

@@ -644,8 +644,6 @@ class OkexSwapWebsocketApi(WebsocketClient):
                 
         self.callbackDict = {}
         self.tickDict = {}
-        self.key_name = ""
-        self.db = None
     
     #----------------------------------------------------------------------
     def unpackData(self, data):
@@ -653,13 +651,11 @@ class OkexSwapWebsocketApi(WebsocketClient):
         return json.loads(zlib.decompress(data, -zlib.MAX_WBITS))
         
     #----------------------------------------------------------------------
-    def connect(self, WEBSOCKET_HOST,key_name,mongodb):
+    def connect(self, WEBSOCKET_HOST):
         """"""
         self.restGateway = self.gateway.gatewayMap[SUBGATEWAY_NAME]["REST"]
         self.init(WEBSOCKET_HOST)
         self.start()
-        self.key_name =key_name
-        self.db = mongodb
     
     #----------------------------------------------------------------------
     def onConnected(self):
@@ -886,10 +882,9 @@ class OkexSwapWebsocketApi(WebsocketClient):
         'instrument_id': 'ETH-USD-SWAP', 'size': '1', 'price': '50.00', 'contract_val': '10', 
         'order_id': '66-7-4cdaf6fec-0', 'order_type': '0', 'status': '-1', 'timestamp': '2019-02-28T10:51:15.209Z'}]} """
         for idx, data in enumerate(d):
-            data["account"] = self.key_name
+            data["account"] = self.gatewayName
             data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME)[0] if "client_oid" in data.keys() else ""
             data["datetime"],a,b = self.gateway.convertDatetime(data["timestamp"])
-            # self.db.insert_one(data)
             # self.gateway.writeLog(data)
 
     #----------------------------------------------------------------------

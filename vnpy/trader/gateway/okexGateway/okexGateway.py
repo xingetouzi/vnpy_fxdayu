@@ -85,22 +85,21 @@ class OkexGateway(VtGateway):
         # future_leverage = setting.get('future_leverage', 10)
         # swap_leverage = setting.get('swap_leverage', 1)
         # margin_token = setting.get('margin_token', 0) 
-        db = pymongo.MongoClient("mongodb://okex:Xinger520@localhost:27017/dayu-orders")
 
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())
         if "FUTURE" in gateway_type:
             # restfutureApi = OkexfRestApi(self)
             wsfutureApi = OkexfWebsocketApi(self)     
-            self.gatewayMap['FUTURE'] = {"key_name":key_name, "WS":wsfutureApi, "mongodb":db["dayu-orders"]["future"], "symbols":contract_list,"REST":""}
+            self.gatewayMap['FUTURE'] = {"WS":wsfutureApi, "symbols":contract_list,"REST":""}
         if "SWAP" in gateway_type:
             # restSwapApi = OkexSwapRestApi(self)
             wsSwapApi = OkexSwapWebsocketApi(self)
-            self.gatewayMap['SWAP'] = {"key_name":key_name, "WS":wsSwapApi, "mongodb":db["dayu-orders"]["swap"], "symbols":swap_list,"REST":""}
+            self.gatewayMap['SWAP'] = {"WS":wsSwapApi,  "symbols":swap_list,"REST":""}
         if "SPOT" in gateway_type:
             # restSpotApi = OkexSpotRestApi(self)
             wsSpotApi = OkexSpotWebsocketApi(self)
-            self.gatewayMap['SPOT'] = {"key_name":key_name, "WS":wsSpotApi, "mongodb":db["dayu-orders"]["spot"], "symbols":spot_list,"REST":""}
+            self.gatewayMap['SPOT'] = {"WS":wsSpotApi, "symbols":spot_list,"REST":""}
 
         self.connectSubGateway(sessionCount)
 
@@ -114,7 +113,7 @@ class OkexGateway(VtGateway):
     def connectSubGateway(self, sessionCount):
         for subGateway in self.gatewayMap.values():
             # subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
-            subGateway["WS"].connect(WEBSOCKET_HOST, subGateway["key_name"], subGateway["mongodb"])
+            subGateway["WS"].connect(WEBSOCKET_HOST)
 
     def subscribe(self, subscribeReq):
         """订阅行情"""

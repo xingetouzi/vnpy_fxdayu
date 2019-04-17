@@ -6,6 +6,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from queue import Queue, Empty
 from threading import Thread
+import pymongo
 from pymongo.errors import DuplicateKeyError
 
 from vnpy.event import Event
@@ -17,6 +18,8 @@ from vnpy.trader.app.ctaStrategy.ctaTemplate import BarGenerator
 # from .orBase import *
 from .language import text
 from .ding import notify
+
+
 
 
 ########################################################################
@@ -37,7 +40,9 @@ class OrEngine(object):
         
         # 配置字典
         self.settingDict = OrderedDict()
-        self.mongouri = ""
+        self.pre_equity = {}
+        self.db = None
+        self.mapping_future = {"1":"开多","2":"开空","3":"平多","4":"平空"}
         
         # 负责执行数据库插入的单独线程相关
         self.active = False                     # 工作状态
@@ -53,14 +58,14 @@ class OrEngine(object):
         # 注册事件监听
         self.registerEvent()  
 
-        self.cacheDict = {"account":[],"future":[],"swap":[],"spot":[]}
+        self.cacheDict = {"account":[],"future":[],"swap":[],"spot":[],"error":[]}
     
     #----------------------------------------------------------------------
     def loadSetting(self):
         """加载配置"""
         with open(self.settingFilePath) as f:
             orSetting = json.load(f)
-            self.mongouri = orSetting['mongouri']
+            self.db = pymongo.MongoClient(orSetting['mongouri'])[orSetting["db_name"]]
 
             setQryFreq = orSetting.get('interval', 60)
             self.initQuery(setQryFreq)
@@ -69,9 +74,13 @@ class OrEngine(object):
     def procecssRecordEvent(self, event):
         """处理行情事件"""
         recorder = event.dict_['data']
-        
         table = recorder.table
         self.cacheDict[table].append(recorder.info)
+
+    def procecssErrorEvent(self,event):
+        error = event.dict_['data']
+        self.cacheDict["error"].append(error)
+
     #----------------------------------------------------------------------
     def initQuery(self, freq = 60):
         """初始化连续查询"""
@@ -106,32 +115,104 @@ class OrEngine(object):
     def startQuery(self):
         """启动连续查询"""
         self.eventEngine.register(EVENT_TIMER, self.query)
-
-    #----------------------------------------------------------------------
-    def setQryEnabled(self, qryEnabled):
-        """设置是否要启动循环查询"""
-        self.qryEnabled = qryEnabled
-    
+        
     #----------------------------------------------------------------------
     def queryInfo(self):
         """"""
+        now = datetime.now().strftime('%y%m%d %H:%M:%S')
+        print(now,"routine")
         
-        for table,info in self.cacheDict.items():
+        for table, info in self.cacheDict.items():
             if info:
-                msg = f"#### {table}完全成交订单" + "\n"
-                if table in ["future","swap"]:
-                    for order in info:
-                        if order["status"] =='2':
-                            txt = f"> {order['datetime']},{order['strategy']},{order['type']},{order['filled_qty']}@{order['price_avg']}"
-                            txt += "\n"
-                            msg+=txt
+                msg = {}
+
+                if table == "account":
+                    msg["account"] ={}
+                    sorted_info = {}
+                    delta_output = {}
+
+                    for account in info:
+                        ac = sorted_info.get(account.account,{})
+                        ac.update(account.info)
+                        sorted_info[account.account] = ac
+
+                    for account_name, equity in sorted_info.items():
+                        delta_output.update({account_name:{}})
+                        pre = self.pre_equity.get(account_name,{})
+                        for sym,value in equity.items():
+                            if sym in pre.keys():
+                                delta = pre[sym] - value
+                            pre[sym] = value
+                            self.pre_equity[account_name] = pre
+                            if delta:
+                                delta_output[account_name] = {sym:delta}
+
+                            ac = {sym:value,"account":account_name,"datetime":datetime.now()}
+
+                            # self.db[table].insert_one(ac)
+                            print(ac)
+
+
+                    for account_name, delta in delta_output.items():
+                        txt = msg["account"].get(account_name,[])
+                        for sym,v in delta.items():
+                            ding = f'> {sym} : {v} <br>'
+                            txt.append(ding)
+                            msg["account"][account_name] = txt
+
+                elif table == "error":
+                    msg["error"] = {}
+                    for error in info:
+                        txt = msg["error"].get(error.gatewayName,[])
+                        ding = f'> code:{error.errorID}, msg:{error.errorMsg} <br>'
+                        txt.append(ding)
+                        msg["error"][error.gatewayName] = txt
+
+                else:  # order
+                    if table in ["future", "swap"]:
+                        for order in info:
+                            if order["status"] =='2':
+                                stg = order['strategy'] if order['strategy'] else "N/A"
+                                account = msg.get(stg,{})
+                                msg[stg] = account
+                                txt = account.get(order['account'],[])
+                                ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}<br>"
+                                txt.append(ding)
+                                msg[stg][order['account']] = txt
+                            # self.db[table].insert_one(order)
+
+                    elif table == "spot":
+                        for order in info:
+                            if order["status"] =='filled':
+                                stg = order['strategy'] if order['strategy'] else "N/A"
+                                stg += f":{order['account']}"
+                                txt = msg.get(stg,[])
+                                ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}<br>"
+                                txt.append(ding)
+                                msg[stg] = txt
+                            # self.db[table].insert_one(order)
+                        
+
                 self.cacheDict[table] = []
-                notify(f"订单收集", msg) 
+
+                # send dingding
+                if msg:
+                    ding = ""
+                    for category, result in msg.items():
+                        ding += f"### {category}\n"
+                        for account, txts in result.items():
+                            ding+=f"##### -{account}:\n"
+                            for text in txts:
+                                ding+=text
+
+                    ding+=f"\n {now}"
+                    notify(f"订单收集", ding) 
 
     #----------------------------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
         self.eventEngine.register(EVENT_RECORDER, self.procecssRecordEvent)
+        self.eventEngine.register(EVENT_ERROR, self.procecssErrorEvent)
         
     #----------------------------------------------------------------------
     # def run(self):
