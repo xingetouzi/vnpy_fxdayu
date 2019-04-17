@@ -390,7 +390,7 @@ class CtaEngine(object):
                 if not tick.datetime:
                     tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
             except ValueError:
-                self.writeCtaLog(traceback.format_exc())
+                self.writeLog(traceback.format_exc(), logging.ERROR)
                 return
 
             # 逐个推送到策略实例中
@@ -595,7 +595,8 @@ class CtaEngine(object):
             vtSymbolset=setting['symbolList']
 
         except KeyError as e:
-            self.writeCtaLog(u'载入策略出错：%s' %e)
+            # self.writeCtaLog(u'载入策略出错：%s' %e)
+            self.writeLog(u'载入策略出错：%s' % traceback.format_exc(), logging.error)
             return
 
         # 获取策略类
@@ -605,12 +606,14 @@ class CtaEngine(object):
             STRATEGY_GET_CLASS = self.loadLocalStrategy()
             strategyClass = STRATEGY_GET_CLASS.get(className, None)
             if not strategyClass:
-                self.writeCtaLog(u'找不到策略类：%s' %className)
+                # self.writeCtaLog(u'找不到策略类：%s' %className)
+                self.writeLog(u'找不到策略类：%s' %className, logging.ERROR)
                 return
 
         # 防止策略重名
         if name in self.strategyDict:
-            self.writeCtaLog(u'策略实例重名：%s' %name)
+            # self.writeCtaLog(u'策略实例重名：%s' %name)
+            self.writeLog(u'策略实例重名：%s' %name, logging.ERROR)
         else:
             # 创建策略实例
             strategy = strategyClass(self, setting)
@@ -648,7 +651,8 @@ class CtaEngine(object):
                 
                 self.mainEngine.subscribe(req, contract.gatewayName)
             else:
-                self.writeCtaLog(u'策略%s的交易合约%s无法找到' %(strategy.name, vtSymbol))
+                # self.writeCtaLog(u'策略%s的交易合约%s无法找到' %(strategy.name, vtSymbol))
+                self.writeLog(u'策略%s的交易合约%s无法找到' %(strategy.name, vtSymbol), logging.ERROR)
 
     #----------------------------------------------------------------------
     def initStrategy(self, name):
