@@ -33,6 +33,7 @@ from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, 
 from vnpy.trader.vtFunction import todayDate, getJsonPath
 from vnpy.trader.utils.notification import notify
 from decimal import *
+import logging
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -572,6 +573,15 @@ class CtaEngine(object):
         log = VtLogData()
         log.logContent = content
         log.gatewayName = 'CTA_STRATEGY'
+        event = Event(type_=EVENT_CTA_LOG)
+        event.dict_['data'] = log
+        self.eventEngine.put(event)
+    
+    def writeLog(self, content, level=logging.info):
+        log = VtLogData()
+        log.logContent = content
+        log.gatewayName = 'CTA_STRATEGY'
+        log.logLevel = level
         event = Event(type_=EVENT_CTA_LOG)
         event.dict_['data'] = log
         self.eventEngine.put(event)

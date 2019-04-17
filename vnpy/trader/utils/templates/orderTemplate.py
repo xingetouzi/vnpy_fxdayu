@@ -792,7 +792,10 @@ class OrderTemplate(CtaTemplate):
 
         if not origin.order:
             return False
-
+            
+        if not origin.order.tradedVolume:
+            return False
+    
         if origin.order.status in STATUS_FINISHED and self._CLOSE_TAG in origin.info:
             if self.orderClosed(origin):
                 del self._autoExitInfo[ae.originID]
@@ -1269,7 +1272,7 @@ class OrderTemplate(CtaTemplate):
             result = price
         
         if result != price:
-            logging.warning("Adjust price | %s | %s => %s | %s", vtSymbol, price, result, tag)
+            logging.info("Adjust price | %s | %s => %s | %s", vtSymbol, price, result, tag)
 
         return result
 
