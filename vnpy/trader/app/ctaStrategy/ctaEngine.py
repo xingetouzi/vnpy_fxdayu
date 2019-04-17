@@ -31,7 +31,7 @@ from vnpy.trader.language import constant
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
-from vnpy.trader.utils.notification import notify
+# from vnpy.trader.utils.notification import notify
 from decimal import *
 import logging
 
@@ -511,8 +511,8 @@ class CtaEngine(object):
                 for sym in strategy.symbolList:
                     if error.gatewayName in sym:
                         msg = f'ProcessError，错误码：{error.errorID}，错误信息：{error.errorMsg}'
-                        self.writeCtaLog(msg)        # 待扩展
-                        notify(msg,strategy) 
+                        self.writeLog(msg, logging.ERROR)        # 待扩展
+                        # notify(msg,strategy) 
                         return
 
     #--------------------------------------------------
@@ -832,8 +832,9 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s：触发异常, 当前状态已保存, 挂单将全部撤销' %strategy.name,
                                 traceback.format_exc()])
             
-            notify(content,strategy)
-            self.writeCtaLog(content)
+            # notify(content,strategy)
+            # self.writeCtaLog(content)
+            self.writeLog(content, logging.ERROR)
 
     #----------------------------------------------------------------------------------------
     def saveSyncData(self, strategy):    #改为posDict
