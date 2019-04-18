@@ -105,7 +105,6 @@ class OkexfRestApi(RestClient):
         account.gatewayName = self.gatewayName
         account.accountID = "_".join([str.upper(currency), SUBGATEWAY_NAME])
         account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
-        
 
         if data['margin_mode'] =='crossed':
             account.margin = float(data['margin'])
@@ -362,6 +361,7 @@ class OkexfWebsocketApi(WebsocketClient):
         with open("temp/future.json") as f:
             contracts = json.load(f)
         self.callbackDict['futures/order'] = self.onTrade
+        self.callbackDict['futures/account'] = self.onAccount
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:
             self.sendPacket({'op': 'subscribe', 'args': f'futures/order:{contracts[contract]}'})
             self.sendPacket({'op': 'subscribe', 'args': f'futures/account:{contract.split("-")[0]}'})
@@ -513,13 +513,25 @@ class OkexfWebsocketApi(WebsocketClient):
             }}]}"""
         for idx, data in enumerate(d):
             for currency, account_info in data.items():
-                account_data = {currency:account_info["equity"]}
-                rc = VtRecorder()
-                rc.account = self.gatewayName
-                rc.table = "account"
-                rc.info = account_data
-                self.gateway.writeLog(str(account_data))
-                self.gateway.onRecorder(rc)
+                account = VtAccountData()
+                account.gatewayName = self.gatewayName
+                account.accountID = str.upper(currency)
+                account.vtAccountID = SUBGATEWAY_NAME
+                
+                # if data['margin_mode'] =='crossed':
+                #     account.margin = float(data['margin'])
+                #     account.positionProfit = float(data['unrealized_pnl'])
+                #     account.closeProfit = float(data['realized_pnl'])
+                # elif data['margin_mode'] =='fixed':
+                #     for contracts in data['contracts']:
+                #         margin = float(contracts['margin_for_unfilled']) + float(contracts['margin_frozen']) 
+                #         account.margin += margin
+                #         account.positionProfit += float(contracts['unrealized_pnl'])
+                #         account.closeProfit += float(contracts['realized_pnl'])
+                account.balance = float(account_info['equity'])
+                # account.available = account.balance - account.margin
+                self.gateway.onAccount(account)
+                self.gateway.writeLog(str({currency:float(account_info["equity"])}))
     
     #----------------------------------------------------------------------
     def onPosition(self, d):

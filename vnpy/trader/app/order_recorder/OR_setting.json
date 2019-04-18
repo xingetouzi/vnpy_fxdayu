@@ -1,5 +1,7 @@
 {
     "mongouri": "",
+    "db_name":"",
 
-    "interval" : 60
+    "interval" : 60,
+    "daily_trigger_hour": 8
 }

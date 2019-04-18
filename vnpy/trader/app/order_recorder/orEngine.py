@@ -1,11 +1,12 @@
 import json
 import os
-import copy
+from copy import copy
 import traceback
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, time, date, timedelta
 from queue import Queue, Empty
 from threading import Thread
+import requests
 import pymongo
 from pymongo.errors import DuplicateKeyError
 
@@ -18,9 +19,6 @@ from vnpy.trader.app.ctaStrategy.ctaTemplate import BarGenerator
 # from .orBase import *
 from .language import text
 from .ding import notify
-
-
-
 
 ########################################################################
 class OrEngine(object):
@@ -40,9 +38,12 @@ class OrEngine(object):
         
         # 配置字典
         self.settingDict = OrderedDict()
-        self.pre_equity = {}
+        self.accountDict = {}
+        self.pre_balanceDict = {}
         self.db = None
         self.mapping_future = {"1":"开多","2":"开空","3":"平多","4":"平空"}
+        self.cacheDict = {"future":[],"swap":[],"spot":[],"error":[]}
+        self.r_date = date.today()
         
         # 负责执行数据库插入的单独线程相关
         self.active = False                     # 工作状态
@@ -57,8 +58,6 @@ class OrEngine(object):
     
         # 注册事件监听
         self.registerEvent()  
-
-        self.cacheDict = {"account":[],"future":[],"swap":[],"spot":[],"error":[]}
     
     #----------------------------------------------------------------------
     def loadSetting(self):
@@ -68,21 +67,37 @@ class OrEngine(object):
             self.db = pymongo.MongoClient(orSetting['mongouri'])[orSetting["db_name"]]
 
             setQryFreq = orSetting.get('interval', 60)
-            self.initQuery(setQryFreq)
+            self.daily_trigger = orSetting.get('daily_trigger_hour', 60)
+            self.initOrderQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def procecssRecordEvent(self, event):
         """处理行情事件"""
         recorder = event.dict_['data']
         table = recorder.table
-        self.cacheDict[table].append(recorder.info)
+        self.cacheDict[table].append(recorder)
+
+    def procecssAccountEvent(self,event):
+        account = event.dict_['data']
+        account_info = self.accountDict.get(account.gatewayName,{})
+        currency_info = account_info.get(account.vtAccountID,{})
+        currency_info.update({account.vtAccountID:account.balance})
+        account_info.update({account.accountID : currency_info})
+        self.accountDict[account.gatewayName] = account_info
 
     def procecssErrorEvent(self,event):
         error = event.dict_['data']
         self.cacheDict["error"].append(error)
 
+    def get_coin_profile(self, coin):
+        REST_HOST = f'https://www.okex.com/api/spot/v3/instruments/{coin}-USDT/ticker'
+        r = requests.get(REST_HOST,timeout = 10)
+        result = eval(r.text)
+        
+        return float(result["last"])
+
     #----------------------------------------------------------------------
-    def initQuery(self, freq = 60):
+    def initOrderQuery(self, freq = 60):
         """初始化连续查询"""
         # 需要循环的查询函数列表
         self.qryFunctionList = [self.queryInfo]
@@ -117,80 +132,143 @@ class OrEngine(object):
         self.eventEngine.register(EVENT_TIMER, self.query)
         
     #----------------------------------------------------------------------
+    def accountQuery(self):
+        TRIGGER = time(self.daily_trigger, 0)
+        self.writeLog(f"next account snapshot: {self.r_date} {TRIGGER.strftime('%H:%M')}")
+        currentTime = datetime.now().time()
+        today = date.today()
+        if currentTime >= TRIGGER and today == self.r_date:
+            self.r_date = today + timedelta(days=1) # 改变判断条件
+
+            sorted_info = copy(self.accountDict)
+            msg = {}
+            usdt_equiv = {}
+
+            price_indi = {"datetime":datetime.now(),"date":today.strftime('%Y%m%d')}
+            for coin in ["EOS","BTC"]:
+                price = self.get_coin_profile(coin)
+                price_indi[coin] = price
+            
+            for account, currency in self.accountDict.items():
+                # sample: {"fxdayu01":{"EOS":{"FUTURE":10,"SWAP":10}}}
+                pre_ac = self.pre_balanceDict.get(account,{})
+                self.pre_balanceDict[account] = pre_ac
+
+                usdt_equiv[account] = 0
+                msg[account] = {}
+                
+                for coin, detail in currency.items():
+                    pre_v = pre_ac.get(coin,{})
+                    total = 0
+                    for equity in detail.values():
+                        total+=equity
+                    
+                    usdt_price = price_indi.get(coin,0)
+                    if not usdt_price:
+                        usdt_price = self.get_coin_profile(coin)
+                    usdt_v = total * usdt_price
+                    usdt_equiv[account] += usdt_v
+
+                    inc_ = {"TOTAL":total,"USDT_EQUIV":usdt_v,"PRICE_IN_USDT":usdt_price}
+                    sorted_info[account][coin].update(inc_)
+
+                    ac = {"datetime":datetime.now(), "date":today.strftime('%Y%m%d'), "account":account, "currency":coin}
+                    for a,b in sorted_info[account][coin].items():
+                        ac.update({a:b})
+                    print(ac)
+                    self.pre_balanceDict[account][coin] = ac
+                    self.db["account"].insert_one(ac)
+
+                    # dingding text
+                    txt = ""
+                    if "FUTURE" in detail.keys():
+                        p = pre_v.get("FUTURE",0)
+                        txt += f" - future:{detail['FUTURE']} \n delta:{detail['FUTURE']-p}\n\n "
+                    if "SWAP" in detail.keys():
+                        p = pre_v.get("SWAP",0)
+                        txt += f" - swap:{detail['SWAP']} \n delta:{detail['SWAP']-p}\n\n "
+                    if "SPOT" in detail.keys():
+                        p = pre_v.get("SPOT",0)
+                        txt += f" - spot:{detail['SPOT']} \n delta:{detail['SPOT']-p}\n\n "
+                    txt+= f"\n\n"
+                    p = pre_v.get("TOTAL",0)
+                    txt+= f"> total:{total} \n delta:{total-p}\n\n "
+                    msg[account][coin] = txt
+
+            self.accountDict = {}    # clear
+
+            # send dingding
+            if msg:
+                ding = "ACCOUNT SNAPSHOT\n\n"
+                for ac, coin in msg.items():
+                    ding += f"### {ac}:\n\n"
+                    for sym, text in coin.items():
+                        ding += f"##### {sym}:\n\n"
+                        ding+=text
+
+                    # calc account total
+                    ding += f"##### ACCOUNT TOTAL:\n\n"
+                    usd_total = usdt_equiv[account]
+                    ding += f"usdt_equiv: {usd_total}\n\n"
+                    
+                    btc_quote = price_indi.get("BTC",0)
+                    if not btc_quote:
+                        btc_quote = self.get_coin_profile("BTC")
+                    ding += f"btc_equiv: {round(usd_total / btc_quote, 8)}\n\n"
+
+                    eos_quote = price_indi.get("EOS",0)
+                    if not eos_quote:
+                        eos_quote = self.get_coin_profile("EOS")
+                    ding += f"eos_equiv: {round(usd_total / eos_quote, 8)}\n\n"
+
+                ding+=f"\n {date.today()}"
+                notify(f"账户净值统计", ding) 
+
+            # store price
+            self.db["price"].insert_one(price_indi)
+
+
     def queryInfo(self):
-        """"""
         now = datetime.now().strftime('%y%m%d %H:%M:%S')
         print(now,"routine")
-        
         for table, info in self.cacheDict.items():
             if info:
-                msg = {}
-
-                if table == "account":
-                    msg["account"] ={}
-                    sorted_info = {}
-                    delta_output = {}
-
-                    for account in info:
-                        ac = sorted_info.get(account.account,{})
-                        ac.update(account.info)
-                        sorted_info[account.account] = ac
-
-                    for account_name, equity in sorted_info.items():
-                        delta_output.update({account_name:{}})
-                        pre = self.pre_equity.get(account_name,{})
-                        for sym,value in equity.items():
-                            if sym in pre.keys():
-                                delta = pre[sym] - value
-                            pre[sym] = value
-                            self.pre_equity[account_name] = pre
-                            if delta:
-                                delta_output[account_name] = {sym:delta}
-
-                            ac = {sym:value,"account":account_name,"datetime":datetime.now()}
-
-                            # self.db[table].insert_one(ac)
-                            print(ac)
-
-
-                    for account_name, delta in delta_output.items():
-                        txt = msg["account"].get(account_name,[])
-                        for sym,v in delta.items():
-                            ding = f'> {sym} : {v} <br>'
-                            txt.append(ding)
-                            msg["account"][account_name] = txt
-
-                elif table == "error":
+                msg ={}
+                if table == "error":
                     msg["error"] = {}
                     for error in info:
-                        txt = msg["error"].get(error.gatewayName,[])
-                        ding = f'> code:{error.errorID}, msg:{error.errorMsg} <br>'
+                        txt = msg.get(error.gatewayName,[])
+                        ding = f'> code:{error.errorID}, msg:{error.errorMsg} \n\n'
                         txt.append(ding)
-                        msg["error"][error.gatewayName] = txt
+                        msg[error.gatewayName] = txt
 
                 else:  # order
                     if table in ["future", "swap"]:
-                        for order in info:
+                        for order_info in info:
+                            order = order_info.info
                             if order["status"] =='2':
                                 stg = order['strategy'] if order['strategy'] else "N/A"
                                 account = msg.get(stg,{})
                                 msg[stg] = account
                                 txt = account.get(order['account'],[])
-                                ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}<br>"
+                                ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}\n\n"
                                 txt.append(ding)
                                 msg[stg][order['account']] = txt
-                            # self.db[table].insert_one(order)
+                            self.db[table].insert_one(order)
 
                     elif table == "spot":
                         for order in info:
+                            order = order_info.info
                             if order["status"] =='filled':
                                 stg = order['strategy'] if order['strategy'] else "N/A"
-                                stg += f":{order['account']}"
-                                txt = msg.get(stg,[])
-                                ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}<br>"
+                                account = msg.get(stg,{})
+                                msg[stg] = account
+                                txt = account.get(order['account'],[])
+                                ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}\n\n"
                                 txt.append(ding)
-                                msg[stg] = txt
-                            # self.db[table].insert_one(order)
+                                msg[stg][order['account']] = txt
+                            self.db[table].insert_one(order)
+                        
                         
 
                 self.cacheDict[table] = []
@@ -198,61 +276,29 @@ class OrEngine(object):
                 # send dingding
                 if msg:
                     ding = ""
-                    for category, result in msg.items():
-                        ding += f"### {category}\n"
-                        for account, txts in result.items():
-                            ding+=f"##### -{account}:\n"
+                    for table, category in msg.items():
+                        ding += f"### {table}\n"
+                        for account, txts in category.items():
+                            ding+=f"#### - {account}:\n"
                             for text in txts:
                                 ding+=text
 
                     ding+=f"\n {now}"
                     notify(f"订单收集", ding) 
 
+        # 收集账户信息
+        self.accountQuery() 
     #----------------------------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""
         self.eventEngine.register(EVENT_RECORDER, self.procecssRecordEvent)
+        self.eventEngine.register(EVENT_ACCOUNT, self.procecssAccountEvent)
         self.eventEngine.register(EVENT_ERROR, self.procecssErrorEvent)
-        
-    #----------------------------------------------------------------------
-    # def run(self):
-    #     """运行插入线程"""
-    #     while self.active:
-    #         try:
-    #             dbName, collectionName, d = self.queue.get(block=True, timeout=1)
-                
-    #             # 这里采用MongoDB的update模式更新数据，在记录tick数据时会由于查询
-    #             # 过于频繁，导致CPU占用和硬盘读写过高后系统卡死，因此不建议使用
-    #             #flt = {'datetime': d['datetime']}
-    #             #self.mainEngine.dbUpdate(dbName, collectionName, d, flt, True)
-                
-    #             # 使用insert模式更新数据，可能存在时间戳重复的情况，需要用户自行清洗
-    #             try:
-    #                 self.mainEngine.dbInsert(dbName, collectionName, d)
-    #             except DuplicateKeyError:
-    #                 self.writeDrLog(u'键值重复插入失败，报错信息：%s' %traceback.format_exc())
-    #         except Empty:
-    #             pass
-            
-    #----------------------------------------------------------------------
-    # def start(self):
-    #     """启动"""
-    #     self.active = True
-    #     self.thread.start()
-        
-    #----------------------------------------------------------------------
-    # def stop(self):
-    #     """退出"""
-    #     if self.active:
-    #         self.active = False
-    #         self.thread.join()
-        
-    #----------------------------------------------------------------------
-    # def writeDrLog(self, content):
-    #     """快速发出日志事件"""
-    #     log = VtLogData()
-    #     log.logContent = content
-    #     event = Event(type_=EVENT_DATARECORDER_LOG)
-    #     event.dict_['data'] = log
-    #     self.eventEngine.put(event)   
-    
+
+    def writeLog(self, content):
+        """快速发出日志事件"""
+        log = VtLogData()
+        log.logContent = content
+        event = Event(type_="orderLog")
+        event.dict_['data'] = log
+        self.eventEngine.put(event)   

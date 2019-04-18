@@ -218,10 +218,10 @@ class EmailHelper(LoggerMixin, metaclass=Singleton):
             w.daemon = True
             w.start()
 
-    def send(self, content, strategy):
+    def send(self, content):
         self._count += 1
         req_id = str(self._timestamp) + "-" + str(self._count)
-        self.info("开始发送由策略%s发出的消息,内容长度为%s,发送编号为%s", strategy.name, len(content), req_id)
+        self.info("开始发送消息,内容长度为%s,发送编号为%s", len(content), req_id)
         try:
             strategy = StrategyInfo.from_strategy(strategy)
             req = MailRequest()
@@ -240,9 +240,9 @@ class MultiprocessEmailHelper(EmailHelper):
     Queue = multiprocessing.Queue
 
 
-def notify(content, strategy):
+def notify(content):
     helper = MultiprocessEmailHelper()
     if not content:
-        helper.warn("Notification content from strategy [%s] is empty, skip", strategy.name)
+        helper.warn("Notification content from strategy [%s] is empty, skip")
         return
-    helper.send(content, strategy)
+    helper.send(content)
