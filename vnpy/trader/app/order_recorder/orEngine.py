@@ -12,7 +12,7 @@ from pymongo.errors import DuplicateKeyError
 
 from vnpy.event import Event
 from vnpy.trader.vtEvent import *
-from vnpy.trader.vtFunction import todayDate, getJsonPath
+from vnpy.trader.vtFunction import todayDate, getJsonPath,getTempPath
 from vnpy.trader.vtObject import VtSubscribeReq, VtLogData, VtBarData, VtTickData
 from vnpy.trader.app.ctaStrategy.ctaTemplate import BarGenerator
 from vnpy.trader.utils.notification import email
@@ -65,6 +65,7 @@ class OrEngine(object):
         with open(self.settingFilePath) as f:
             orSetting = json.load(f)
             self.db = pymongo.MongoClient(orSetting['mongouri'])[orSetting["db_name"]]
+            self.receiver = orSetting['receiver']
 
             setQryFreq = orSetting.get('interval', 60)
             self.daily_trigger = orSetting.get('daily_trigger_hour', 60)
@@ -224,7 +225,17 @@ class OrEngine(object):
 
                 ding+=f"\n {date.today()}"
                 notify(f"账户净值统计", ding) 
-                email(ding)
+
+
+                TXT_FILE = getTempPath("mail.txt")
+                f = open(TXT_FILE, "w+")
+                print(f"{ding}", file = f)
+                f = open(TXT_FILE, "r")
+                text = f.readlines()
+                f.close()
+                ret = ""
+                for addr in self.receiver:
+                    ret += email(text, addr)
 
             # store price
             self.db["price"].insert_one(price_indi)

@@ -30,6 +30,7 @@ class MailRequest(object):
     def __init__(self):
         self.id = None
         self.content = None
+        self.receiver = None
         self.retry = 0
 
 class MailSender(object):
@@ -40,7 +41,6 @@ class MailSender(object):
         self.mail_pass = globalSetting['mailPass']
         self.mail_server = globalSetting['mailServer']
         self.mail_port = globalSetting['mailPort']
-        self.receiver = globalSetting['receiver']
         self.server = None
 
     def _get_server(self):
@@ -54,8 +54,8 @@ class MailSender(object):
         if not self.server:
             self.server = self._get_server()
         server = self.server
-        if self.receiver:
-            for addr in self.receiver:
+        if req.receiver:
+            for addr in req.receiver:
                 people = addr.split(",")
                 msg = MIMEText(req.content, 'html', 'utf-8')
                 msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
@@ -193,7 +193,7 @@ class EmailHelper(LoggerMixin, metaclass=Singleton):
             w.daemon = True
             w.start()
 
-    def send(self, content):
+    def send(self, content,addr):
         self._count += 1
         req_id = str(self._timestamp) + "-" + str(self._count)
         self.info("开始发送消息,内容长度为%s,发送编号为%s", len(content), req_id)
@@ -201,6 +201,7 @@ class EmailHelper(LoggerMixin, metaclass=Singleton):
             req = MailRequest()
             req.id = req_id
             req.content = content
+            req.receiver = addr
             self._qin.put(req)
         except:
             error = traceback.format_exc()
@@ -212,9 +213,11 @@ class MultiprocessEmailHelper(EmailHelper):
     Queue = multiprocessing.Queue
 
 
-def email(content):
+def email(content,addr):
     helper = MultiprocessEmailHelper()
     if not content:
         helper.warn("Notification content from is empty, skip")
         return
-    helper.send(content)
+    helper.send(content,addr)
+def notify(content,strategy):
+    pass
