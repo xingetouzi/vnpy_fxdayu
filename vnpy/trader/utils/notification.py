@@ -55,23 +55,22 @@ class MailSender(object):
             self.server = self._get_server()
         server = self.server
         if req.receiver:
-            for addr in req.receiver:
-                people = addr.split(",")
-                msg = MIMEText(req.content, 'html', 'utf-8')
-                msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
-                msg['To']=people[0]#formataddr(["收件人昵称",to_receiver])
-                if len(people)>1:
-                    msg['Cc']=people[1]#formataddr(["CC收件人昵称",cc_receiver])
-                msg['Subject'] = 'ACCOUNT SNAPSHOT'
-                msg = msg.as_string()
+            people = req.receiver.split(",")
+            msg = MIMEText(req.content, 'html', 'utf-8')
+            msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
+            msg['To']=people[0]#formataddr(["收件人昵称",to_receiver])
+            if len(people)>1:
+                msg['Cc']=people[1]#formataddr(["CC收件人昵称",cc_receiver])
+            msg['Subject'] = 'ACCOUNT SNAPSHOT'
+            msg = msg.as_string()
 
-                try:
-                    server.sendmail(self.mail_account, people, msg)
-                except Exception as e:
-                    # reconnect to the server at next time.
-                    self.server = None
-                    server.quit()
-                    raise e
+            try:
+                server.sendmail(self.mail_account, people, msg)
+            except Exception as e:
+                # reconnect to the server at next time.
+                self.server = None
+                server.quit()
+                raise e
 
     def run(self, qin, qout):
         Empty = get_empty(qin)

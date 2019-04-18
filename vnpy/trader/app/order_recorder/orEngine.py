@@ -184,13 +184,13 @@ class OrEngine(object):
                     txt = ""
                     if "FUTURE" in detail.keys():
                         p = pre_v.get("FUTURE",0)
-                        txt += f" - future:{detail['FUTURE']} \n\n - delta:{detail['FUTURE']-p}\n\n "
+                        txt += f" - future:{detail['FUTURE']} \n\n delta:{detail['FUTURE']-p}\n\n "
                     if "SWAP" in detail.keys():
                         p = pre_v.get("SWAP",0)
-                        txt += f" - swap:{detail['SWAP']} \n\n - delta:{detail['SWAP']-p}\n\n "
+                        txt += f" - swap:{detail['SWAP']} \n\n delta:{detail['SWAP']-p}\n\n "
                     if "SPOT" in detail.keys():
                         p = pre_v.get("SPOT",0)
-                        txt += f" - spot:{detail['SPOT']} \n\n - delta:{detail['SPOT']-p}\n\n "
+                        txt += f" - spot:{detail['SPOT']} \n\n delta:{detail['SPOT']-p}\n\n "
                     txt+= f"\n\n"
                     p = pre_v.get("TOTAL",0)
                     txt+= f"> total:{total} \n\n > delta:{total-p}\n\n "
