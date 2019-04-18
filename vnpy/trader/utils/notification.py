@@ -26,23 +26,10 @@ def get_empty(q):
         Empty = queue.Empty
     return Empty
 
-class StrategyInfo(object):
-    def __init__(self):
-        self.name = "Unknown"
-        self.mailAdd = []
-    
-    @classmethod
-    def from_strategy(cls, strategy):
-        obj = cls()
-        obj.name = strategy.name
-        obj.mailAdd = strategy.mailAdd    
-        return obj
-
 class MailRequest(object):
     def __init__(self):
         self.id = None
         self.content = None
-        self.strategy = None
         self.retry = 0
 
 class MailSender(object):
@@ -53,6 +40,7 @@ class MailSender(object):
         self.mail_pass = globalSetting['mailPass']
         self.mail_server = globalSetting['mailServer']
         self.mail_port = globalSetting['mailPort']
+        self.receiver = globalSetting['receiver']
         self.server = None
 
     def _get_server(self):
@@ -66,15 +54,14 @@ class MailSender(object):
         if not self.server:
             self.server = self._get_server()
         server = self.server
-        strategy = req.strategy
-        if strategy.mailAdd:
-            if len(strategy.mailAdd)>1:
-                to_receiver = strategy.mailAdd[0]
-                cc_receiver = strategy.mailAdd[1:len(strategy.mailAdd)]
+        if self.receiver:
+            if len(self.receiver)>1:
+                to_receiver = self.receiver[0]
+                cc_receiver = self.receiver[1:len(self.receiver)]
                 cc_receiver = ",".join(cc_receiver)
                 my_receiver = ",".join([to_receiver,cc_receiver])
-            elif len(strategy.mailAdd)==1:
-                to_receiver = my_receiver = strategy.mailAdd[0]
+            elif len(self.receiver)==1:
+                to_receiver = my_receiver = self.receiver[0]
                 cc_receiver = ""
         else:
             raise ValueError("Please fill email address in ctaSetting.json")
@@ -85,7 +72,7 @@ class MailSender(object):
         msg['To'] = to_receiver#formataddr(["收件人昵称",to_receiver])
         if cc_receiver:
             msg['Cc'] = cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
-        msg['Subject'] = '策略信息播报'
+        msg['Subject'] = 'ACCOUNT SNAPSHOT'
         msg = msg.as_string()
 
         try:
@@ -191,7 +178,8 @@ def _receive(qin, qout, max_retry=3):
 class EmailHelper(LoggerMixin, metaclass=Singleton):
     Thread = threading.Thread
     Queue = queue.Queue
-    ding = globalSetting.get("dingding", None)
+    # ding = globalSetting.get("dingding", None)
+    ding = None
     notify_class = MailSender if not ding else DingSender
 
     def __init__(self, nparallel=1):
@@ -223,12 +211,9 @@ class EmailHelper(LoggerMixin, metaclass=Singleton):
         req_id = str(self._timestamp) + "-" + str(self._count)
         self.info("开始发送消息,内容长度为%s,发送编号为%s", len(content), req_id)
         try:
-            strategy = StrategyInfo.from_strategy(strategy)
             req = MailRequest()
             req.id = req_id
-            content += f'\nfrom strategy:{strategy.name} \n{datetime.now().strftime("%Y%m%d %H:%M:%S")}'
             req.content = content
-            req.strategy = strategy
             self._qin.put(req)
         except:
             error = traceback.format_exc()
@@ -240,9 +225,9 @@ class MultiprocessEmailHelper(EmailHelper):
     Queue = multiprocessing.Queue
 
 
-def notify(content):
+def email(content):
     helper = MultiprocessEmailHelper()
     if not content:
-        helper.warn("Notification content from strategy [%s] is empty, skip")
+        helper.warn("Notification content from is empty, skip")
         return
     helper.send(content)

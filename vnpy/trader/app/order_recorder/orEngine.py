@@ -15,7 +15,7 @@ from vnpy.trader.vtEvent import *
 from vnpy.trader.vtFunction import todayDate, getJsonPath
 from vnpy.trader.vtObject import VtSubscribeReq, VtLogData, VtBarData, VtTickData
 from vnpy.trader.app.ctaStrategy.ctaTemplate import BarGenerator
-# from vnpy.trader.app.ctaStrategy.ctaTemplate import BarManager
+from vnpy.trader.utils.notification import email
 # from .orBase import *
 from .language import text
 from .ding import notify
@@ -183,16 +183,16 @@ class OrEngine(object):
                     txt = ""
                     if "FUTURE" in detail.keys():
                         p = pre_v.get("FUTURE",0)
-                        txt += f" - future:{detail['FUTURE']} \n delta:{detail['FUTURE']-p}\n\n "
+                        txt += f" - future:{detail['FUTURE']} \n\n - delta:{detail['FUTURE']-p}\n\n "
                     if "SWAP" in detail.keys():
                         p = pre_v.get("SWAP",0)
-                        txt += f" - swap:{detail['SWAP']} \n delta:{detail['SWAP']-p}\n\n "
+                        txt += f" - swap:{detail['SWAP']} \n\n - delta:{detail['SWAP']-p}\n\n "
                     if "SPOT" in detail.keys():
                         p = pre_v.get("SPOT",0)
-                        txt += f" - spot:{detail['SPOT']} \n delta:{detail['SPOT']-p}\n\n "
+                        txt += f" - spot:{detail['SPOT']} \n\n - delta:{detail['SPOT']-p}\n\n "
                     txt+= f"\n\n"
                     p = pre_v.get("TOTAL",0)
-                    txt+= f"> total:{total} \n delta:{total-p}\n\n "
+                    txt+= f"> total:{total} \n\n > delta:{total-p}\n\n "
                     msg[account][coin] = txt
 
             self.accountDict = {}    # clear
@@ -200,8 +200,9 @@ class OrEngine(object):
             # send dingding
             if msg:
                 ding = "ACCOUNT SNAPSHOT\n\n"
-                for ac, coin in msg.items():
-                    ding += f"### {ac}:\n\n"
+                for account, coin in msg.items():
+                    ding += "\n\n"
+                    ding += f"### {account}:\n\n"
                     for sym, text in coin.items():
                         ding += f"##### {sym}:\n\n"
                         ding+=text
@@ -223,6 +224,7 @@ class OrEngine(object):
 
                 ding+=f"\n {date.today()}"
                 notify(f"账户净值统计", ding) 
+                email(ding)
 
             # store price
             self.db["price"].insert_one(price_indi)
