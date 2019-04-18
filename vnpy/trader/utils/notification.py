@@ -55,36 +55,23 @@ class MailSender(object):
             self.server = self._get_server()
         server = self.server
         if self.receiver:
-            if len(self.receiver)>1:
-                to_receiver = self.receiver[0]
-                cc_receiver = self.receiver[1:len(self.receiver)]
-                cc_receiver = ",".join(cc_receiver)
-                my_receiver = ",".join([to_receiver,cc_receiver])
-            elif len(self.receiver)==1:
-                to_receiver = my_receiver = self.receiver[0]
-                cc_receiver = ""
-        else:
-            raise ValueError("Please fill email address in ctaSetting.json")
-    
-        content = req.content
-        msg = MIMEText(content, 'html', 'utf-8')
-        msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
-        msg['To'] = to_receiver#formataddr(["收件人昵称",to_receiver])
-        if cc_receiver:
-            msg['Cc'] = cc_receiver#formataddr(["CC收件人昵称",cc_receiver])
-        msg['Subject'] = 'ACCOUNT SNAPSHOT'
-        msg = msg.as_string()
+            for addr in self.receiver:
+                people = addr.split(",")
+                msg = MIMEText(req.content, 'html', 'utf-8')
+                msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
+                msg['To']=people[0]#formataddr(["收件人昵称",to_receiver])
+                if len(people)>1:
+                    msg['Cc']=people[1]#formataddr(["CC收件人昵称",cc_receiver])
+                msg['Subject'] = 'ACCOUNT SNAPSHOT'
+                msg = msg.as_string()
 
-        try:
-            if cc_receiver:
-                server.sendmail(self.mail_account, [to_receiver, cc_receiver], msg)
-            else:
-                server.sendmail(self.mail_account, [to_receiver], msg)
-        except Exception as e:
-            # reconnect to the server at next time.
-            self.server = None
-            server.quit()
-            raise e
+                try:
+                    server.sendmail(self.mail_account, people, msg)
+                except Exception as e:
+                    # reconnect to the server at next time.
+                    self.server = None
+                    server.quit()
+                    raise e
 
     def run(self, qin, qout):
         Empty = get_empty(qin)
