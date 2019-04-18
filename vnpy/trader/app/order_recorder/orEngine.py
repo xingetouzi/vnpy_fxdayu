@@ -184,13 +184,13 @@ class OrEngine(object):
                     txt = ""
                     if "FUTURE" in detail.keys():
                         p = pre_v.get("FUTURE",0)
-                        txt += f" - future:{detail['FUTURE']} \n\n delta:{detail['FUTURE']-p}\n\n "
+                        txt += f" -future:{detail['FUTURE']} \n\n delta:{detail['FUTURE']-p}\n\n "
                     if "SWAP" in detail.keys():
                         p = pre_v.get("SWAP",0)
-                        txt += f" - swap:{detail['SWAP']} \n\n delta:{detail['SWAP']-p}\n\n "
+                        txt += f" -swap:{detail['SWAP']} \n\n delta:{detail['SWAP']-p}\n\n "
                     if "SPOT" in detail.keys():
                         p = pre_v.get("SPOT",0)
-                        txt += f" - spot:{detail['SPOT']} \n\n delta:{detail['SPOT']-p}\n\n "
+                        txt += f" -spot:{detail['SPOT']} \n\n delta:{detail['SPOT']-p}\n\n "
                     txt+= f"\n\n"
                     p = pre_v.get("TOTAL",0)
                     txt+= f"> total:{total} \n\n > delta:{total-p}\n\n "
@@ -200,42 +200,56 @@ class OrEngine(object):
 
             # send dingding
             if msg:
+                TXT_FILE = getTempPath("mail.txt")
+                wfile = open(TXT_FILE, "w+")
+
                 ding = "ACCOUNT SNAPSHOT\n\n"
+                print(ding, file = wfile)
                 for account, coin in msg.items():
                     ding += "\n\n"
-                    ding += f"### {account}:\n\n"
+                    word= f"### {account}:\n\n"
+                    ding += word
+                    print(word, file = wfile)
                     for sym, text in coin.items():
-                        ding += f"##### {sym}:\n\n"
+                        word = f"##### {sym}:\n\n"
+                        ding += word
+                        print(word, file = wfile)
                         ding+=text
+                        print(text, file = wfile)
 
                     # calc account total
-                    ding += f"##### ACCOUNT TOTAL:\n\n"
+                    word = f"##### ACCOUNT TOTAL:\n\n"
+                    ding += word
+                    print(word, file = wfile)
+
                     usd_total = usdt_equiv[account]
-                    ding += f"usdt_equiv: {usd_total}\n\n"
+                    word = f"usdt_equiv: {usd_total}\n\n"
+                    ding += word
+                    print(word, file = wfile)
                     
                     btc_quote = price_indi.get("BTC",0)
                     if not btc_quote:
                         btc_quote = self.get_coin_profile("BTC")
-                    ding += f"btc_equiv: {round(usd_total / btc_quote, 8)}\n\n"
+                    word = f"btc_equiv: {round(usd_total / btc_quote, 8)}\n\n"
+                    ding += word
+                    print(word, file = wfile)
 
                     eos_quote = price_indi.get("EOS",0)
                     if not eos_quote:
                         eos_quote = self.get_coin_profile("EOS")
-                    ding += f"eos_equiv: {round(usd_total / eos_quote, 8)}\n\n"
+                    word = f"eos_equiv: {round(usd_total / eos_quote, 8)}\n\n"
+                    ding += word
+                    print(word, file = wfile)
 
                 ding+=f"\n {date.today()}"
                 notify(f"账户净值统计", ding) 
-
-
-                TXT_FILE = getTempPath("mail.txt")
-                f = open(TXT_FILE, "w+")
-                print(f"{ding}", file = f)
+                wfile.close()
+                # email
                 f = open(TXT_FILE, "r")
                 text = f.readlines()
                 f.close()
-                ret = ""
                 for addr in self.receiver:
-                    ret += email(text, addr)
+                    email(text, addr)
 
             # store price
             self.db["price"].insert_one(price_indi)
