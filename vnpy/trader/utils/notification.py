@@ -56,7 +56,10 @@ class MailSender(object):
         server = self.server
         if req.receiver:
             people = req.receiver.split(",")
-            msg = MIMEText(req.content, 'html', 'utf-8')
+            mail_context = ""
+            for text in req.content:
+                mail_context += text
+            msg = MIMEText(mail_context, 'plain', 'utf-8')
             msg['From'] = formataddr(['VNPY_CryptoCurrency', self.mail_account])
             msg['To']=people[0]#formataddr(["收件人昵称",to_receiver])
             if len(people)>1:
