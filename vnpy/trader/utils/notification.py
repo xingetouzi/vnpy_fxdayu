@@ -1,4 +1,5 @@
 # encoding: utf-8
+import logging
 import smtplib
 import multiprocessing
 import multiprocessing
@@ -188,14 +189,13 @@ def _receive(qin, qout, max_retry=3):
             msg = traceback.format_exc()
             logger.error("消息回报出错:\n%s", msg)
 
-class EmailHelper(LoggerMixin, metaclass=Singleton):
+class EmailHelper(LoggerMixin):
     Thread = threading.Thread
     Queue = queue.Queue
-    ding = globalSetting.get("dingding", None)
-    notify_class = MailSender if not ding else DingSender
 
-    def __init__(self, nparallel=1):
+    def __init__(self, nparallel=1, notify_class=MailSender):
         LoggerMixin.__init__(self)
+        self.notify_class = notify_class
         self._count = 0
         self._timestamp = int(time.time())
         self._q = None
@@ -240,8 +240,30 @@ class MultiprocessEmailHelper(EmailHelper):
     Queue = multiprocessing.Queue
 
 
+class LoggingNotifier(object):
+    def send(self, content, strategy):
+        strategy.writeLog(content, level=logging.WARNING)
+
+_notifier = None
+
+def _create_notifier():
+    ding = globalSetting.get("dingding", None)
+    mail = globalSetting.get('mailAccount', None) and globalSetting.get('mailPass', None) \
+        and globalSetting.get('mailServer', None) and globalSetting.get('mailPort', None)
+    if ding:
+        return MultiprocessEmailHelper(notify_class=DingSender)
+    elif mail:
+        return MultiprocessEmailHelper(notify_class=MailSender)
+    return LoggingNotifier()
+
+def get_notifier():
+    global _notifier
+    if not _notifier:
+        _notifier = _create_notifier()
+    return _notifier
+
 def notify(content, strategy):
-    helper = MultiprocessEmailHelper()
+    helper = get_notifier()
     if not content:
         helper.warn("Notification content from strategy [%s] is empty, skip", strategy.name)
         return
