@@ -621,7 +621,7 @@ class OkexfRestApi(RestClient):
         self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}")
         order = request.extra
         order.status = STATUS_REJECTED
-        order.rejectedInfo = str(eval(request.response.text)['code']) + ' ' + eval(request.response.text)['message']
+        order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
         self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
     
@@ -641,7 +641,7 @@ class OkexfRestApi(RestClient):
         """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
         'order_id': '1878377147147264'}"""
         if data['error_message']:
-            self.gateway.writeLog(f"WARNING: sendorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
+            self.onSendOrderFailed(data, request)
         else:
             self.okexIDMap[data['order_id']] = data['client_oid']
             self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
