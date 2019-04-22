@@ -8,9 +8,9 @@ from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
-from .future import  OkexfWebsocketApi 
-from .swap import  OkexSwapWebsocketApi
-from .spot import  OkexSpotWebsocketApi
+from .future import OkexfRestApi, OkexfWebsocketApi 
+from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
+from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
 import pymongo
 
@@ -89,17 +89,17 @@ class OkexGateway(VtGateway):
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())
         if "FUTURE" in gateway_type:
-            # restfutureApi = OkexfRestApi(self)
+            restfutureApi = OkexfRestApi(self)
             wsfutureApi = OkexfWebsocketApi(self)     
-            self.gatewayMap['FUTURE'] = {"WS":wsfutureApi, "symbols":contract_list,"REST":""}
+            self.gatewayMap['FUTURE'] = {"WS":wsfutureApi, "symbols":contract_list,"REST":restfutureApi}
         if "SWAP" in gateway_type:
-            # restSwapApi = OkexSwapRestApi(self)
+            restSwapApi = OkexSwapRestApi(self)
             wsSwapApi = OkexSwapWebsocketApi(self)
-            self.gatewayMap['SWAP'] = {"WS":wsSwapApi,  "symbols":swap_list,"REST":""}
+            self.gatewayMap['SWAP'] = {"WS":wsSwapApi,  "symbols":swap_list,"REST":restSwapApi}
         if "SPOT" in gateway_type:
-            # restSpotApi = OkexSpotRestApi(self)
+            restSpotApi = OkexSpotRestApi(self)
             wsSpotApi = OkexSpotWebsocketApi(self)
-            self.gatewayMap['SPOT'] = {"WS":wsSpotApi, "symbols":spot_list,"REST":""}
+            self.gatewayMap['SPOT'] = {"WS":wsSpotApi, "symbols":spot_list,"REST":restSpotApi}
 
         self.connectSubGateway(sessionCount)
 
@@ -297,7 +297,7 @@ class OkexGateway(VtGateway):
         df = df[["datetime", "open", "high", "low", "close", "volume"]]
         df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
         df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].applymap(lambda x: float(x))
-        df.sort_values(by=['datetime'], axis = 0, ascending =True, inplace = True)
+        df.sort_values(by=['datetime'], axis = 0, ascending = True, inplace = True)
         return df
 
     def writeLog(self, content):
