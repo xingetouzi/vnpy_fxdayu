@@ -39,7 +39,7 @@ class OkexGateway(VtGateway):
 
         self.orderID = 1
         self.tradeID = 0
-        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * 1000
+        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * 100
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -130,7 +130,7 @@ class OkexGateway(VtGateway):
             alpha='abcdefghijklmnopqrstuvwxyz'
             filter_text = "0123456789" + alpha + alpha.upper()
             new_name = filter(lambda ch: ch in filter_text, orderReq.byStrategy)
-            name = ''.join(list(new_name))[:12]
+            name = ''.join(list(new_name))[:13]
             self.stgMap.update({strategy_name:name})
             strategy_name = name
             
