@@ -13,31 +13,31 @@ from requests import ConnectionError
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
-from vnpy.trader.vtConstant import *
+from vnpy.trader.vtConstant import constant
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
 statusMapReverse = {}
-statusMapReverse['open'] = STATUS_NOTTRADED           # SpotOrder
-statusMapReverse['part_filled'] = STATUS_PARTTRADED
-statusMapReverse['filled'] = STATUS_ALLTRADED
-statusMapReverse['cancelled'] = STATUS_CANCELLED
-statusMapReverse['failure'] = STATUS_REJECTED
+statusMapReverse['open'] = constant.STATUS_NOTTRADED           # SpotOrder
+statusMapReverse['part_filled'] = constant.STATUS_PARTTRADED
+statusMapReverse['filled'] = constant.STATUS_ALLTRADED
+statusMapReverse['cancelled'] = constant.STATUS_CANCELLED
+statusMapReverse['failure'] = constant.STATUS_REJECTED
 
 # 方向和开平映射
 typeMap = {}
-typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = 'buy'
-typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = 'buy'
-typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = 'sell'
-typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 'sell'
+typeMap[(constant.DIRECTION_LONG, constant.OFFSET_OPEN)] = 'buy'
+typeMap[(constant.DIRECTION_LONG, constant.OFFSET_CLOSE)] = 'buy'
+typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_OPEN)] = 'sell'
+typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_CLOSE)] = 'sell'
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
 # 下单方式映射
 priceTypeMap = {}
-priceTypeMap[PRICETYPE_LIMITPRICE] = 0
-priceTypeMap[PRICETYPE_MARKETPRICE] = 1
-priceTypeMap[PRICETYPE_FOK] = 2
-priceTypeMap[PRICETYPE_FAK] = 3
+priceTypeMap[constant.PRICETYPE_LIMITPRICE] = 0
+priceTypeMap[constant.PRICETYPE_MARKETPRICE] = 1
+priceTypeMap[constant.PRICETYPE_FOK] = 2
+priceTypeMap[constant.PRICETYPE_FAK] = 3
 priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
 
 SUBGATEWAY_NAME = "SPOT"
@@ -151,9 +151,9 @@ class OkexSpotRestApi(RestClient):
         order.gatewayName = self.gatewayName
         order.symbol = orderReq.symbol
         order.exchange = 'OKEX'
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.vtSymbol = constant.VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.orderID = orderID
-        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+        order.vtOrderID = constant.VN_SEPARATOR.join([self.gatewayName, order.orderID])
         order.direction = orderReq.direction
         order.offset = orderReq.offset
         order.price = orderReq.price
@@ -266,7 +266,7 @@ class OkexSpotRestApi(RestClient):
             rsp = self.onCancelAll(data, request)
             # failed rsp: {'code': 33027, 'message': 'Order has been revoked or revoked'}
             if "code" in rsp.keys():
-                self.gateway.writeLog(f"交易所返回{symbol}撤单失败:{rsp['message']}")
+                self.gateway.writeLog(f"交易所返回{symbol}撤单失败:{rsp['message']}", constant.LOG_ERROR)
                 return []
             # rsp: {'eth-usdt': 
             # {'result': True, 'client_oid': '', 
@@ -338,7 +338,7 @@ class OkexSpotRestApi(RestClient):
         # failed: [{'code': 30024, 'message': 'Parameter value filling error'}]
         for result in rsp:
             if "code" in result.keys():
-                self.gateway.writeLog(f'换币失败:{result}')
+                self.gateway.writeLog(f'换币失败:{result}', constant.LOG_ERROR)
             elif "result" in result.keys():
                 if result['result']:
                     vtOrderIDs.append(result['order_id'])
@@ -385,10 +385,10 @@ class OkexSpotRestApi(RestClient):
             
             contract.symbol = d['instrument_id']
             contract.exchange = 'OKEX'
-            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
+            contract.vtSymbol = constant.VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             
             contract.name = contract.symbol
-            contract.productClass = PRODUCT_FUTURES
+            contract.productClass = constant.PRODUCT_FUTURES
             contract.priceTick = float(d['tick_size'])
             contract.size = float(d['size_increment'])
             contract.minVolume = float(d['min_size'])
@@ -407,7 +407,7 @@ class OkexSpotRestApi(RestClient):
         account.gatewayName = self.gatewayName
         
         account.accountID = "_".join([data['currency'], SUBGATEWAY_NAME])
-        account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+        account.vtAccountID = constant.VN_SEPARATOR.join([account.gatewayName, account.accountID])
         
         account.balance = float(data['balance'])
         account.available = float(data['available'])
@@ -471,7 +471,7 @@ class OkexSpotRestApi(RestClient):
         sym = self.missing_order_Dict.get(order.orderID, None)
         if sym:
             del self.missing_order_Dict[order.orderID]    
-        if order.status in STATUS_FINISHED:
+        if order.status in constant.STATUS_FINISHED:
             finish_id = self.okexIDMap.get(okexID, None)
             if finish_id:
                 del self.okexIDMap[okexID]
@@ -505,9 +505,9 @@ class OkexSpotRestApi(RestClient):
     def onqueryMonoOrderFailed(self, data, request):
         """{"code":33014,"message":"Order does not exist"}"""
         order = self.orderDict.get(request.extra, None)
-        order.status = STATUS_REJECTED
+        order.status = constant.STATUS_REJECTED
         order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
-        self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
         self.gateway.onOrder(order)
         sym = self.missing_order_Dict.get(order.orderID, None)
         if sym:
@@ -517,22 +517,22 @@ class OkexSpotRestApi(RestClient):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}")
+        # self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}", constant.LOG_ERROR)
         order = request.extra
-        order.status = STATUS_REJECTED
+        order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', constant.LOG_ERROR)
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
         """
         下单失败回调：连接错误
         """
-        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
+        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}", constant.LOG_ERROR)
         order = request.extra
         self.queryMonoOrder(order.symbol, order.orderID)
-        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}')
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', constant.LOG_ERROR)
         self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
@@ -556,7 +556,7 @@ class OkexSpotRestApi(RestClient):
             oid = request.path.split("/")[-1]
             self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid-{oid}")
         else:
-            self.gateway.writeLog(f"WARNING: cancelorder error, oid:{data['client_oid']}, msg:{data['error_code']},{data['error_message']}")
+            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", constant.LOG_ERROR)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -568,7 +568,7 @@ class OkexSpotRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
-        e.errorMsg = str(httpStatusCode) #request.response.text
+        e.errorMsg = str(request.response.text) #request.response.text
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -629,7 +629,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onDisconnected(self):
         """连接回调"""
-        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开')
+        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开', constant.LOG_WARNING)
     
     #----------------------------------------------------------------------
     def onPacket(self, packet):
@@ -712,7 +712,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
         tick.exchange = 'OKEX'
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick.vtSymbol = constant.VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
 
         self.tickDict[tick.symbol] = tick
     

@@ -20,33 +20,33 @@ from .util import generateSignature, ERRORCODE,ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
 statusMapReverse = {}
-statusMapReverse['0'] = STATUS_NOTTRADED    # swap
-statusMapReverse['1'] = STATUS_PARTTRADED
-statusMapReverse['2'] = STATUS_ALLTRADED
-statusMapReverse['4'] = STATUS_CANCELLING
-statusMapReverse['5'] = STATUS_CANCELLING
-statusMapReverse['-1'] = STATUS_CANCELLED
-statusMapReverse['-2'] = STATUS_REJECTED
+statusMapReverse['0'] = constant.STATUS_NOTTRADED    # swap
+statusMapReverse['1'] = constant.STATUS_PARTTRADED
+statusMapReverse['2'] = constant.STATUS_ALLTRADED
+statusMapReverse['4'] = constant.STATUS_CANCELLING
+statusMapReverse['5'] = constant.STATUS_CANCELLING
+statusMapReverse['-1'] = constant.STATUS_CANCELLED
+statusMapReverse['-2'] = constant.STATUS_REJECTED
 
 # 方向和开平映射
 typeMap = {}
-typeMap[(DIRECTION_LONG, OFFSET_OPEN)] = '1'
-typeMap[(DIRECTION_SHORT, OFFSET_OPEN)] = '2'
-typeMap[(DIRECTION_LONG, OFFSET_CLOSE)] = '4'  # cover
-typeMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = '3' # sell
+typeMap[(constant.DIRECTION_LONG, constant.OFFSET_OPEN)] = '1'
+typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_OPEN)] = '2'
+typeMap[(constant.DIRECTION_LONG, constant.OFFSET_CLOSE)] = '4'  # cover
+typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_CLOSE)] = '3' # sell
 typeMapReverse = {v:k for k,v in typeMap.items()}
 
 # 下单方式映射
 priceTypeMap = {}
-priceTypeMap[PRICETYPE_LIMITPRICE] = 0
-priceTypeMap[PRICETYPE_MARKETPRICE] = 1
-priceTypeMap[PRICETYPE_FOK] = 2
-priceTypeMap[PRICETYPE_FAK] = 3
+priceTypeMap[constant.PRICETYPE_LIMITPRICE] = 0
+priceTypeMap[constant.PRICETYPE_MARKETPRICE] = 1
+priceTypeMap[constant.PRICETYPE_FOK] = 2
+priceTypeMap[constant.PRICETYPE_FAK] = 3
 priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
 
 directionMap = {
-    "long": DIRECTION_LONG,
-    "short" :DIRECTION_SHORT
+    "long": constant.DIRECTION_LONG,
+    "short" :constant.DIRECTION_SHORT
 }
 
 SUBGATEWAY_NAME = "SWAP"
@@ -131,7 +131,7 @@ class OkexSwapRestApi(RestClient):
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq, orderID):# type: (VtOrderReq)->str
         """限速规则：40次/2s"""
-        vtOrderID = VN_SEPARATOR.join([self.gatewayName, orderID])
+        vtOrderID = constant.VN_SEPARATOR.join([self.gatewayName, orderID])
         
         type_ = typeMap[(orderReq.direction, orderReq.offset)]
 
@@ -155,7 +155,7 @@ class OkexSwapRestApi(RestClient):
         order.gatewayName = self.gatewayName
         order.symbol = orderReq.symbol
         order.exchange = 'OKEX'
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.vtSymbol = constant.VN_SEPARATOR.join([order.symbol, order.gatewayName])
         order.orderID = orderID
         order.vtOrderID = vtOrderID
         order.direction = orderReq.direction
@@ -327,7 +327,7 @@ class OkexSwapRestApi(RestClient):
                     vtOrderIDs.append(result['order_id'])
                     self.gateway.writeLog(f'平仓成功:{result}')
                 else:
-                    self.gateway.writeLog(f'平仓失败:{result}')
+                    self.gateway.writeLog(f'平仓失败:{result}', constant.LOG_ERROR)
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -372,10 +372,10 @@ class OkexSwapRestApi(RestClient):
             
             contract.symbol = data['instrument_id']
             contract.exchange = 'OKEX'
-            contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
+            contract.vtSymbol = constant.VN_SEPARATOR.join([contract.symbol, contract.gatewayName])
             
             contract.name = contract.symbol
-            contract.productClass = PRODUCT_FUTURES
+            contract.productClass = constant.PRODUCT_FUTURES
             contract.priceTick = float(data['tick_size'])
             contract.size = int(data['size_increment'])
             contract.minVolume = 1
@@ -394,7 +394,7 @@ class OkexSwapRestApi(RestClient):
         account = VtAccountData()
         account.gatewayName = self.gatewayName
         account.accountID = "_".join([data['instrument_id'].split("-")[0], SUBGATEWAY_NAME])
-        account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+        account.vtAccountID = constant.VN_SEPARATOR.join([account.gatewayName, account.accountID])
 
         account.balance = float(data['equity'])
         account.margin = float(data['margin'])  + float(data['margin_frozen']) 
@@ -428,7 +428,7 @@ class OkexSwapRestApi(RestClient):
         position.gatewayName = self.gatewayName
         position.symbol = data['instrument_id']
         position.exchange = 'OKEX'
-        position.vtSymbol = VN_SEPARATOR.join([position.symbol, position.gatewayName])
+        position.vtSymbol = constant.VN_SEPARATOR.join([position.symbol, position.gatewayName])
 
         position.position = int(data['position'])
         position.frozen = int(data['position']) - int(data['avail_position'])
@@ -436,7 +436,7 @@ class OkexSwapRestApi(RestClient):
         position.price = float(data['avg_cost'])
         position.direction = directionMap[data['side']]
 
-        position.vtPositionName = VN_SEPARATOR.join([position.vtSymbol, position.direction])
+        position.vtPositionName = constant.VN_SEPARATOR.join([position.vtSymbol, position.direction])
         self.gateway.onPosition(position)
 
     def onQueryMonoPosition(self, d, request):
@@ -498,7 +498,7 @@ class OkexSwapRestApi(RestClient):
         if sym:
             del self.missing_order_Dict[order.orderID]
 
-        if order.status in STATUS_FINISHED:
+        if order.status in constant.STATUS_FINISHED:
             finish_id = self.okexIDMap.get(okexID, None)
             if finish_id:
                 del self.okexIDMap[okexID]
@@ -526,9 +526,9 @@ class OkexSwapRestApi(RestClient):
         errorcode = d.get("code", None)
         if errorcode:
             order = self.orderDict.get(request.extra, None)
-            order.status = STATUS_REJECTED
+            order.status = constant.STATUS_REJECTED
             order.rejectedInfo = str(d['code']) + d['message']
-            self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
             self.gateway.onOrder(order)
             sym = self.missing_order_Dict.get(order.orderID, None)
             if sym:
@@ -540,9 +540,9 @@ class OkexSwapRestApi(RestClient):
         """ {'code': 35029, 'message': 'Order does not exist'} """
         order = self.orderDict.get(request.extra, None)
         if order:
-            order.status = STATUS_REJECTED
+            order.status = constant.STATUS_REJECTED
             order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
-            self.gateway.writeLog(f'查单结果：{order.orderID},"交易所查无此订单"')
+            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
             self.gateway.onOrder(order)
             sym = self.missing_order_Dict.get(order.orderID, None)
             if sym:
@@ -553,22 +553,22 @@ class OkexSwapRestApi(RestClient):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}")
+        # self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}", constant.LOG_ERROR)
         order = request.extra
-        order.status = STATUS_REJECTED
+        order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}')
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', constant.LOG_ERROR)
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
         """
         下单失败回调：连接错误
         """
-        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
+        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}", constant.LOG_ERROR)
         order = request.extra
         self.queryMonoOrder(order.symbol, order.orderID)
-        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}')
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', constant.LOG_ERROR)
         self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
@@ -593,7 +593,7 @@ class OkexSwapRestApi(RestClient):
             self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
         else:
             oid = request.path.split("/")[-1]
-            self.gateway.writeLog(f"WARNING: cancelorder error, oid:{oid}, msg:{data['error_code']},{data['error_message']}")
+            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", constant.LOG_ERROR)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -605,7 +605,7 @@ class OkexSwapRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
-        e.errorMsg = str(httpStatusCode) #request.response.text
+        e.errorMsg = str(request.response.text) #request.response.text
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -666,7 +666,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onDisconnected(self):
         """连接回调"""
-        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开')
+        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开', constant.LOG_ERROR)
     
     #----------------------------------------------------------------------
     def onPacket(self, packet):
@@ -758,7 +758,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
         tick.exchange = 'OKEX'
-        tick.vtSymbol = VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
+        tick.vtSymbol = constant.VN_SEPARATOR.join([tick.symbol, tick.gatewayName])
         
         self.tickDict[tick.symbol] = tick
     
