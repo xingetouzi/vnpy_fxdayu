@@ -272,7 +272,7 @@ class OkexfRestApi(RestClient):
             # 'order_ids': ['2432685818596352', '2432686510479360'], 
             # 'instrument_id': 'ETH-USD-190329'}
             if data['result']:
-                vtOrderIDs += data['order_ids']
+                vtOrderIDs += str(data['order_ids'])
                 self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])} 撤单成功: ids: {str(data['order_ids'])}")
         return vtOrderIDs
 
@@ -557,7 +557,7 @@ class OkexfRestApi(RestClient):
         order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
         if int(data['order_type'])>1:
-            order.priceType = priceTypeMapReverse[data['order_type']]
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
         
         order= copy(order)
         self.gateway.onOrder(order)
@@ -630,10 +630,10 @@ class OkexfRestApi(RestClient):
         """
         下单失败回调：连接错误
         """
-        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}")
+        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}", logging.WARNING)
         order = request.extra
         self.queryMonoOrder(self.contractMapReverse[order.symbol], order.orderID)
-        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}')
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', logging.WARNING)
         self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------

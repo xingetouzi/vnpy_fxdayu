@@ -434,7 +434,7 @@ class OkexSwapRestApi(RestClient):
         position.frozen = int(data['position']) - int(data['avail_position'])
         position.available = int(data['avail_position'])
         position.price = float(data['avg_cost'])
-        position.direction = directionMap[data['side']]
+        position.direction = directionMap[str(data['side'])]
 
         position.vtPositionName = constant.VN_SEPARATOR.join([position.vtSymbol, position.direction])
         self.gateway.onPosition(position)
@@ -473,7 +473,7 @@ class OkexSwapRestApi(RestClient):
         if not order:
             order = self.gateway.newOrderObject(data)
             order.totalVolume = int(data['size'])
-            order.direction, order.offset = typeMapReverse[data['type']]
+            order.direction, order.offset = typeMapReverse[int(data['type'])]
         
         order.price = float(data['price'])
         order.price_avg = float(data['price_avg'])
@@ -846,7 +846,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
             tick = self.tickDict[str(data['instrument_id'])]
             tick.lastPrice = float(data['price'])
             tick.lastVolume = int(data['size'])
-            tick.type = data['side']
+            tick.type = str(data['side'])
             tick.volumeChange = 1
             tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
