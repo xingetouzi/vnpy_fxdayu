@@ -617,7 +617,7 @@ class OkexSwapRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb, request)
         self.gateway.onError(e)
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
@@ -904,5 +904,5 @@ class OkexSwapWebsocketApi(WebsocketClient):
         for idx, pos in enumerate(d):
             symbol = pos['instrument_id']
             for data in pos['holding']:
-                str(data['instrument_id']) = symbol
+                data['instrument_id'] = symbol
                 self.restGateway.processPositionData(data)

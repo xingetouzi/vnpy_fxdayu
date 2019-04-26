@@ -580,7 +580,7 @@ class OkexSpotRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb, request)
         self.gateway.onError(e)
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
