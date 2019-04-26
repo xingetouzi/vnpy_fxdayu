@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
-
+import logging
 import requests
 from requests import ConnectionError
 
@@ -606,7 +606,7 @@ class OkexfRestApi(RestClient):
         order = self.orderDict.get(request.extra, None)
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
-        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
+        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
         self.gateway.onOrder(order)
         sym = self.missing_order_Dict.get(order.orderID, None)
         if sym:
@@ -623,7 +623,7 @@ class OkexfRestApi(RestClient):
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', constant.LOG_ERROR)
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
@@ -655,7 +655,7 @@ class OkexfRestApi(RestClient):
         if data['result']:
             self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])}撤单成功: oid-{str(data['client_oid'])}")
         else:
-            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", constant.LOG_ERROR)
+            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", logging.ERROR)
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None

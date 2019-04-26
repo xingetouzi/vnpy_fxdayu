@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import logging
 from datetime import datetime, timezone, timedelta
 
 from vnpy.api.rest import RestClient, Request
@@ -47,7 +48,7 @@ class OkexGateway(VtGateway):
         try:
             f = open(self.filePath)
         except IOError:
-            self.writeLog(u"读取连接配置出错，请检查配置文件", constant.LOG_ERROR)
+            self.writeLog(u"读取连接配置出错，请检查配置文件", logging.ERROR)
             return
 
         # 解析connect.json文件
@@ -61,7 +62,7 @@ class OkexGateway(VtGateway):
             sessionCount = int(setting['sessionCount'])
             subscrib_symbols = setting['symbols']
         except KeyError as e:
-            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查{e}", constant.LOG_ERROR)
+            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查{e}", logging.ERROR)
             return
 
         # 记录订阅的交易品种类型
@@ -117,7 +118,7 @@ class OkexGateway(VtGateway):
         """订阅行情"""
         # symbolType = self.symbolTypeMap.get(subscribeReq.symbol, None)
         # if not symbolType:
-        #     self.writeLog(f"{self.gatewayName} does not have this symbol:{subscribeReq.symbol}", constant.LOG_ERROR)
+        #     self.writeLog(f"{self.gatewayName} does not have this symbol:{subscribeReq.symbol}", logging.ERROR)
         # else:
         #     self.gatewayMap[symbolType]["WS"].subscribe(subscribeReq.symbol)
     
@@ -136,7 +137,7 @@ class OkexGateway(VtGateway):
             
         symbolType = self.symbolTypeMap.get(orderReq.symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}", constant.LOG_ERROR)
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}", logging.ERROR)
         else:
             self.orderID += 1
             order_id = f"{strategy_name}{symbolType[:4]}{str(self.loginTime + self.orderID)}"
@@ -147,7 +148,7 @@ class OkexGateway(VtGateway):
         """撤单"""
         symbolType = self.symbolTypeMap.get(cancelOrderReq.symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{cancelOrderReq.symbol}", constant.LOG_ERROR)
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{cancelOrderReq.symbol}", logging.ERROR)
         else:
             self.gatewayMap[symbolType]["REST"].cancelOrder(cancelOrderReq)
         
@@ -241,7 +242,7 @@ class OkexGateway(VtGateway):
         symbol = vtSymbol.split(constant.VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", constant.LOG_ERROR)
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", logging.ERROR)
         else:
             self.gatewayMap[symbolType]["REST"].queryMonoPosition([symbol])
             self.gatewayMap[symbolType]["REST"].queryMonoAccount([symbol])
@@ -256,7 +257,7 @@ class OkexGateway(VtGateway):
         granularity = granularityMap[type_]
 
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", constant.LOG_ERROR)
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", logging.ERROR)
             return []
         else:
             subGateway = self.gatewayMap[symbolType]["REST"]
@@ -298,7 +299,7 @@ class OkexGateway(VtGateway):
         df.sort_values(by=['datetime'], axis = 0, ascending =True, inplace = True)
         return df
 
-    def writeLog(self, content, level = constant.LOG_INFO):
+    def writeLog(self, content, level = logging.INFO):
         """发出日志"""
         log = VtLogData()
         log.gatewayName = self.gatewayName

@@ -121,11 +121,3 @@ VN_SEPARATOR = ':'
 DATETIME = "%Y%m%d %H:%M:%S"
 DATE = "%Y%m%d"
 TIME = "%H:%M:%S"
-
-
-import logging
-LOG_DEBUG = logging.DEBUG
-LOG_INFO = logging.INFO
-LOG_ERROR = logging.ERROR
-LOG_WARNING = logging.WARNING
-LOG_CRITICAL = logging.CRITICAL

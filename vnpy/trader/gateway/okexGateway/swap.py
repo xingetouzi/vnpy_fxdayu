@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from copy import copy
 from urllib.parse import urlencode
 import pandas as pd
-
+import logging
 import requests
 from requests import ConnectionError
 
@@ -327,7 +327,7 @@ class OkexSwapRestApi(RestClient):
                     vtOrderIDs.append(result['order_id'])
                     self.gateway.writeLog(f'平仓成功:{result}')
                 else:
-                    self.gateway.writeLog(f'平仓失败:{result}', constant.LOG_ERROR)
+                    self.gateway.writeLog(f'平仓失败:{result}', logging.ERROR)
         return vtOrderIDs
 
     def onCloseAll(self, data, request):
@@ -528,7 +528,7 @@ class OkexSwapRestApi(RestClient):
             order = self.orderDict.get(request.extra, None)
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = str(d['code']) + d['message']
-            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
+            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
             self.gateway.onOrder(order)
             sym = self.missing_order_Dict.get(order.orderID, None)
             if sym:
@@ -542,7 +542,7 @@ class OkexSwapRestApi(RestClient):
         if order:
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
-            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', constant.LOG_ERROR)
+            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
             self.gateway.onOrder(order)
             sym = self.missing_order_Dict.get(order.orderID, None)
             if sym:
@@ -553,22 +553,22 @@ class OkexSwapRestApi(RestClient):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        # self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}", constant.LOG_ERROR)
+        # self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}", logging.ERROR)
         order = request.extra
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', constant.LOG_ERROR)
+        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
     
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
         """
         下单失败回调：连接错误
         """
-        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}", constant.LOG_ERROR)
+        self.gateway.writeLog(f"{exceptionType} onsendordererror, {exceptionValue}", logging.ERROR)
         order = request.extra
         self.queryMonoOrder(order.symbol, order.orderID)
-        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', constant.LOG_ERROR)
+        self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', logging.ERROR)
         self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
@@ -593,7 +593,7 @@ class OkexSwapRestApi(RestClient):
             self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
         else:
             oid = request.path.split("/")[-1]
-            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", constant.LOG_ERROR)
+            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", logging.ERROR)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -666,7 +666,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
     #----------------------------------------------------------------------
     def onDisconnected(self):
         """连接回调"""
-        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开', constant.LOG_ERROR)
+        self.gateway.writeLog(f'{SUBGATEWAY_NAME} Websocket API连接断开', logging.ERROR)
     
     #----------------------------------------------------------------------
     def onPacket(self, packet):
