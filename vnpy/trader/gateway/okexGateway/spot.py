@@ -406,7 +406,7 @@ class OkexSpotRestApi(RestClient):
         account = VtAccountData()
         account.gatewayName = self.gatewayName
         
-        account.accountID = "_".join([data['currency'], SUBGATEWAY_NAME])
+        account.accountID = "_".join([str(data['currency']), SUBGATEWAY_NAME])
         account.vtAccountID = constant.VN_SEPARATOR.join([account.gatewayName, account.accountID])
         
         account.balance = float(data['balance'])
@@ -429,7 +429,7 @@ class OkexSpotRestApi(RestClient):
     
     #----------------------------------------------------------------------
     def processOrderData(self, data):
-        okexID = data['order_id']
+        okexID = str(data['order_id'])
         if "client_oid" not in data.keys():
             oid = self.okexIDMap.get(okexID, "not_exist")
         else:
@@ -455,11 +455,11 @@ class OkexSpotRestApi(RestClient):
         order.thisTradedVolume = incremental_filled_size - order.tradedVolume
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = incremental_filled_size
-        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
         order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-        if int(data['order_type'])>1:
-            order.priceType = priceTypeMapReverse[data['order_type']]
+        if int(data['order_type']) > 1:
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
 
         order = copy(order)
         self.gateway.onOrder(order)
@@ -543,8 +543,8 @@ class OkexSpotRestApi(RestClient):
         if data['error_message']:
             self.onSendOrderFailed(data, request)
         else:
-            self.okexIDMap[data['order_id']] = data['client_oid']
-            self.gateway.writeLog(f"RECORD: successful order, oid:{data['client_oid']} <--> okex_id:{data['order_id']}")
+            self.okexIDMap[str(data['order_id'])] = str(data['client_oid'])
+            self.gateway.writeLog(f"RECORD: successful order, oid:{str(data['client_oid'])} <--> okex_id:{str(data['order_id'])}")
 
     #----------------------------------------------------------------------
     def onCancelOrder(self, data, request):
@@ -580,7 +580,7 @@ class OkexSpotRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = exceptionValue
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
         self.gateway.onError(e)
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
@@ -656,7 +656,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = exceptionValue
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
         self.gateway.onError(e)
         
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
@@ -737,7 +737,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             'open_24h': '121.1132', 'high_24h': '121.7449', 'low_24h': '117.5606', 'base_volume_24h': '386475.880496', 
             'quote_volume_24h': '46309890.36931134', 'timestamp': '2019-01-19T08:50:40.943Z'}]} """
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             
             tick.lastPrice = float(data['last'])
             tick.highPrice = float(data['high_24h'])
@@ -745,7 +745,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             tick.volume = float(data['quote_volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -763,7 +763,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             ['120.1678', '23.25', 1], ['120.1677', '18.760982', 1]], 
             'instrument_id': 'ETH-USDT', 'timestamp': '2019-01-19T08:50:41.422Z'}]} """
         for data in d:
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
@@ -775,7 +775,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
                 tick.__setattr__(f'bidPrice{(idx + 1)}', float(price))
                 tick.__setattr__(f'bidVolume{(idx + 1)}', float(volume))
             
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -787,13 +787,13 @@ class OkexSpotWebsocketApi(WebsocketClient):
         """[{'instrument_id': 'ETH-USDT', 'price': '120.32', 'side': 'buy', 'size': '1.628', 
         'timestamp': '2019-01-19T08:56:48.669Z', 'trade_id': '782430504'}]"""
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             tick.lastPrice = float(data['price'])
             tick.lastVolume = float(data['size'])
-            tick.lastTradedTime = data['timestamp']
-            tick.type = data['side']
+            tick.lastTradedTime = str(data['timestamp'])
+            tick.type = str(data['side'])
             tick.volumeChange = 1
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             if tick.askPrice1:
                 tick=copy(tick)

@@ -273,7 +273,7 @@ class OkexfRestApi(RestClient):
             # 'instrument_id': 'ETH-USD-190329'}
             if data['result']:
                 vtOrderIDs += data['order_ids']
-                self.gateway.writeLog(f"交易所返回{data['instrument_id']} 撤单成功: ids: {str(data['order_ids'])}")
+                self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])} 撤单成功: ids: {str(data['order_ids'])}")
         return vtOrderIDs
 
     def onCancelAll(self, data, request):
@@ -390,7 +390,7 @@ class OkexfRestApi(RestClient):
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
             
-            contract.symbol = data['instrument_id']
+            contract.symbol = str(data['instrument_id'])
             contract.exchange = 'OKEX'            
             contract.name = contract.symbol
             contract.productClass = constant.PRODUCT_FUTURES
@@ -485,7 +485,7 @@ class OkexfRestApi(RestClient):
     def processPositionData(self, data):
         longPosition = VtPositionData()
         longPosition.gatewayName = self.gatewayName
-        longPosition.symbol = self.contractMap.get(data['instrument_id'], None)
+        longPosition.symbol = self.contractMap.get(str(data['instrument_id']), None)
         longPosition.exchange = 'OKEX'
         longPosition.vtSymbol = constant.VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
 
@@ -553,7 +553,7 @@ class OkexfRestApi(RestClient):
         order.status = statusMapReverse[str(data['status'])]
         order.tradedVolume = int(data['filled_qty'])
         order.fee = float(data['fee'])
-        order.orderDatetime = datetime.strptime(data['timestamp'], ISO_DATETIME_FORMAT)
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
         order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
         if int(data['order_type'])>1:
@@ -653,7 +653,7 @@ class OkexfRestApi(RestClient):
             2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
                 'error_code': '32004', 'client_oid': 'FUTURE19030516082610001', 'order_id': -1} """
         if data['result']:
-            self.gateway.writeLog(f"交易所返回{data['instrument_id']}撤单成功: oid-{str(data['client_oid'])}")
+            self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])}撤单成功: oid-{str(data['client_oid'])}")
         else:
             self.gateway.writeLog(f"WARNING: cancelorder error, {data}", constant.LOG_ERROR)
     
@@ -686,7 +686,7 @@ class OkexfRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = exceptionValue
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
         self.gateway.onError(e)
 
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb, request))
@@ -767,7 +767,7 @@ class OkexfWebsocketApi(WebsocketClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
-        e.errorMsg = exceptionValue
+        e.errorMsg = self.exceptionDetail(exceptionType, exceptionValue, tb)
         self.gateway.onError(e)
         
         sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
@@ -862,7 +862,7 @@ class OkexfWebsocketApi(WebsocketClient):
              "instrument_id": "BTC-USD-170310", "timestamp": "2018-12-17T06:30:07.142Z"
          }]}"""
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             
             tick.lastPrice = float(data['last'])
             tick.highPrice = float(data['high_24h'])
@@ -870,7 +870,7 @@ class OkexfWebsocketApi(WebsocketClient):
             tick.volume = float(data['volume_24h'])
             tick.askPrice1 = float(data['best_ask'])
             tick.bidPrice1 = float(data['best_bid'])
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -903,7 +903,7 @@ class OkexfWebsocketApi(WebsocketClient):
         "instrument_id": "BTC-USD-170310", "timestamp": "2018-12-17T09:48:09.978Z"
         }]}"""
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             
             for idx, buf in enumerate(data['asks']):
                 price, volume = buf[:2]
@@ -915,7 +915,7 @@ class OkexfWebsocketApi(WebsocketClient):
                 tick.__setattr__(f'bidPrice{(idx + 1)}', float(price))
                 tick.__setattr__(f'bidVolume{(idx + 1)}', int(volume))
             
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
@@ -930,12 +930,12 @@ class OkexfWebsocketApi(WebsocketClient):
             'instrument_id': 'EOS-USD-190329', 'timestamp': '2019-01-22T03:40:25.530Z'}]}
         """
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             tick.lastPrice = float(data['price'])
-            tick.lastVolume = int(data['qty']/2)
-            tick.type = data['side']
+            tick.lastVolume = int(int(data['qty'])/2)
+            tick.type = str(data['side'])
             tick.volumeChange = 1
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             if tick.askPrice5:
                 tick = copy(tick)
@@ -947,11 +947,11 @@ class OkexfWebsocketApi(WebsocketClient):
                 "lowest": "2773.0186", "timestamp": "2018-12-18T10:49:40.021Z"
         }]}"""
         for idx, data in enumerate(d):
-            tick = self.tickDict[data['instrument_id']]
+            tick = self.tickDict[str(data['instrument_id'])]
             tick.upperLimit = float(data['highest'])
             tick.lowerLimit = float(data['lowest'])
 
-            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(data['timestamp'])
+            tick.datetime, tick.date, tick.time = self.gateway.convertDatetime(str(data['timestamp']))
             tick.localTime = datetime.now()
             tick.volumeChange = 0
             tick.lastVolume = 0
