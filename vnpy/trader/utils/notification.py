@@ -120,7 +120,7 @@ class DingSender(object):
     interval = 600
 
     def __init__(self):
-        self.token = globalSetting['dingding']
+        self.token = globalSetting.get("dingding","")
 
     def send(self, req):
         msg = req.content
