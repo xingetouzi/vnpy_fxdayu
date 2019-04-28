@@ -284,7 +284,7 @@ class OkexSpotRestApi(RestClient):
 
     def onCancelAll(self, data, request):
         orderids = [str(order['order_id']) for order in data if
-                   order['status'] == 'open' or order['status'] == 'part_filled']
+                   str(order['state']) in ['0','1','3']]
         if request.extra:
             orderids = list(set(orderids).intersection(set(request.extra.split(","))))
         for i in range(len(orderids) // 10 + 1):

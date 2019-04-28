@@ -222,7 +222,7 @@ class OkexfRestApi(RestClient):
             # 6 = 未成交, 部分成交
             req = {
                 'instrument_id': symbol,
-                'status': 6
+                'state': 6
             }
             path = f'/api/futures/v3/orders/{symbol}'
             self.addRequest('GET', path, params=req,
@@ -258,7 +258,7 @@ class OkexfRestApi(RestClient):
         # 未完成(包含未成交和部分成交)
         req = {
             'instrument_id': symbol,
-            'status': 6
+            'state': 6
         }
         path = f'/api/futures/v3/orders/{symbol}'
         request = Request('GET', path, params=req, callback=None, data=None, headers=None)
@@ -279,7 +279,7 @@ class OkexfRestApi(RestClient):
 
     def onCancelAll(self, data, request):
         orderids = [str(order['order_id']) for order in data if
-                    order['status'] == '0' or order['status'] == '1']
+                    str(order['state']) in ['0','1','3']]
         if request.extra:
             orderids = list(set(orderids).intersection(set(request.extra.split(","))))
         for i in range(len(orderids) // 10 + 1):
