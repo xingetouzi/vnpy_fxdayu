@@ -18,12 +18,16 @@ from vnpy.trader.vtConstant import constant
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
+# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
+# "3":Submitting,"4":Cancelling,）
 statusMapReverse = {}
-statusMapReverse['open'] = constant.STATUS_NOTTRADED           # SpotOrder
-statusMapReverse['part_filled'] = constant.STATUS_PARTTRADED
-statusMapReverse['filled'] = constant.STATUS_ALLTRADED
-statusMapReverse['cancelled'] = constant.STATUS_CANCELLED
-statusMapReverse['failure'] = constant.STATUS_REJECTED
+statusMapReverse['0'] = constant.STATUS_NOTTRADED           # SpotOrder
+statusMapReverse['1'] = constant.STATUS_PARTTRADED
+statusMapReverse['2'] = constant.STATUS_ALLTRADED
+statusMapReverse['3'] = constant.STATUS_SUBMITTED
+statusMapReverse['4'] = constant.STATUS_CANCELLING
+statusMapReverse['-1'] = constant.STATUS_CANCELLED
+statusMapReverse['-2'] = constant.STATUS_REJECTED
 
 # 方向和开平映射
 typeMap = {}
@@ -211,7 +215,7 @@ class OkexSpotRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryOrder(self):
         """限速规则：20次/2s"""
-        self.gateway.writeLog('\n\n----------start Quary SPOT Orders,positions,Accounts---------------')
+        self.gateway.writeLog('----SPOT Quary Orders,positions,Accounts----', logging.DEBUG)
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 未成交
             req = {
@@ -454,7 +458,7 @@ class OkexSpotRestApi(RestClient):
             order.price_avg = 0.0
         order.deliveryTime = datetime.now()
         order.thisTradedVolume = incremental_filled_size - order.tradedVolume
-        order.status = statusMapReverse[str(data['status'])]
+        order.status = statusMapReverse[str(data['state'])]
         order.tradedVolume = incremental_filled_size
         order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
         order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
@@ -569,7 +573,7 @@ class OkexSpotRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
-        e.errorMsg = str(request.response.text) #request.response.text
+        e.errorMsg = str(request.response.text) + str(request.path)
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -722,7 +726,8 @@ class OkexSpotWebsocketApi(WebsocketClient):
         """"""
         if not d['success']:
             return
-        
+        self.gateway.writeLog(f"{self.gatewayName}-{SUBGATEWAY_NAME} WEBSOCKET 登录成功", logging.WARNING)
+
         # 订阅交易相关推送
         self.callbackDict['spot/order'] = self.onTrade
         self.callbackDict['spot/account'] = self.onAccount

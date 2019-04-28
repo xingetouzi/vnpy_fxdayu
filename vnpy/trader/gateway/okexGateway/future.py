@@ -19,15 +19,16 @@ from vnpy.trader.vtConstant import constant
 from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
+# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
+# "3":Submitting,"4":Cancelling,)
 statusMapReverse = {}
 statusMapReverse['0'] = constant.STATUS_NOTTRADED    # futures
 statusMapReverse['1'] = constant.STATUS_PARTTRADED
 statusMapReverse['2'] = constant.STATUS_ALLTRADED
+statusMapReverse['3'] = constant.STATUS_SUBMITTED
 statusMapReverse['4'] = constant.STATUS_CANCELLING
-statusMapReverse['5'] = constant.STATUS_CANCELLING
 statusMapReverse['-1'] = constant.STATUS_CANCELLED
 statusMapReverse['-2'] = constant.STATUS_REJECTED
-
 # 方向和开平映射
 typeMap = {}
 typeMap[(constant.DIRECTION_LONG, constant.OFFSET_OPEN)] = '1'
@@ -215,7 +216,7 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryOrder(self):
         """限速规则：20次/2s"""
-        self.gateway.writeLog('\n\n----------FUTURE start Quary Orders,positions,Accounts---------------')
+        self.gateway.writeLog('----FUTURE Quary Orders,positions,Accounts----', logging.DEBUG)
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]: 
             symbol = self.contractMapReverse[contract]
             # 6 = 未成交, 部分成交
@@ -550,7 +551,7 @@ class OkexfRestApi(RestClient):
         order.price_avg = float(data['price_avg'])
         order.deliveryTime = datetime.now()
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-        order.status = statusMapReverse[str(data['status'])]
+        order.status = statusMapReverse[str(data['state'])]
         order.tradedVolume = int(data['filled_qty'])
         order.fee = float(data['fee'])
         order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
@@ -674,7 +675,7 @@ class OkexfRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
-        e.errorMsg = str(request.response.text) #request.response.text
+        e.errorMsg = str(request.response.text) + str(request.path)
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -850,6 +851,7 @@ class OkexfWebsocketApi(WebsocketClient):
         """登陆回调"""
         if not d['success']:
             return
+        self.gateway.writeLog(f"{self.gatewayName}-{SUBGATEWAY_NAME} WEBSOCKET 登录成功", logging.WARNING)
 
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:
             self.subscribe(contract)

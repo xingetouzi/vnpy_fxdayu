@@ -19,12 +19,14 @@ from vnpy.trader.vtConstant import constant
 from .util import generateSignature, ERRORCODE,ISO_DATETIME_FORMAT
 
 # 委托状态类型映射
+# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
+# "3":Submitting,"4":Cancelling,）
 statusMapReverse = {}
 statusMapReverse['0'] = constant.STATUS_NOTTRADED    # swap
 statusMapReverse['1'] = constant.STATUS_PARTTRADED
 statusMapReverse['2'] = constant.STATUS_ALLTRADED
+statusMapReverse['3'] = constant.STATUS_SUBMITTED
 statusMapReverse['4'] = constant.STATUS_CANCELLING
-statusMapReverse['5'] = constant.STATUS_CANCELLING
 statusMapReverse['-1'] = constant.STATUS_CANCELLED
 statusMapReverse['-2'] = constant.STATUS_REJECTED
 
@@ -212,7 +214,7 @@ class OkexSwapRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryOrder(self):
         """限速规则：20次/2s"""
-        self.gateway.writeLog('\n\n----------start Quary SWAP Orders,positions,Accounts---------------')
+        self.gateway.writeLog('----SWAP Quary Orders,positions,Accounts----', logging.DEBUG)
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 6 = 未成交, 部分成交
             req = {
@@ -479,7 +481,7 @@ class OkexSwapRestApi(RestClient):
         order.price_avg = float(data['price_avg'])
         order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
         order.tradedVolume = int(data['filled_qty'])
-        order.status = statusMapReverse[str(data['status'])]
+        order.status = statusMapReverse[str(data['state'])]
         order.deliveryTime = datetime.now()
         order.fee = float(data['fee'])
         order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
@@ -605,7 +607,7 @@ class OkexSwapRestApi(RestClient):
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = str(httpStatusCode)
-        e.errorMsg = str(request.response.text) #request.response.text
+        e.errorMsg = str(request.response.text) + str(request.path)
         self.gateway.onError(e)
     
     #----------------------------------------------------------------------
@@ -767,7 +769,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
         """"""
         if not d['success']:
             return
-        
+        self.gateway.writeLog(f"{self.gatewayName}-{SUBGATEWAY_NAME} WEBSOCKET 登录成功", logging.WARNING)
         # 订阅交易相关推送
         self.callbackDict['swap/order'] = self.onTrade
         self.callbackDict['swap/account'] = self.onAccount
