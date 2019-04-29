@@ -352,8 +352,8 @@ class MainEngine(object):
         level = levelDict.get(globalSetting["logLevel"],
                               LogEngine.LEVEL_CRITICAL)
         self.logEngine.setLogLevel(level)
-        streamLevel = levelDict.get(globalSetting["streamLevel"],
-                                    LogEngine.LEVEL_CRITICAL)
+        stream_setting = globalSetting.get("streamLevel", "info")
+        streamLevel = levelDict.get(stream_setting, LogEngine.LEVEL_CRITICAL)
         self.logEngine.setStreamLevel(streamLevel)
 
         # 设置输出
