@@ -99,7 +99,6 @@ class App(object):
         release_portids(name)
 
     def run(self, monitor=False):
-        print('-' * 30)
         self.running = True
         # 创建日志引擎
         le = LogEngine()
@@ -150,24 +149,23 @@ class App(object):
         self.running = False
         try:
             if self.le and self.cta:
-                wait = 5
-                self.le.info(u"停止所有策略,%s后关闭程序" % wait)
+                wait = 3
+                self.le.info(u"停止所有策略,%s秒后关闭程序" % wait)
                 self.release_rs_setting()
                 self.cta.stopAll()
                 sleep(wait)
             if self.le:
                 self.le.info(u"交易程序正常退出")
             else:
-                print(u"交易程序正常退出")
-        except:
-            print(traceback.print_exc())
+                logging.info(u"交易程序正常退出")
+        except Exception as e:
+            logging.exception(e)
 
 
 class DaemonApp(object):
     def __init__(self):
         self.process = None
         self.running = False
-        self.le = None
         self.pmain, self.pchild = multiprocessing.Pipe()
         self._run_with_monitor = None
 
@@ -176,12 +174,7 @@ class DaemonApp(object):
             return
         self.running = True
         self._run_with_monitor = monitor
-        le = LogEngine()
-        self.le = le
-        le.setLogLevel(le.LEVEL_INFO)
-        le.addConsoleHandler()
-        le.addFileHandler()
-        le.info(u'启动CTA策略守护父进程')
+        logging.info(u'启动CTA策略守护父进程')
 
         DAY_START = time(8, 45)  # 日盘启动和停止时间
         DAY_END = time(15, 30)
@@ -206,20 +199,19 @@ class DaemonApp(object):
             # 记录时间则需要启动子进程
             if recording and self.process is None:
                 # TODO: 可能多次启动，可能要在启动前对pipe进行清理或重新创建
-                self.le.info(u'启动子进程')
-                self.app = App()
+                logging.info(u'启动子进程')
                 self.process = multiprocessing.Process(
                     target=self._run_child,
                     args=(self.pchild, ),
                     kwargs={"monitor": self._run_with_monitor})
                 self.process.start()
-                self.le.info(u'子进程启动成功')
+                logging.info(u'子进程启动成功')
 
             # 非记录时间则退出子进程
             if not recording and self.process is not None:
                 self._stop_child()
             sleep(5)
-        self.le.info("停止CTA策略守护父进程")
+        logging.info("停止CTA策略守护父进程")
 
     @staticmethod
     def _run_child(p, monitor=False):
@@ -246,9 +238,9 @@ class DaemonApp(object):
             p.send("stop")
 
     def _stop_child(self):
-        self.le.info(u'关闭子进程')
+        logging.info(u'关闭子进程')
         if self.process and self.process.is_alive():
-            self.le.info(u"等待子进程退出,10秒后或再次按 ctrl + C 强制关闭")
+            logging.info(u"等待子进程退出,10秒后或再次按 ctrl + C 强制关闭")
             try:
                 self.pmain.send(None)
                 count = 0
@@ -261,11 +253,11 @@ class DaemonApp(object):
                         if not self.pmain.poll():
                             raise RuntimeError
             except:
-                self.le.info(u"强制关闭子进程")
+                logging.info(u"强制关闭子进程")
             self.process.terminate()
             self.process.join()
         self.process = None
-        self.le.info(u'子进程关闭成功')
+        logging.info(u'子进程关闭成功')
 
     def stop(self):
         self.runing = False
@@ -274,10 +266,12 @@ class DaemonApp(object):
 
 def main(monitor=False):
     import signal
+    import logging
 
     def interrupt(signal, event):
         raise KeyboardInterrupt
 
+    logging.basicConfig(level=logging.INFO, format=LogEngine.format)
     signal.signal(signal.SIGINT, interrupt)
     app = DaemonApp()
     try:
