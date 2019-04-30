@@ -73,7 +73,7 @@ def alignment(samples, freq):
         ftimes[key] = ftime
         timestamps.update(ftime)
     index = pd.Int64Index(list(timestamps)).sort_values()
-    return {key: value.apply(index.get_loc) for key, value in ftimes.items()}
+    return {key: value.apply(index.get_loc) for key, value in ftimes.items()}, pd.Series(index.values).apply(datetime.fromtimestamp).dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def read_transaction_file(filename):
@@ -460,6 +460,7 @@ class XMultiPlot(object):
         self.freq = freq
         self.filename = filename
         self._mainFigure = None
+        self.allIndex = {}
 
     def addPlot(self, _plot, pos=-1):
         assert isinstance(_plot, BasePlot), type(_plot)
@@ -515,7 +516,7 @@ class XMultiPlot(object):
         from vnpy.trader.utils.htmlplot.eutils import readEngine
 
         candle, trades = readEngine(engine)
-        self.addMain(self, candle, trades)
+        self.addMain(candle, trades)
     
     def align(self):
         indexes = {}
@@ -525,7 +526,8 @@ class XMultiPlot(object):
                     indexes[
                         (number, _id, ikey)
                     ] = index
-        aligned = alignment(indexes, self.freq)
+        aligned, allIndex = alignment(indexes, self.freq)
+        self.allIndex.update(allIndex.to_dict())
         for key, value in aligned.items():
             number, _id, ikey = key
             self.figures[number].plots[_id].align(ikey, value)
@@ -563,68 +565,6 @@ class XMultiPlot(object):
             figure = config.make(plot_height=300, x_range=self._mainFigure.x_range)
         
         figure.background_fill_color = properties.background
+        figure.xaxis.major_label_overrides = self.allIndex
         return figure
     
-
-def readCandle():
-    from pymongo import MongoClient
-    from datautils.mongodb import read
-
-    client = MongoClient("192.168.0.104")
-    db = client["VnTrader_1Min_Db"]
-    col = db["RB88:CTP"]
-    return read(col, fields=["datetime", "open", "high", "low", "close", "volume"], datetime=(datetime(2019, 4, 25), None))
-
-
-def testFigures():
-
-    candle = readCandle()
-    trades = makeTrades(candle)
-    dct = {"datetime": candle["datetime"]}
-    for period in [20, 50]:
-        dct[str(period)] = candle["close"].rolling(period).mean()
-    ma = pd.DataFrame(dct)
-
-    mp = XMultiPlot("10m")
-    mp.addCandle(candle, pos=0)
-    mp.addLine(ma, pos=0)
-    mp.addTrades(trades, pos=0)
-    mp.addVBar(candle[["datetime", "volume"]])
-    mp.resample()
-    mp.show()
-
-
-def makeTrades(candle):
-    assert isinstance(candle, pd.DataFrame)
-    gap = len(candle) // 5
-    loc = 0
-    trades = {}
-    loc += int(np.random.random() * gap)
-    while loc < len(candle):
-        trades[loc] = {
-            "entryDt": candle.ix[loc, "datetime"] - timedelta(seconds=np.random.randint(0, 60)),
-            "entryPrice": candle.ix[loc, "close"],
-            "volume": int((np.random.random()-0.5)*20)
-        }
-        loc += int(np.random.random() * gap)
-    
-    for loc, trade in trades.items():
-        end = loc + int(np.random.random() * gap) * 2
-        if end >= len(candle):
-            end = len(candle) -1
-        trade["exitDt"] = candle.ix[end, "datetime"]  + timedelta(seconds=np.random.randint(0, 60))
-        trade["exitPrice"] = candle.ix[end, "close"]
-    
-    return pd.DataFrame(list(trades.values()))
-
-
-def testGroup():
-    candle = readCandle()
-    fm = FreqManager("10m")
-    # candle["grouped"] = candle["datetime"].apply(fm.time)
-    # print(candle[["datetime", "grouped"]])
-    print(candle["datetime"].apply(fm.time))
-
-if __name__ == "__main__":
-    testFigures()
-    # testGroup()
