@@ -283,7 +283,7 @@ OptMemory.generate(engineClass, strategyClass, engineSetting, globalSetting, **p
 OptMemory.save_report()
 ```
 
-### `vnpy.trader.utils.optimize.optmize`
+### `vnpy.trader.utils.optimize.optmizer`
 * 多策略连续优化
 ```python
 from vnpy.trader.utils.optimize import optimizer as opt
