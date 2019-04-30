@@ -20,31 +20,6 @@ import numpy as np
 properties = BigFishProperty
 
 
-TOOLS = "pan,wheel_zoom,box_zoom,reset,save,crosshair".split(",")
-
-hover = HoverTool(
-    tooltips=[
-        ("datetime", "@datetime{%Y-%m-%d %H:%M:%S}"),
-        ("open", "@open{0.4f}"),
-        ("high", "@high{0.4f}"),
-        ("low", "@low{0.4f}"),
-        ("close", "@close{0.4f}"),
-        ("entryDt", "@entryDt{%Y-%m-%d %H:%M:%S}"),
-        ("entryPrice", "@entryPrice{0.4f}"),
-        ("exitDt", "@exitDt{%Y-%m-%d %H:%M:%S}"),
-        ("exitPrice", "@exitPrice{0.4f}"),
-        ("tradeVolume", "@tradeVolume{0.4f}")
-    ],
-    formatters={
-        "datetime": "datetime",
-        "entryDt": "datetime",
-        "exitDt": "datetime"
-    }
-)
-
-MAINTOOLS = list(TOOLS)
-MAINTOOLS.append(hover)
-
 class FreqManager:
 
     FREQ_COMPLILER = re.compile("(\d{1,})([h|H|m|M|d|D|s|S])")
@@ -59,13 +34,16 @@ class FreqManager:
         "D": 24*60*60,
     }
 
-
-    def __init__(self, freq, utcoffset=None):
+    def __init__(self, freq, _tz=tz.tzlocal()):
         self.seconds = self.total_seconds(freq)
-        self.utcoffset = utcoffset if isinstance(utcoffset, (int, float)) else self.localOffset()
+        self.tz = _tz
+        self.utcoffset = self.tzoffset(self.tz)
     
     def __call__(self, dt):
-        ts = dt.timestamp()
+        if not dt.tzinfo:
+            ts = dt.replace(tzinfo=self.tz).timestamp()
+        else:
+            ts = dt.timestamp()
         return int(ts - (ts + self.utcoffset) % self.seconds)
     
     def time(self, dt):
@@ -82,8 +60,8 @@ class FreqManager:
         return seconds
 
     @staticmethod
-    def localOffset():
-        return tz.tzlocal().utcoffset(datetime.now()).total_seconds()
+    def tzoffset(_tz):
+        return _tz.utcoffset(datetime.now()).total_seconds()
 
 
 def alignment(samples, freq):
@@ -96,6 +74,13 @@ def alignment(samples, freq):
         timestamps.update(ftime)
     index = pd.Int64Index(list(timestamps)).sort_values()
     return {key: value.apply(index.get_loc) for key, value in ftimes.items()}
+
+
+def read_transaction_file(filename):
+    trades = pd.read_csv(filename, engine="python")
+    trades["entryDt"] = trades["entryDt"].apply(pd.to_datetime)
+    trades["exitDt"] = trades["exitDt"].apply(pd.to_datetime)
+    return trades
 
 
 class BasePlot(object):
@@ -115,6 +100,9 @@ class BasePlot(object):
         raise NotImplementedError()
 
     def align(self, name, index):
+        raise NotImplementedError()
+    
+    def resample(self, freq):
         raise NotImplementedError()
 
 
@@ -212,7 +200,17 @@ class CandlePlot(DatetimeIndexPlot):
         figure.vbar(x="x", width=width, bottom="bottom", top="top", source=decsource, **properties.down_candle)
 
         return figure
-
+    
+    def resample(self, grouper):
+        grouped = self.data[self.COLUMNS].set_index(self.INDEX_NAME).groupby(grouper)
+        data = grouped.agg({
+            "open": "first",
+            "low": "min",
+            "high": "max",
+            "close": "last"
+        })
+        data.index.name = self.INDEX_NAME
+        self.data = data.reset_index()
 
 class MultiMenberPlot(DatetimeIndexPlot):
 
@@ -265,6 +263,12 @@ class LinePlot(MultiMenberPlot):
                 source=source
             )
         return figure
+    
+    def resample(self, grouper):
+        grouped = self.data.set_index(self.INDEX_NAME).groupby(grouper)
+        data = grouped.agg("last")
+        data.index.name = self.INDEX_NAME
+        self.data = data.reset_index()
 
 
 class VBarPlot(MultiMenberPlot):
@@ -295,6 +299,12 @@ class VBarPlot(MultiMenberPlot):
                 legend=" %s " % name, color=colors.get(name, None), alpha=0.5,
                 source=source
             )
+    
+    def resample(self, grouper):
+        grouped = self.data.set_index(self.INDEX_NAME).groupby(grouper)
+        data = grouped.agg("sum")
+        data.index.name = self.INDEX_NAME
+        self.data = data.reset_index()
 
 
 class TradePlot(BasePlot):
@@ -401,13 +411,17 @@ class TradePlot(BasePlot):
         TradePlot.plotTradesTriangle(figure, trades, "xout", "exitPrice", angle=90, **properties.trade_close_tri)
 
         return figure
+    
+    def resample(self, grouper):
+        return
 
 
 class FigureConfig(object):
 
     TOOLS = "pan,wheel_zoom,box_zoom,reset,save,crosshair".split(",")
 
-    def __init__(self, **params):
+    def __init__(self, pos=0, **params):
+        self.pos = pos
         self.params = params
         self.plots = []
         self.tooltips={
@@ -439,7 +453,7 @@ class FigureConfig(object):
         )
 
 
-class FiguresHolder(object):
+class XMultiPlot(object):
 
     def __init__(self, freq, output="plot.html"):
         self.figures = {}
@@ -462,9 +476,14 @@ class FiguresHolder(object):
         if pos in self.figures:
             return self.figures[pos]
         else:
-            fc = FigureConfig(title=f"Figure-{pos}", x_axis_type="linear", plot_width=1600)
+            fc = FigureConfig(pos, title=f"Figure-{pos}", x_axis_type="linear", plot_width=1600)
             self.figures[pos] = fc
             return fc
+    
+    def setFigure(self, pos=0, **params):
+        config = self.getFigureConfig(pos)
+        config.params.update(params)
+        return config.pos
 
     def addCandle(self, candle, pos=-1):
         _plot = CandlePlot(candle)
@@ -492,7 +511,7 @@ class FiguresHolder(object):
     def addMain(self, candle, trades, pos=0):
         self.addCandle(candle, pos)
         self.addTrades(trades, pos)
-
+    
     def align(self):
         indexes = {}
         for number, config in self.figures.items():
@@ -506,7 +525,13 @@ class FiguresHolder(object):
             number, _id, ikey = key
             self.figures[number].plots[_id].align(ikey, value)
 
-    def plot(self):
+    def resample(self):
+        fm = FreqManager(self.freq)
+        for config in self.figures.values():
+            for _plot in config.plots:
+                _plot.resample(fm.time)
+
+    def show(self):
         self.align()
         figures = []
         for key in sorted(self.figures):
@@ -536,12 +561,6 @@ class FiguresHolder(object):
         return figure
     
 
-def makeFigure(title="candle"):
-    figure = Figure(x_axis_type="linear", tools=MAINTOOLS, plot_width=1600, plot_height=600, title=title)
-    figure.background_fill_color = properties.background
-    return figure
-
-
 def readCandle():
     from pymongo import MongoClient
     from datautils.mongodb import read
@@ -550,28 +569,6 @@ def readCandle():
     db = client["VnTrader_1Min_Db"]
     col = db["RB88:CTP"]
     return read(col, fields=["datetime", "open", "high", "low", "close", "volume"], datetime=(datetime(2019, 4, 25), None))
-
-
-def testLine():
-
-    candle = readCandle()
-    trades = makeTrades(candle)
-    dct = {"datetime": candle["datetime"]}
-    for period in [20, 50]:
-        dct[str(period)] = candle["close"].rolling(period).mean()
-    ma = pd.DataFrame(dct)
-
-    lp = LinePlot(ma, {str(20): "red", str(50): "green"})
-    cp = CandlePlot(candle)
-    vp = VBarPlot(candle[["datetime", "volume"]], {"volume": "red"})
-    tp = TradePlot(trades)
-
-    fh = FiguresHolder("1m")
-    fh.addPlot(cp, 0)
-    fh.addPlot(lp, 0)
-    fh.addPlot(tp, 0)
-    fh.addPlot(vp, 1)
-    fh.plot()
 
 
 def testFigures():
@@ -583,44 +580,13 @@ def testFigures():
         dct[str(period)] = candle["close"].rolling(period).mean()
     ma = pd.DataFrame(dct)
 
-    fh = FiguresHolder("1m")
-    fh.addCandle(candle, pos=0)
-    fh.addLine(ma, pos=0)
-    fh.addTrades(trades, pos=0)
-    fh.addVBar(candle[["datetime", "volume"]])
-    fh.plot()
-
-
-
-
-def testCandle():
-    output_file(r"E:\vnpy_fxdayu\docs\temp\test.html")
-    data = readCandle()
-    data["x"] = data.index.values
-    figure = makeFigure()
-    CandlePlot.plot(data, figure)
-    show(figure)
-
-
-def testTrades():
-    output_file(r"E:\vnpy_fxdayu\docs\temp\test.html")
-    candle = readCandle()
-    trades = makeTrades(candle)
-    print(trades)
-    cp = CandlePlot(candle)
-    tp = TradePlot(trades)
-
-    indexes = {}
-    indexes.update(cp.index())
-    indexes.update(tp.index())
-    aligned = alignment(indexes, "1m")
-    cp.align("datetime", aligned["datetime"])
-    tp.align("entryDt", aligned["entryDt"])
-    tp.align("exitDt", aligned["exitDt"])
-    figure = makeFigure()
-    cp.show(figure)
-    tp.show(figure)
-    show(figure)
+    mp = XMultiPlot("10m")
+    mp.addCandle(candle, pos=0)
+    mp.addLine(ma, pos=0)
+    mp.addTrades(trades, pos=0)
+    mp.addVBar(candle[["datetime", "volume"]])
+    mp.resample()
+    mp.show()
 
 
 def makeTrades(candle):
@@ -647,5 +613,13 @@ def makeTrades(candle):
     return pd.DataFrame(list(trades.values()))
 
 
+def testGroup():
+    candle = readCandle()
+    fm = FreqManager("10m")
+    # candle["grouped"] = candle["datetime"].apply(fm.time)
+    # print(candle[["datetime", "grouped"]])
+    print(candle["datetime"].apply(fm.time))
+
 if __name__ == "__main__":
     testFigures()
+    # testGroup()
