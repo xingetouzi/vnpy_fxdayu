@@ -144,7 +144,7 @@ class CandlePlot(DatetimeIndexPlot):
         assert self.isColumnsValid(data), f"Required fields: {self.COLUMNS}. Input fields: {data.columns}"
         for name in self.COLUMNS:
             assert name in data.columns, name
-        self.data = data
+        self.data = data.copy()
     
     def show(self, figure):
         return self.plot(self.data, figure)
@@ -217,7 +217,7 @@ class MultiMenberPlot(DatetimeIndexPlot):
     def __init__(self, data, colors=None):
         assert isinstance(data, pd.DataFrame), type(data)
         assert self.INDEX_NAME in data.columns, data.columns
-        self.data = data
+        self.data = data.copy()
         self.columns = set(self.data.columns)
         self.columns.discard(self.INDEX_NAME)
         super().__init__(
@@ -331,7 +331,7 @@ class TradePlot(BasePlot):
         )
         assert isinstance(data, pd.DataFrame), type(data)
         assert self.isColumnsValid(data), data.columns
-        self.data = data
+        self.data = data.copy()
 
     def index(self):
         return {
@@ -455,10 +455,10 @@ class FigureConfig(object):
 
 class XMultiPlot(object):
 
-    def __init__(self, freq, output="plot.html"):
+    def __init__(self, freq, filename="BacktestResult.html"):
         self.figures = {}
         self.freq = freq
-        self.output = output
+        self.filename = filename
         self._mainFigure = None
 
     def addPlot(self, _plot, pos=-1):
@@ -498,7 +498,6 @@ class XMultiPlot(object):
         config = self.addPlot(_plot, pos)
         for key in _plot.missingColorKeys():
             color = config.newColor()
-            print(color)
             _plot.colors[key] = color
     
     def addVBar(self, vbar, colors=None, pos=-1):
@@ -511,6 +510,12 @@ class XMultiPlot(object):
     def addMain(self, candle, trades, pos=0):
         self.addCandle(candle, pos)
         self.addTrades(trades, pos)
+
+    def setEngine(self, engine):
+        from vnpy.trader.utils.htmlplot.eutils import readEngine
+
+        candle, trades = readEngine(engine)
+        self.addMain(self, candle, trades)
     
     def align(self):
         indexes = {}
@@ -540,7 +545,7 @@ class XMultiPlot(object):
             figures.append(figure)
             for _plot in config.plots:
                 _plot.show(figure)
-        output_file(self.output)
+        output_file(self.filename)
         show(column(figures))
 
     def makeFigure(self, config):
