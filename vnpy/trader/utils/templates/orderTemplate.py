@@ -1295,6 +1295,9 @@ class OrderTemplate(CtaTemplate):
             if self._CANCEL_TIME in op.info:
                 if self.currentTime - op.info[self._CANCEL_TIME] < self._CANCEL_GAP_TIME:
                     return
+                else:
+                    logging.warning("ReCancel Order: %s | last cancel time: %s", vtOrderID, op.info[self._CANCEL_TIME])
+                    
             else:
                 op.info[self._CANCEL_TIME] = self.currentTime
             if self.isFake(op):
