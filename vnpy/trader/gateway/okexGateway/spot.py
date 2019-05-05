@@ -164,6 +164,8 @@ class OkexSpotRestApi(RestClient):
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
         
+        self.orderDict[orderID] = order
+
         self.addRequest('POST', '/api/spot/v3/orders', 
                         callback=self.onSendOrder, 
                         data=data, 
@@ -171,7 +173,6 @@ class OkexSpotRestApi(RestClient):
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.orderDict[orderID] = order
         return order.vtOrderID
     
     #----------------------------------------------------------------------

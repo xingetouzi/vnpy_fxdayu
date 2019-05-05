@@ -31,7 +31,7 @@ def processErrorEvent(event):
     错误信息在每次登陆后，会将当日所有已产生的均推送一遍，所以不适合写入日志
     """
     error = event.dict_['data']
-    print(u'错误代码：%s，错误信息：%s' % (error.errorID, error.errorMsg))
+    logging.error(u'ErrorID:%s, ErrorMsg:%s' % (error.errorID, error.errorMsg))
 
 
 class App(object):

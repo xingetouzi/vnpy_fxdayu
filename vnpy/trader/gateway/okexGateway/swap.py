@@ -165,6 +165,8 @@ class OkexSwapRestApi(RestClient):
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
         
+        self.orderDict[orderID] = order
+
         self.addRequest('POST', '/api/swap/v3/order', 
                         callback=self.onSendOrder, 
                         data=data, 
@@ -172,7 +174,6 @@ class OkexSwapRestApi(RestClient):
                         onFailed=self.onSendOrderFailed,
                         onError=self.onSendOrderError)
 
-        self.orderDict[orderID] = order
         return vtOrderID
     
     #----------------------------------------------------------------------
