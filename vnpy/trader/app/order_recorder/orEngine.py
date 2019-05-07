@@ -273,7 +273,7 @@ class OrEngine(object):
                     if table in ["future", "swap"]:
                         for order_info in info:
                             order = order_info.info
-                            if order["status"] =='2':
+                            if order["state"] =='2':
                                 stg = order['strategy'] if order['strategy'] else "N/A"
                                 account = msg.get(stg,{})
                                 msg[stg] = account
@@ -286,7 +286,7 @@ class OrEngine(object):
                     elif table == "spot":
                         for order in info:
                             order = order_info.info
-                            if order["status"] =='filled':
+                            if order["state"] =='2':
                                 stg = order['strategy'] if order['strategy'] else "N/A"
                                 account = msg.get(stg,{})
                                 msg[stg] = account
