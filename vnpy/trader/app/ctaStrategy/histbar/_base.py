@@ -332,7 +332,7 @@ class BarReader(object):
             grouper = groupers.get(unit, None)
             if grouper:
                 data = resample(data, grouper, multipler)
-        data = data.reset_index().rename_axis({"index": "datetime"}, 1)
+        data = data.reset_index().rename({"index": "datetime"}, axis=1)
         return [self.make_bar(symbol, **bar) for bar in data.to_dict("record")]
 
     def make_bar(self, symbol, datetime, open, high, low, close, volume):
