@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from collections import Iterable
 import numpy as np
 import logging
+import re
 
 
 STATUS_FINISHED = set(constant.STATUS_FINISHED)
@@ -431,6 +432,26 @@ class OrderTemplate(CtaTemplate):
         self.registerOrderCostumCallback(DepthOrderInfo.TYPE, self.onDepthOrder)
         self.registerOrderCostumCallback(JoinedOrderInfo.CHILD_TAG, self.onJoinOrderChild)
         self.registerOrderCostumCallback(StatusNoticeInfo.TYPE, self.onStatusNoticeOrder)
+
+        self._symbol_price_limit = {}
+        self.initPriceLimitRanges()
+    
+    def initPriceLimitRanges(self):
+        compiler = re.compile("|".join(self._PRICE_LIMIT_RANGE))
+        for vtSymbol in self.symbolList:
+            match = compiler.search(vtSymbol)
+            if match:
+                self._symbol_price_limit[vtSymbol] = self._PRICE_LIMIT_RANGE.get(match.group(), self._DEFAULT_LIMIT_RANGE)
+            else:
+                self._symbol_price_limit[vtSymbol] = self._DEFAULT_LIMIT_RANGE
+
+    _DEFAULT_LIMIT_RANGE = 0.02
+    _PRICE_LIMIT_RANGE = {
+        "SWAP": 0.01
+    } 
+
+    def priceLimitRange(self, vtSymbol):
+        return self._symbol_price_limit.get(vtSymbol, self._DEFAULT_LIMIT_RANGE)
     
     def registerOrderCostumCallback(self, co_type, callback):
         self._order_costum_callbacks[co_type] = callback
@@ -1247,7 +1268,7 @@ class OrderTemplate(CtaTemplate):
     def getExecPrice(self, vtSymbol, orderType):
         if orderType in self._ORDERTYPE_LONG:
             if vtSymbol in self._tickInstance:
-                return self._tickInstance[vtSymbol].lastPrice * 1.02
+                return self._tickInstance[vtSymbol].lastPrice * (1+self.priceLimitRange(vtSymbol))
             elif vtSymbol in self._barInstance:
                 return self._barInstance[vtSymbol].high
             else:
@@ -1255,7 +1276,7 @@ class OrderTemplate(CtaTemplate):
 
         elif orderType in self._ORDERTYPE_SHORT:
             if vtSymbol in self._tickInstance:
-                return self._tickInstance[vtSymbol].lastPrice * 0.98
+                return self._tickInstance[vtSymbol].lastPrice * (1-self.priceLimitRange(vtSymbol))
             elif vtSymbol in self._barInstance:
                 return self._barInstance[vtSymbol].low
             else:
