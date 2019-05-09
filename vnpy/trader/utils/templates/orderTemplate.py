@@ -612,7 +612,7 @@ class OrderTemplate(CtaTemplate):
             "order": op.order.__dict__.copy(),
             "notify" : notify,
             "type": "order",
-            "strategy": self.__class__.__name__,
+            "strategy": self.name,
             "author": self.author,
             "message": message
         }
@@ -626,7 +626,7 @@ class OrderTemplate(CtaTemplate):
             "bar": bar.__dict__.copy(),
             "type": "bar",
             "notify": False,
-            "strategy": self.__class__.__name__,
+            "strategy": self.name,
             "author": self.author
         }
         message = json.dumps(dct, cls=DefaultStrEncoder)
