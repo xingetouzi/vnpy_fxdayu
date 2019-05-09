@@ -318,22 +318,12 @@ class StatusNoticeInfo(object):
             # TODO Show warning. 
             return
         if order.status not in STATUS_FINISHED:
-            self._activeOrderIDs.add(order.vtOrderIDs)
+            self._activeOrderIDs.add(order.vtOrderID)
         else:
-            self._activeOrderIDs.discard(order.vtOrderIDs)
+            self._activeOrderIDs.discard(order.vtOrderID)
         if order.vtOrderID not in self._orders:
             self._lastOrderID = order.vtOrderID
-            
         self._orders[order.vtOrderID] = order
-
-    def onBar(self, bar):
-        if bar.vtSymbol != self.vtSymbol:
-            return
-        if "datetime" in self.lastBar:
-            if bar.datetime < self.lastBar["datetime"]:
-                return
-        
-        self.lastBar.update(bar.__dict__)
     
     def lastOrder(self):
         return self._orders[self._lastOrderID]
@@ -429,6 +419,7 @@ class OrderTemplate(CtaTemplate):
         }
 
         self._notifyPool = {}
+        self.initStatusCheck()
 
         self._ComposoryClosePool = {}
 
@@ -527,6 +518,9 @@ class OrderTemplate(CtaTemplate):
                 self._notifyPool[vtSymbol] = StatusNoticeInfo(
                     vtSymbol, self.STATUS_NOTIFY_PERIOD
                 )
+                logging.warning(
+                    "Set notify on %s", vtSymbol
+                )
 
     def doStatusCheck(self, bar):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
@@ -534,27 +528,45 @@ class OrderTemplate(CtaTemplate):
         if bar.vtSymbol not in self._notifyPool:
             return
         sni = self._notifyPool[bar.vtSymbol]
-        assert isinstance(sni, StatusNotifyInfo)
+        assert isinstance(sni, StatusNoticeInfo)
         if sni.shouldCheck(bar.datetime):
-            # TODO send StatusNotifyOrder
+            # send StatusNotifyOrder
+            self.makeNotifyOrder(sni)
+            # roll to log current notify time and next notify time
             sni.roll(bar.datetime)
+
             self.logNotifyBar(sni, bar)
         else:
-            order = sni.lastOrder
-            if order.status == constant.STATUS_INIT:
+            order = sni.lastOrder()
+            if order.status == STATUS_INIT:
                 # TODO WARN status init of NotifyOrder
                 self.logNotifyOrder(
                     self._orderPacks[order.vtOrderID], 
                     True,
                     "Timeout"
                 )
+            elif order.status not in STATUS_FINISHED:
+                self.cancelOrder(order.vtOrderID)
 
-    def makeNotifyOrder(self, vtSymbol):
-        pass
+    def makeNotifyOrder(self, sni):
+        assert isinstance(sni, StatusNoticeInfo)
+        vtSymbol = sni.vtSymbol
+        contract = self.ctaEngine.mainEngine.getContract(vtSymbol)
+        price = self.getCurrentPrice(vtSymbol) * 0.5
+        for op in self.makeOrder(
+                ctaBase.CTAORDER_BUY, 
+                vtSymbol, price, contract.minVolume
+            ):
+            sni.onOrder(op.order)
+            op.addTrack(sni.TYPE, sni)
+            logging.warning("make notify order | %s", showOrder(op.order, "vtSymbol", "totalVolume", "price", "status"))
+
     
     def onStatusNoticeOrder(self, op):
         assert isinstance(op, OrderPack)
         assert StatusNoticeInfo.TYPE in op.info
+        sni = op.info[StatusNoticeInfo.TYPE]
+        sni.onOrder(op.order)
         if op.order.tradedVolume:
             self.logNotifyOrder(
                 op, True, "Traded"
@@ -568,6 +580,9 @@ class OrderTemplate(CtaTemplate):
 
         self.logNotifyOrder(op)
 
+        if op.order.status != STATUS_INIT and (op.order.status not in STATUS_FINISHED):
+            self.cancelOrder(op.vtOrderID)
+
     def logNotifyOrder(self, op, notify=False, message=""):
         sni = op.info[StatusNoticeInfo.TYPE]
         info = sni.toDict()
@@ -576,12 +591,12 @@ class OrderTemplate(CtaTemplate):
             "order": op.order.__dict__.copy(),
             "notify" : notify,
             "type": "order",
-            "strategy": self.__class__.__name__
+            "strategy": self.__class__.__name__,
+            "author": self.author,
+            "message": message
         }
-        if notify:
-            dct["message"] = message
         message = json.dumps(dct, cls=DefaultStrEncoder)
-        self.writeLog("<StatusNotify>%s<StatusNotify/>" % message, logging.WARNING)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.WARNING)
 
     def logNotifyBar(self, sni, bar):
         info = sni.toDict()
@@ -590,10 +605,11 @@ class OrderTemplate(CtaTemplate):
             "bar": bar.__dict__.copy(),
             "type": "bar",
             "notify": False,
-            "strategy": self.__class__.__name__
+            "strategy": self.__class__.__name__,
+            "author": self.author
         }
         message = json.dumps(dct, cls=DefaultStrEncoder)
-        self.writeLog("<StatusNotify>%s<StatusNotify/>" % message, logging.WARNING)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.WARNING)
 
     # StatusCheck Procedures ------------------------------------------------
 
@@ -1209,9 +1225,12 @@ class OrderTemplate(CtaTemplate):
 
     def onBar(self, bar):
         self.updateBar(bar)
+        # self.doStatusCheck(bar)
 
     def updateBar(self, bar):
-        self._currentTime = bar.datetime
+        if bar.datetime > self._currentTime:
+            self._currentTime = bar.datetime
+        
         self._barInstance[bar.vtSymbol] = bar
 
     def onTick(self, tick):
