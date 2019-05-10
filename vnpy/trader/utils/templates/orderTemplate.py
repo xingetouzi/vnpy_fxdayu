@@ -302,11 +302,12 @@ class StatusNoticeInfo(object):
 
     TYPE = "_StatusNoticeInfo"
 
-    def __init__(self, vtSymbol, gap, tzinfo=dateutil.tz.tzlocal()):
+    def __init__(self, vtSymbol, gap, shift=0, tzinfo=dateutil.tz.tzlocal()):
         self.tzoffset = tzinfo.utcoffset(datetime.now()).total_seconds()
         self.defaultTZ = timezone(timedelta(seconds=self.tzoffset))
         self.vtSymbol = vtSymbol
         self.gap = gap
+        self.shift = shift
         self._lastCheckTime = 0
         self._nextCheckTime = 0
         self._orders = {}
@@ -366,7 +367,7 @@ class StatusNoticeInfo(object):
 
     def genNextTime(self, time):
         ts = self.timeTransfer(time)
-        return ts - (ts + self.tzoffset) % self.gap + self.gap
+        return ts - (ts + self.tzoffset) % self.gap + self.gap + self.shift
     
     def toDict(self):
         return {
@@ -394,7 +395,7 @@ class OrderTemplate(CtaTemplate):
     LOWER_LIMIT = 0.98
 
     STATUS_NOTIFY_PERIOD = 3600
-
+    STATUS_NOTIFY_SHIFT = 0
 
 
 
@@ -537,7 +538,9 @@ class OrderTemplate(CtaTemplate):
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
             for vtSymbol in self.symbolList:
                 self._notifyPool[vtSymbol] = StatusNoticeInfo(
-                    vtSymbol, self.STATUS_NOTIFY_PERIOD
+                    vtSymbol, 
+                    self.STATUS_NOTIFY_PERIOD, 
+                    self.STATUS_NOTIFY_SHIFT
                 )
                 logging.warning(
                     "Set notify on %s", vtSymbol
