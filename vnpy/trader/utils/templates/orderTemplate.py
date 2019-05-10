@@ -394,9 +394,9 @@ class OrderTemplate(CtaTemplate):
     UPPER_LIMIT = 1.02
     LOWER_LIMIT = 0.98
 
+    ENABLE_STATUS_NOTICE = False
     STATUS_NOTIFY_PERIOD = 3600
     STATUS_NOTIFY_SHIFT = 0
-
 
 
     def __init__(self, ctaEngine, setting):
@@ -421,7 +421,7 @@ class OrderTemplate(CtaTemplate):
         }
 
         self._notifyPool = {}
-        self.initStatusCheck()
+        self.initStatusCheck(setting)
 
         self._ComposoryClosePool = {}
 
@@ -534,7 +534,16 @@ class OrderTemplate(CtaTemplate):
     
     # StatusCheck Procedures ------------------------------------------------
 
-    def initStatusCheck(self):
+    def initStatusCheck(self, setting):
+        if setting.get("ENABLE_STATUS_NOTICE", False):
+            for name in [
+                "ENABLE_STATUS_NOTICE",
+                "STATUS_NOTIFY_PERIOD",
+                "STATUS_NOTIFY_SHIFT"
+            ]:
+                setattr(self, name, setting.get(name, getattr(self, name)))
+        if not self.ENABLE_STATUS_NOTICE:
+            return
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
             for vtSymbol in self.symbolList:
                 self._notifyPool[vtSymbol] = StatusNoticeInfo(
