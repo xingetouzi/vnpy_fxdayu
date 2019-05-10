@@ -543,14 +543,14 @@ class OrderTemplate(CtaTemplate):
                     "Set notify on %s", vtSymbol
                 )
 
-    def doStatusCheck(self, bar):
+    def doStatusCheck(self, bar, period=60):
         if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
             return
         if bar.vtSymbol not in self._notifyPool:
             return
         sni = self._notifyPool[bar.vtSymbol]
         assert isinstance(sni, StatusNoticeInfo)
-        if sni.shouldCheck(bar.datetime):
+        if sni.shouldCheck(bar.datetime+timedelta(seconds=period)):
             # send StatusNotifyOrder
             self.makeNotifyOrder(sni)
             # roll to log current notify time and next notify time
@@ -1525,7 +1525,8 @@ class OrderTemplate(CtaTemplate):
                     op.order.status = constant.STATUS_CANCELLING
                     self.onOrder(op.order)
                 return
-            
+
+        print('send cancel', vtOrderID)    
         return super().cancelOrder(vtOrderID)
 
     def isCancel(self, op):
