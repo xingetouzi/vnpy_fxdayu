@@ -187,7 +187,8 @@ class OkexSpotRestApi(RestClient):
         path = f'/api/spot/v3/cancel_orders/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder,
-                        data=req)
+                        data=req,
+                        extra=cancelOrderReq,)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -565,7 +566,10 @@ class OkexSpotRestApi(RestClient):
             oid = request.path.split("/")[-1]
             self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid-{oid}")
         else:
-            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", logging.ERROR)
+            order = request.extra
+            self.queryMonoOrder(order.symbol, order.orderID)
+            self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+            self.missing_order_Dict.update({order.orderID:order.symbol})
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None

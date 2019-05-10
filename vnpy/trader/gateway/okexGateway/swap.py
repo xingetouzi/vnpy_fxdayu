@@ -181,6 +181,7 @@ class OkexSwapRestApi(RestClient):
         """限速规则：40次/2s"""
         path = f'/api/swap/v3/cancel_order/{cancelOrderReq.symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
+                        extra=cancelOrderReq,
                         callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
@@ -595,8 +596,10 @@ class OkexSwapRestApi(RestClient):
             instrument_id = request.path[26:38]
             self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
         else:
-            oid = request.path.split("/")[-1]
-            self.gateway.writeLog(f"WARNING: cancelorder error, {data}", logging.ERROR)
+            order = request.extra
+            self.queryMonoOrder(order.symbol, order.orderID)
+            self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+            self.missing_order_Dict.update({order.orderID:order.symbol})
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
