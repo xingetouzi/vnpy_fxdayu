@@ -539,9 +539,11 @@ class OrderTemplate(CtaTemplate):
             for name in [
                 "ENABLE_STATUS_NOTICE",
                 "STATUS_NOTIFY_PERIOD",
-                "STATUS_NOTIFY_SHIFT"
+                "STATUS_NOTIFY_SHIFT",
+                "author"
             ]:
                 setattr(self, name, setting.get(name, getattr(self, name)))
+                self.writeLog(f"{name}: {getattr(self, name)}")
         if not self.ENABLE_STATUS_NOTICE:
             return
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
