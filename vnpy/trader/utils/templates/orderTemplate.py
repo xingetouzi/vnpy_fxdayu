@@ -629,8 +629,9 @@ class OrderTemplate(CtaTemplate):
             "author": self.author,
             "message": message
         }
+        level = logging.WARNING if notify else logging.INFO
         message = json.dumps(dct, cls=DefaultStrEncoder)
-        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.WARNING)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, level)
 
     def logNotifyBar(self, sni, bar):
         info = sni.toDict()
@@ -643,7 +644,7 @@ class OrderTemplate(CtaTemplate):
             "author": self.author
         }
         message = json.dumps(dct, cls=DefaultStrEncoder)
-        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.WARNING)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.INFO)
 
     # StatusCheck Procedures ------------------------------------------------
 
