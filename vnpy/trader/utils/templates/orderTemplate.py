@@ -547,7 +547,7 @@ class OrderTemplate(CtaTemplate):
         if not self.ENABLE_STATUS_NOTICE:
             return
         if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
-            for vtSymbol in self.symbolList:
+            for vtSymbol in setting.get("tradingSymbolList", self.symbolList):
                 self._notifyPool[vtSymbol] = StatusNoticeInfo(
                     vtSymbol, 
                     self.STATUS_NOTIFY_PERIOD, 
