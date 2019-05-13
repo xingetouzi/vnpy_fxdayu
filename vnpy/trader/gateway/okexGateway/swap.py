@@ -476,7 +476,7 @@ class OkexSwapRestApi(RestClient):
         if not order:
             order = self.gateway.newOrderObject(data)
             order.totalVolume = int(data['size'])
-            order.direction, order.offset = typeMapReverse[int(data['type'])]
+            order.direction, order.offset = typeMapReverse[str(data['type'])]
         
         order.price = float(data['price'])
         order.price_avg = float(data['price_avg'])

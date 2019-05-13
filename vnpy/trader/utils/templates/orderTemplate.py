@@ -3,7 +3,7 @@ from vnpy.trader.vtObject import VtOrderData, VtTickData
 from vnpy.trader.vtConstant import *
 from vnpy.trader.language import constant
 from vnpy.trader.app.ctaStrategy import ctaBase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import Iterable
 import numpy as np
 import logging
@@ -288,6 +288,95 @@ class DepthOrderInfo(BatchOrderInfo):
         return price and ((self.price - price)*self.direction >= 0)
 
 
+import dateutil
+import json
+
+
+class DefaultStrEncoder(json.JSONEncoder):
+
+    def default(self, o):
+        return str(o)
+
+
+class StatusNoticeInfo(object):
+
+    TYPE = "_StatusNoticeInfo"
+
+    def __init__(self, vtSymbol, gap, shift=0, tzinfo=dateutil.tz.tzlocal()):
+        self.tzoffset = tzinfo.utcoffset(datetime.now()).total_seconds()
+        self.defaultTZ = timezone(timedelta(seconds=self.tzoffset))
+        self.vtSymbol = vtSymbol
+        self.gap = gap
+        self.shift = shift
+        self._lastCheckTime = 0
+        self._nextCheckTime = 0
+        self._orders = {}
+        self._lastOrderID = None
+        self._activeOrderIDs = set()
+        self.lastBar = dict()
+    
+    def onOrder(self, order):
+        if order.vtSymbol != self.vtSymbol:
+            # TODO Show warning. 
+            return
+        if order.status not in STATUS_FINISHED:
+            self._activeOrderIDs.add(order.vtOrderID)
+        else:
+            self._activeOrderIDs.discard(order.vtOrderID)
+        if order.vtOrderID not in self._orders:
+            self._lastOrderID = order.vtOrderID
+        self._orders[order.vtOrderID] = order
+    
+    def lastOrder(self):
+        return self._orders[self._lastOrderID]
+
+    @property
+    def lastCheckTime(self):
+        return datetime.fromtimestamp(self._lastCheckTime, self.defaultTZ)
+    
+    @property
+    def nextCheckTime(self):
+        return datetime.fromtimestamp(self._nextCheckTime, self.defaultTZ)
+
+    def shouldCheck(self, time):
+        return self._nextCheckTime <= self.timeTransfer(time)
+
+    def roll(self, time):
+        self._lastCheckTime = self.timeTransfer(time)
+        self._nextCheckTime = self.genNextTime(time)
+
+    def timeTransfer(self, time):
+        if isinstance(time, datetime):
+            if not time.tzinfo:
+                return time.replace(tzinfo=self.defaultTZ).timestamp()
+            else:
+                return time.timestamp()
+        elif isinstance(time, (int, float)):
+            return time
+        else:
+            raise TypeError(
+                "Invalid input: time. Expected type is %s, got %s" % (
+                    (
+                        datetime.__class__.__name__, 
+                        int.__class__.__name__, 
+                        float.__class__.__name__
+                    ), 
+                    type(time)
+                )
+            )
+
+    def genNextTime(self, time):
+        ts = self.timeTransfer(time)
+        return ts - (ts + self.tzoffset) % self.gap + self.gap + self.shift
+    
+    def toDict(self):
+        return {
+            "vtSymbol": self.vtSymbol,
+            "lastCheckTime": self.lastCheckTime,
+            "nextCheckTime": self.nextCheckTime,
+        }
+
+
 class OrderTemplate(CtaTemplate):
 
     
@@ -304,6 +393,10 @@ class OrderTemplate(CtaTemplate):
     PRICE_NDIGITS = 3
     UPPER_LIMIT = 1.02
     LOWER_LIMIT = 0.98
+
+    ENABLE_STATUS_NOTICE = False
+    STATUS_NOTIFY_PERIOD = 3600
+    STATUS_NOTIFY_SHIFT = 0
 
 
     def __init__(self, ctaEngine, setting):
@@ -327,6 +420,9 @@ class OrderTemplate(CtaTemplate):
             DepthOrderInfo.TYPE: {}
         }
 
+        self._notifyPool = {}
+        self.initStatusCheck(setting)
+
         self._ComposoryClosePool = {}
 
         self.registerOrderCostumCallback(TimeLimitOrderInfo.TYPE, self.onTimeLimitOrder)
@@ -336,6 +432,7 @@ class OrderTemplate(CtaTemplate):
         self.registerOrderCostumCallback(StepOrderInfo.TYPE, self.onStepOrder)
         self.registerOrderCostumCallback(DepthOrderInfo.TYPE, self.onDepthOrder)
         self.registerOrderCostumCallback(JoinedOrderInfo.CHILD_TAG, self.onJoinOrderChild)
+        self.registerOrderCostumCallback(StatusNoticeInfo.TYPE, self.onStatusNoticeOrder)
 
         self._symbol_price_limit = {}
         self.initPriceLimitRanges()
@@ -435,6 +532,124 @@ class OrderTemplate(CtaTemplate):
     def _round(self, value):
         return round(value, self.NDIGITS)
     
+    # StatusCheck Procedures ------------------------------------------------
+
+    def initStatusCheck(self, setting):
+        if setting.get("ENABLE_STATUS_NOTICE", False):
+            for name in [
+                "ENABLE_STATUS_NOTICE",
+                "STATUS_NOTIFY_PERIOD",
+                "STATUS_NOTIFY_SHIFT",
+                "author"
+            ]:
+                setattr(self, name, setting.get(name, getattr(self, name)))
+                self.writeLog(f"{name}: {getattr(self, name)}")
+        if not self.ENABLE_STATUS_NOTICE:
+            return
+        if self.getEngineType() == ctaBase.ENGINETYPE_TRADING:
+            for vtSymbol in self.symbolList:
+                self._notifyPool[vtSymbol] = StatusNoticeInfo(
+                    vtSymbol, 
+                    self.STATUS_NOTIFY_PERIOD, 
+                    self.STATUS_NOTIFY_SHIFT
+                )
+                logging.warning(
+                    "Set notify on %s", vtSymbol
+                )
+
+    def doStatusCheck(self, bar, period=60):
+        if self.getEngineType() != ctaBase.ENGINETYPE_TRADING:
+            return
+        if bar.vtSymbol not in self._notifyPool:
+            return
+        sni = self._notifyPool[bar.vtSymbol]
+        assert isinstance(sni, StatusNoticeInfo)
+        realtime = bar.datetime + timedelta(seconds=60)
+        if sni.shouldCheck(realtime):
+            # send StatusNotifyOrder
+            self.makeNotifyOrder(sni)
+            # roll to log current notify time and next notify time
+            sni.roll(realtime)
+
+            self.logNotifyBar(sni, bar)
+        else:
+            order = sni.lastOrder()
+            if order.status == STATUS_INIT:
+                # TODO WARN status init of NotifyOrder
+                self.logNotifyOrder(
+                    self._orderPacks[order.vtOrderID], 
+                    True,
+                    "Timeout"
+                )
+            elif order.status not in STATUS_FINISHED:
+                self.cancelOrder(order.vtOrderID)
+
+    def makeNotifyOrder(self, sni):
+        assert isinstance(sni, StatusNoticeInfo)
+        vtSymbol = sni.vtSymbol
+        contract = self.ctaEngine.mainEngine.getContract(vtSymbol)
+        price = self.getCurrentPrice(vtSymbol) * 0.5
+        for op in self.makeOrder(
+                ctaBase.CTAORDER_BUY, 
+                vtSymbol, price, contract.minVolume
+            ):
+            sni.onOrder(op.order)
+            op.addTrack(sni.TYPE, sni)
+            logging.warning("make notify order | %s", showOrder(op.order, "vtSymbol", "totalVolume", "price", "status"))
+
+    
+    def onStatusNoticeOrder(self, op):
+        assert isinstance(op, OrderPack)
+        assert StatusNoticeInfo.TYPE in op.info
+        sni = op.info[StatusNoticeInfo.TYPE]
+        sni.onOrder(op.order)
+        if op.order.tradedVolume:
+            self.logNotifyOrder(
+                op, True, "Traded"
+            )
+            self.composoryClose(op)
+            return
+        if op.order.status == constant.STATUS_REJECTED:
+            self.logNotifyOrder(
+                op, True, "Rejected"
+            )
+
+        self.logNotifyOrder(op)
+
+        if op.order.status != STATUS_INIT and (op.order.status not in STATUS_FINISHED):
+            self.cancelOrder(op.vtOrderID)
+
+    def logNotifyOrder(self, op, notify=False, message=""):
+        sni = op.info[StatusNoticeInfo.TYPE]
+        info = sni.toDict()
+        dct = {
+            "info": info,
+            "order": op.order.__dict__.copy(),
+            "notify" : notify,
+            "type": "order",
+            "strategy": self.name,
+            "author": self.author,
+            "message": message
+        }
+        level = logging.WARNING if notify else logging.INFO
+        message = json.dumps(dct, cls=DefaultStrEncoder)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, level)
+
+    def logNotifyBar(self, sni, bar):
+        info = sni.toDict()
+        dct = {
+            "info": info,
+            "bar": bar.__dict__.copy(),
+            "type": "bar",
+            "notify": False,
+            "strategy": self.name,
+            "author": self.author
+        }
+        message = json.dumps(dct, cls=DefaultStrEncoder)
+        self.writeLog("<StatusNotify>%s</StatusNotify>" % message, logging.INFO)
+
+    # StatusCheck Procedures ------------------------------------------------
+
     def makeOrder(self, orderType, vtSymbol, price, volume, priceType=constant.PRICETYPE_LIMITPRICE, stop=False, **info):
         volume = self._round(volume)
         assert volume > 0, volume
@@ -1047,9 +1262,12 @@ class OrderTemplate(CtaTemplate):
 
     def onBar(self, bar):
         self.updateBar(bar)
+        self.doStatusCheck(bar)
 
     def updateBar(self, bar):
-        self._currentTime = bar.datetime
+        if bar.datetime > self._currentTime:
+            self._currentTime = bar.datetime
+        
         self._barInstance[bar.vtSymbol] = bar
 
     def onTick(self, tick):
@@ -1323,7 +1541,8 @@ class OrderTemplate(CtaTemplate):
                     op.order.status = constant.STATUS_CANCELLING
                     self.onOrder(op.order)
                 return
-            
+
+        print('send cancel', vtOrderID)    
         return super().cancelOrder(vtOrderID)
 
     def isCancel(self, op):

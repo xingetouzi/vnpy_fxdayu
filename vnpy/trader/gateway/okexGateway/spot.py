@@ -35,7 +35,10 @@ typeMap[(constant.DIRECTION_LONG, constant.OFFSET_OPEN)] = 'buy'
 typeMap[(constant.DIRECTION_LONG, constant.OFFSET_CLOSE)] = 'buy'
 typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_OPEN)] = 'sell'
 typeMap[(constant.DIRECTION_SHORT, constant.OFFSET_CLOSE)] = 'sell'
-typeMapReverse = {v:k for k,v in typeMap.items()}
+typeMapReverse = {
+    'buy':(constant.DIRECTION_LONG, constant.OFFSET_OPEN),
+    'sell':(constant.DIRECTION_SHORT, constant.OFFSET_OPEN)
+}
 
 # 下单方式映射
 priceTypeMap = {}

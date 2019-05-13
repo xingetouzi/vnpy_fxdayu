@@ -196,7 +196,6 @@ MAPPER = {
     "high": "max",
     "low": "min",
     "close": "last",
-    "volume": "sum"
 }
 
 

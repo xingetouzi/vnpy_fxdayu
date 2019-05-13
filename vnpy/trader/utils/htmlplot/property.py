@@ -14,18 +14,17 @@ class Property(object):
         self.trade_close_tri = dict()
         self.default_colors = [
             '#fa8072',
-            '#f08080',
-            '#ff0000',
+            '#9932cc',
+            '#800080',
             '#ff4500',
+            '#4b0082',
+            '#483d8b',
+            '#191970',
             '#a52a2a',
             '#dc143c',
             '#8b0000',
             '#c71585',
-            '#9932cc',
-            '#800080',
-            '#4b0082',
-            '#483d8b',
-            '#191970',
+            '#ff0000',
             '#008b8b',
             '#2f4f4f',
             '#2e8b57',
@@ -34,7 +33,8 @@ class Property(object):
             '#ff8c00',
             '#a0522d',
             '#4682b4',
-            '#696969'
+            '#696969',
+            '#f08080',
         ]
         for key, value in kwargs.items():
             setattr(self, key, value)
