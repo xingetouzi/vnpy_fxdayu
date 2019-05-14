@@ -772,9 +772,10 @@ class BacktestingEngine(object):
         self.logList.append(log)
 
     def writeLog(self, content, level=logging.INFO):
-        msg = "%s %s" % (logging.getLevelName(level), content)
-        log = str(self.dt) + ' ' + msg
-        self.logList.append(log)
+        if level >= logging.root.level:
+            msg = "%s %s" % (logging.getLevelName(level), content)
+            log = str(self.dt) + ' ' + msg
+            self.logList.append(log)
         
     # ----------------------------------------------------------------------
     def cancelAll(self, name):
