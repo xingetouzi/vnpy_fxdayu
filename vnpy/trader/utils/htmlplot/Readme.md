@@ -257,6 +257,16 @@ XMultiPlot.addVBar(vbar, colors=None, pos=-1)
 |colors|dict|画图的颜色，缺省时会随机分配。`key`: 需与数据中的列名对应; `value`: 颜色取值，可以使用常规英文颜色命名: ```red|blue|green|yellow|...```，也可以使用 `RGB十六进制颜色码`, 如 `#FFFFFF` 白色。|
 |pos|int, -1|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
 
+**`通过引擎初始化并设置主图`**
+
+```python
+XMultiPlot.setEngine(engine)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+
 
 **`整理到指定周期`**
 
@@ -264,9 +274,44 @@ XMultiPlot.addVBar(vbar, colors=None, pos=-1)
 XMultiPlot.resample()
 ```
 
-
 **`画图输出`**
 
 ```python
-XMultiPlot.show()
+XMultiPlot.show(do_resample=True)
 ```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|do_resample|bool|画图前按指定周期整理数据|
+
+## 上层函数
+
+为方便调用，在htmlplot中提供下列高级函数或属性：
+
+
+### getXMultiPlot
+
+```python
+vnpy.trader.utils.htmlplot.getXMultiPlot(engine, freq=None, filename=None)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+|freq|None, str, datetime.timedelta|指定对齐周期, 格式为数字+单位，比如1M，支持的单位：```s|S|m|M|h|H|d|D```|
+|filename|str|输出文件路径|
+|`return`|vnpy.trader.utils.htmlplot.xcore.XMultiPlot|XMultiPlot对象|
+
+
+### XMultiPlot直接画图
+
+```python
+vnpy.trader.utils.htmlplot.showXTransaction(engine, freq="1m", filename="BacktestResult.html", do_resample=True) 
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+|freq|None, str, datetime.timedelta|指定对齐周期, 格式为数字+单位，比如1M，支持的单位：```s|S|m|M|h|H|d|D```|
+|filename|str|输出文件路径|
+|do_resample|bool|画图前按指定周期整理数据|
