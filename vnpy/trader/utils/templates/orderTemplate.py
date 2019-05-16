@@ -1388,6 +1388,8 @@ class OrderTemplate(CtaTemplate):
         parent.order.tradedVolume = self._round(tradedVolume)
         if tradedVolume:
             parent.order.price_avg = tradedAmount / tradedVolume
+            if parent.order.status not in STATUS_FINISHED:
+                parent.order.status=constant.STATUS_PARTTRADED
         if not joi.activeIDs:
             if parent.order.tradedVolume >= parent.order.totalVolume:
                 parent.order.status = constant.STATUS_ALLTRADED
