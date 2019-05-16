@@ -461,6 +461,7 @@ class XMultiPlot(object):
         self.filename = filename
         self._mainFigure = None
         self.allIndex = {}
+        self._resampled = False
 
     def addPlot(self, _plot, pos=-1):
         assert isinstance(_plot, BasePlot), type(_plot)
@@ -533,12 +534,17 @@ class XMultiPlot(object):
             self.figures[number].plots[_id].align(ikey, value)
 
     def resample(self):
+        if self._resampled:
+            return
         fm = FreqManager(self.freq)
         for config in self.figures.values():
             for _plot in config.plots:
                 _plot.resample(fm.time)
+        self._resampled = True
 
-    def show(self):
+    def show(self, do_resample=True):
+        if do_resample:
+            self.resample()
         self.align()
         figures = []
         for key in sorted(self.figures):

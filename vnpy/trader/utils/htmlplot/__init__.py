@@ -14,11 +14,9 @@ def getMultiPlot(engine, freq=None, filename=None):
     return MultiPlot.from_engine(engine, freq, filename)
 
 
-def showXTransaction(engine, freq="1m", filename="BacktestResult.html", do_resample=False):
+def showXTransaction(engine, freq="1m", filename="BacktestResult.html", do_resample=True):
     mp = getXMultiPlot(engine, freq, filename)
-    if do_resample:
-        mp.resample()
-    mp.show()
+    mp.show(do_resample)
 
 
 def getXMultiPlot(engine, freq="1m", filename="BacktestResult.html"):

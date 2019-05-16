@@ -14,6 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from vnpy.rpc import RpcClient, RpcServer, RemoteException
+import logging
 
 # 如果安装了seaborn则设置为白色风格
 try:
@@ -770,6 +771,12 @@ class BacktestingEngine(object):
         log = str(self.dt) + ' ' + content
         self.logList.append(log)
 
+    def writeLog(self, content, level=logging.INFO):
+        if level >= logging.root.level:
+            msg = "%s %s" % (logging.getLevelName(level), content)
+            log = str(self.dt) + ' ' + msg
+            self.logList.append(log)
+        
     # ----------------------------------------------------------------------
     def cancelAll(self, name):
         """全部撤单"""

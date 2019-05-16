@@ -6,6 +6,13 @@ htmlplot是为方便策略师分析回测结果提供的画图工具，该工具
 
 * bokeh==0.12.14
 
+# 用于连续交易的品种。
+
+* class vnpy.trader.utils.htmlplot.core.MultiPlot
+* def vnpy.trader.utils.htmlplot.showTransaction
+* def vnpy.trader.utils.htmlplot.getMultiPlot
+
+
 ## MultiPlot
 
 MultiPlot是用于画图的工具类，可以方便调用画出按行排列且横坐标轴绑定的多张时间序列图表，目前支持的图表类型如下：
@@ -152,3 +159,159 @@ vnpy.trader.utils.htmlplot.showTransaction(engine, frequency=None, filename=None
 # MultiPlot类
 vnpy.trader.utils.htmlplot.MultiPlot
 ```
+
+
+# 用于非连续交易的品种。
+
+除数字货币外，大多数交易品种每天都只有一小段时间交易，如果用连续交易的逻辑按时间坐标画图会导致每个交易日中间间隔过大，因此对于非连续交易的品种需要通过整理后的时间坐标画图。整理坐标会导致额外的性能开销。连续交易的品种也可以用非连续的方式画图，但相比连续方式画图耗时更长。
+
+* vnpy.trader.utils.htmlplot.xcore.XMultiPlot
+
+## XMultiPlot
+
+XMultiPlot是用于画图的工具类，可以方便调用画出按行排列且横坐标轴绑定的多张时间序列图表，画图时需要按指定周期对齐，缺失数据的时间不会体现在图中。目前支持的图表类型如下：
+
+* 蜡烛图
+* 线图
+* 柱图
+* 主图
+    * 蜡烛图
+    * 交割单示意图
+
+### 构造方法
+
+**`初始化XMultiPlot对象`**
+
+```python
+vnpy.trader.utils.htmlplot.xcore.XMultiPlot.__init__(freq, filename="BacktestResult.html")
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|freq|str|指定对齐周期, 格式为数字+单位，比如1M，支持的单位：```s|S|m|M|h|H|d|D```|
+|filename|str|输出文件路径|
+
+
+**`蜡烛图`**
+
+```python
+XMultiPlot.addCandle(candle, pos=-1)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|candle|pandas.DataFrame|k线数据，需要包含列：```datetime, open, high, low, close```|
+|pos|int, -1|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
+
+
+**`交割单图`**
+
+```python
+XMultiPlot.addTrades(trades, pos=-1):
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|trades|pandas.DataFrame|交割单数据，需要有的列：```commission, entryDt, entryID, entryPrice, exitDt, exitID, exitPrice, pnl, slippage, turnover, volume```|
+|pos|int, -1|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
+
+
+**`主图`**
+
+`主图` = `K线` + `交割单`
+
+```python
+XMultiPlot.addMain(trades, candle, trades, pos=0):
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|candle|pandas.DataFrame|k线数据，需要包含列：```datetime, open, high, low, close```|
+|trades|pandas.DataFrame|交割单数据，需要有的列：```commission, entryDt, entryID, entryPrice, exitDt, exitID, exitPrice, pnl, slippage, turnover, volume```|
+|pos|int, 0|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
+
+
+**`折线图`**
+
+```python
+XMultiPlot.addLine(line, colors=None, pos=-1)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|line|pandas.DataFrame|线图数据，需要包含列：```datetime``` 和 至少一列其他列。|
+|colors|dict|画图的颜色，缺省时会随机分配。`key`: 需与数据中的列名对应; `value`: 颜色取值，可以使用常规英文颜色命名: ```red|blue|green|yellow|...```，也可以使用 `RGB十六进制颜色码`, 如 `#FFFFFF` 白色。|
+|pos|int, -1|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
+
+**`柱状图`**
+
+主图起点为0。
+
+```python
+XMultiPlot.addVBar(vbar, colors=None, pos=-1)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|vbar|pandas.DataFrame|住图数据，需要包含列：```datetime``` 和 至少一列其他列。|
+|colors|dict|画图的颜色，缺省时会随机分配。`key`: 需与数据中的列名对应; `value`: 颜色取值，可以使用常规英文颜色命名: ```red|blue|green|yellow|...```，也可以使用 `RGB十六进制颜色码`, 如 `#FFFFFF` 白色。|
+|pos|int, -1|图表序号，编号从0开始。画图时按编号从小到大从图表上到下排列。小于0时编号等于当前图表的数量（相当于在末位加一张新图）。|
+
+**`通过引擎初始化并设置主图`**
+
+```python
+XMultiPlot.setEngine(engine)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+
+
+**`整理到指定周期`**
+
+```python
+XMultiPlot.resample()
+```
+
+**`画图输出`**
+
+```python
+XMultiPlot.show(do_resample=True)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|do_resample|bool|画图前按指定周期整理数据|
+
+## 上层函数
+
+为方便调用，在htmlplot中提供下列高级函数或属性：
+
+
+### getXMultiPlot
+
+```python
+vnpy.trader.utils.htmlplot.getXMultiPlot(engine, freq=None, filename=None)
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+|freq|None, str, datetime.timedelta|指定对齐周期, 格式为数字+单位，比如1M，支持的单位：```s|S|m|M|h|H|d|D```|
+|filename|str|输出文件路径|
+|`return`|vnpy.trader.utils.htmlplot.xcore.XMultiPlot|XMultiPlot对象|
+
+
+### XMultiPlot直接画图
+
+```python
+vnpy.trader.utils.htmlplot.showXTransaction(engine, freq="1m", filename="BacktestResult.html", do_resample=True) 
+```
+
+|参数名|数据类型|说明|
+|:---|:---|:---|
+|engine|vnpy.trader.app.ctaStrategy.BacktestingEngine|vnpy回测引擎|
+|freq|None, str, datetime.timedelta|指定对齐周期, 格式为数字+单位，比如1M，支持的单位：```s|S|m|M|h|H|d|D```|
+|filename|str|输出文件路径|
+|do_resample|bool|画图前按指定周期整理数据|
