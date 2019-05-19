@@ -140,11 +140,12 @@ class WebsocketClient(object):
                 connect_times += 1
                 connect_backoff = min(max_connnect_backoff,
                                       connect_backoff << 1)
-        try:
-            logging.debug("connected to websocket")
-            self.onConnected()
-        except Exception:
-            self._reportError()
+        if self._active:
+            try:
+                logging.debug("connected to websocket")
+                self.onConnected()
+            except Exception:
+                self._reportError()
 
     #----------------------------------------------------------------------
     def _disconnect(self):
