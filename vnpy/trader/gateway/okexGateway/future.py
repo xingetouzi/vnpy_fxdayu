@@ -542,7 +542,7 @@ class OkexfRestApi(RestClient):
             #     order.totalVolume = int(data['size'])
             #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-            if int(data['filled_qty']) == order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_qty']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
                 return
             order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
             order.status = statusMapReverse[str(data['state'])]
@@ -652,9 +652,11 @@ class OkexfRestApi(RestClient):
         _id = order.orderID
 
         if data['result']:
-            self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])}撤单成功: oid-{str(data['client_oid'])}")
             order.status = constant.STATUS_CANCELLED
             self.gateway.onOrder(order)
+            if self.unfinished_orders.get(_id, None):
+                del self.unfinished_orders[_id]
+            self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
         else:
             self.queryMonoOrder(self.contractMapReverse[order.symbol], _id)
             self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)

@@ -154,7 +154,7 @@ class OkexSwapRestApi(RestClient):
         order.totalVolume = orderReq.volume
         
         self.orderDict[orderID] = order
-        self.unfinished_orders.get(orderID, None)
+        self.unfinished_orders[orderID] = order
 
         self.addRequest('POST', '/api/swap/v3/order', 
                         callback=self.onSendOrder, 
@@ -471,7 +471,7 @@ class OkexSwapRestApi(RestClient):
             #     order.totalVolume = int(data['size'])
             #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-            if int(data['filled_qty']) == order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_qty']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
                 return
             order.price = float(data['price'])
             order.price_avg = float(data['price_avg'])
@@ -521,11 +521,11 @@ class OkexSwapRestApi(RestClient):
             order = self.orderDict.get(request.extra, None)
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = str(d['code']) + d['message']
-            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
             self.gateway.onOrder(order)
 
             if self.unfinished_orders.get(order.orderID, None):
                 del self.unfinished_orders[order.orderID]
+            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
         else:
             self.processOrderData(d)     
 
@@ -582,12 +582,17 @@ class OkexSwapRestApi(RestClient):
         """ 1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
             2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
         """
+        order = request.extra
+        _id = order.orderID
+
         if not (str(data['order_id']) == "-1"):
-            instrument_id = request.path[26:38]
-            self.gateway.writeLog(f"交易所返回{instrument_id}撤单成功: oid-{str(data['client_oid'])}")
+            order.status = constant.STATUS_CANCELLED
+            self.gateway.onOrder(order)
+            if self.unfinished_orders.get(_id, None):
+                del self.unfinished_orders[_id]
+            self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
         else:
-            order = request.extra
-            self.queryMonoOrder(order.symbol, order.orderID)
+            self.queryMonoOrder(order.symbol, _id)
             self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
 
     #----------------------------------------------------------------------

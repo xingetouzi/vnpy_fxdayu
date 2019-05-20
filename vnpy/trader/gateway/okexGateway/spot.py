@@ -444,7 +444,7 @@ class OkexSpotRestApi(RestClient):
             #     order.totalVolume = float(data['size'])
             #     order.tradedVolume = 0.0
             #     order.direction, order.offset = typeMapReverse[str(data['side'])]
-            if int(data['filled_size']) == order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_size']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
                 return
             # update order info
             order.price = float(data['price'])
@@ -506,11 +506,11 @@ class OkexSpotRestApi(RestClient):
         order = self.orderDict.get(request.extra, None)
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
-        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
         self.gateway.onOrder(order)
 
         if self.unfinished_orders.get(order.orderID, None):
             del self.unfinished_orders[order.orderID]
+        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
@@ -552,13 +552,18 @@ class OkexSpotRestApi(RestClient):
         """ 1: {'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
             2: failed cancel order: http400
         """
+        order = request.extra
+        _id = order.orderID
+
         if data['result']:
-            rsp = eval(request.data)
-            oid = request.path.split("/")[-1]
-            self.gateway.writeLog(f"交易所返回{rsp['instrument_id']}撤单成功: oid-{oid}")
+            order.status = constant.STATUS_CANCELLED
+            self.gateway.onOrder(order)
+            if self.unfinished_orders.get(_id, None):
+                del self.unfinished_orders[_id]
+            self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
+
         else:
-            order = request.extra
-            self.queryMonoOrder(order.symbol, order.orderID)
+            self.queryMonoOrder(order.symbol, _id)
             self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
 
     #----------------------------------------------------------------------
