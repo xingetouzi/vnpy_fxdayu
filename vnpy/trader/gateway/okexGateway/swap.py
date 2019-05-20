@@ -776,7 +776,7 @@ class OkexSwapWebsocketApi(WebsocketClient):
             self.subscribe(contract)
             self.sendPacket({'op': 'subscribe', 'args': f'swap/position:{contract}'})
             self.sendPacket({'op': 'subscribe', 'args': f'swap/account:{contract}'})
-            self.sendPacket({'op': 'subscribe', 'args': f'swap/order:{contract}'})
+            # self.sendPacket({'op': 'subscribe', 'args': f'swap/order:{contract}'})
     #----------------------------------------------------------------------
     def onSwapTick(self, d):
         """{"table": "swap/ticker","data": [{

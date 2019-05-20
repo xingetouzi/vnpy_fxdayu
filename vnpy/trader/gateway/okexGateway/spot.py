@@ -737,7 +737,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
         for currency in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:
             self.subscribe(currency)
             self.sendPacket({'op': 'subscribe', 'args': f'spot/account:{currency.split("-")[0]}'})
-            self.sendPacket({'op': 'subscribe', 'args': f'spot/order:{currency}'})
+            # self.sendPacket({'op': 'subscribe', 'args': f'spot/order:{currency}'})
     #----------------------------------------------------------------------
     def onSpotTick(self, d):
         """{'table': 'spot/ticker', 'data': [{

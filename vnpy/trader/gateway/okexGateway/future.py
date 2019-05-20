@@ -846,7 +846,7 @@ class OkexfWebsocketApi(WebsocketClient):
         self.callbackDict['futures/position'] = self.onPosition
         self.sendPacket({'op': 'subscribe', 'args': f'futures/position:{contract}'})
         self.sendPacket({'op': 'subscribe', 'args': f'futures/account:{contract.split("-")[0]}'})
-        self.sendPacket({'op': 'subscribe', 'args': f'futures/order:{contract}'})
+        # self.sendPacket({'op': 'subscribe', 'args': f'futures/order:{contract}'})
     
     #----------------------------------------------------------------------
     def onLogin(self, d):
