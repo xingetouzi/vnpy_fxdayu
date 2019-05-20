@@ -16,19 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, ERRORCODE,ISO_DATETIME_FORMAT
-
-# 委托状态类型映射
-# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
-# "3":Submitting,"4":Cancelling,）
-statusMapReverse = {}
-statusMapReverse['0'] = constant.STATUS_NOTTRADED    # swap
-statusMapReverse['1'] = constant.STATUS_PARTTRADED
-statusMapReverse['2'] = constant.STATUS_ALLTRADED
-statusMapReverse['3'] = constant.STATUS_SUBMITTED
-statusMapReverse['4'] = constant.STATUS_CANCELLING
-statusMapReverse['-1'] = constant.STATUS_CANCELLED
-statusMapReverse['-2'] = constant.STATUS_REJECTED
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 方向和开平映射
 typeMap = {}
@@ -68,7 +56,7 @@ class OkexSwapRestApi(RestClient):
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
         self.okexIDMap = {}       # store okexID <-> OID
-        self.missing_order_Dict = {} # store missing orders due to network issue
+        self.unfinished_orders = {} # store wip orders
     
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
@@ -166,6 +154,7 @@ class OkexSwapRestApi(RestClient):
         order.totalVolume = orderReq.volume
         
         self.orderDict[orderID] = order
+        self.unfinished_orders.get(orderID, None)
 
         self.addRequest('POST', '/api/swap/v3/order', 
                         callback=self.onSendOrder, 
@@ -226,14 +215,15 @@ class OkexSwapRestApi(RestClient):
             path = f'/api/swap/v3/orders/{symbol}'
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
-        for oid, symbol in self.missing_order_Dict.items():
-            self.queryMonoOrder(symbol, oid)
+        for oid, order in self.unfinished_orders.items():
+            self.queryMonoOrder(order.symbol, oid)
 
     def queryMonoOrder(self,symbol,oid):
         path = f'/api/swap/v3/orders/{symbol}/{oid}'
         self.addRequest('GET', path, params=None,
                             callback=self.onQueryMonoOrder,
-                            extra = oid)
+                            extra = oid,
+                            onFailed=self.onQueryMonoOrderFailed)
     # ----------------------------------------------------------------------
     def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
@@ -301,8 +291,8 @@ class OkexSwapRestApi(RestClient):
         symbols : str
             所要平仓的合约代码,多个合约代码用逗号分隔开。
         direction : str, optional
-            所要平仓的方向，(默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓)
-
+            所要平仓的方向，()
+默认为None，即在两个方向上都进行平仓，否则只在给出的方向上进行平仓
         Return
         ------
         vtOrderIDs: list of str
@@ -472,43 +462,42 @@ class OkexSwapRestApi(RestClient):
             oid = self.okexIDMap.get(okexID, "not_exist")
         else:
             oid = str(data['client_oid'])
-        order = self.orderDict.get(oid, None)
 
-        if not order:
-            order = self.gateway.newOrderObject(data)
-            order.totalVolume = int(data['size'])
-            order.direction, order.offset = typeMapReverse[str(data['type'])]
-        
-        order.price = float(data['price'])
-        order.price_avg = float(data['price_avg'])
-        order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-        order.tradedVolume = int(data['filled_qty'])
-        order.status = statusMapReverse[str(data['state'])]
-        order.deliveryTime = datetime.now()
-        order.fee = float(data['fee'])
-        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
-        if int(data['order_type'])>1:
-            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+        if self.unfinished_orders.get(oid, None): # 跳过已完成订单
 
-        order= copy(order)
-        self.gateway.onOrder(order)
-        self.orderDict[oid] = order
+            order = self.orderDict.get(oid, None)
+            # if not order:
+            #     order = self.gateway.newOrderObject(data)
+            #     order.totalVolume = int(data['size'])
+            #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-        if order.thisTradedVolume:
-            self.gateway.newTradeObject(order)
+            if int(data['filled_qty']) == order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+                return
+            order.price = float(data['price'])
+            order.price_avg = float(data['price_avg'])
+            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+            order.tradedVolume = int(data['filled_qty'])
+            order.status = statusMapReverse[str(data['state'])]
+            order.deliveryTime = datetime.now()
+            order.fee = float(data['fee'])
+            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            if int(data['order_type'])>1:
+                order.priceType = priceTypeMapReverse[int(data['order_type'])]
 
-        sym = self.missing_order_Dict.get(order.orderID, None)
-        if sym:
-            del self.missing_order_Dict[order.orderID]
+            order= copy(order)
+            self.gateway.onOrder(order)
+            self.orderDict[oid] = order
+            self.unfinished_orders[oid] = order
 
-        if order.status in constant.STATUS_FINISHED:
-            finish_id = self.okexIDMap.get(okexID, None)
-            if finish_id:
-                del self.okexIDMap[okexID]
-            finish_order = self.orderDict.get(oid, None)
-            if finish_order:
-                del self.orderDict[oid]
+            if order.thisTradedVolume:
+                self.gateway.newTradeObject(order)
+
+            if order.status in constant.STATUS_FINISHED:
+                if self.unfinished_orders.get(oid, None):
+                    del self.unfinished_orders[oid]
+                if self.okexIDMap.get(okexID, None):
+                    del self.okexIDMap[okexID]
 
     def onQueryOrder(self, d, request):
         """{'order_info': [{'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0', 
@@ -534,23 +523,22 @@ class OkexSwapRestApi(RestClient):
             order.rejectedInfo = str(d['code']) + d['message']
             self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
             self.gateway.onOrder(order)
-            sym = self.missing_order_Dict.get(order.orderID, None)
-            if sym:
-                del self.missing_order_Dict[order.orderID]
+
+            if self.unfinished_orders.get(order.orderID, None):
+                del self.unfinished_orders[order.orderID]
         else:
             self.processOrderData(d)     
 
-    def onqueryMonoOrderFailed(self, data, request):
+    def onQueryMonoOrderFailed(self, data, request):
         """ {'code': 35029, 'message': 'Order does not exist'} """
         order = self.orderDict.get(request.extra, None)
-        if order:
-            order.status = constant.STATUS_REJECTED
-            order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
-            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
-            self.gateway.onOrder(order)
-            sym = self.missing_order_Dict.get(order.orderID, None)
-            if sym:
-                del self.missing_order_Dict[order.orderID]
+        order.status = constant.STATUS_REJECTED
+        order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
+        self.gateway.onOrder(order)
+        
+        if self.unfinished_orders.get(order.orderID, None):
+            del self.unfinished_orders[order.orderID]
+        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
 
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
@@ -562,6 +550,9 @@ class OkexSwapRestApi(RestClient):
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
+
+        if self.unfinished_orders.get(order.orderID, None):
+            del self.unfinished_orders[order.orderID]
         self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
     
     #----------------------------------------------------------------------
@@ -573,7 +564,6 @@ class OkexSwapRestApi(RestClient):
         order = request.extra
         self.queryMonoOrder(order.symbol, order.orderID)
         self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', logging.ERROR)
-        self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
@@ -599,7 +589,6 @@ class OkexSwapRestApi(RestClient):
             order = request.extra
             self.queryMonoOrder(order.symbol, order.orderID)
             self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
-            self.missing_order_Dict.update({order.orderID:order.symbol})
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -634,8 +623,7 @@ class OkexSwapRestApi(RestClient):
 
         url = f'{REST_HOST}/api/swap/v3/instruments/{symbol}/candles'
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
-        text = eval(r.text)
-        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
+        return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
 
 class OkexSwapWebsocketApi(WebsocketClient):
     """永续合约 WS API"""

@@ -15,19 +15,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
-
-# 委托状态类型映射
-# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
-# "3":Submitting,"4":Cancelling,）
-statusMapReverse = {}
-statusMapReverse['0'] = constant.STATUS_NOTTRADED           # SpotOrder
-statusMapReverse['1'] = constant.STATUS_PARTTRADED
-statusMapReverse['2'] = constant.STATUS_ALLTRADED
-statusMapReverse['3'] = constant.STATUS_SUBMITTED
-statusMapReverse['4'] = constant.STATUS_CANCELLING
-statusMapReverse['-1'] = constant.STATUS_CANCELLED
-statusMapReverse['-2'] = constant.STATUS_REJECTED
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT
 
 # 方向和开平映射
 typeMap = {}
@@ -65,7 +53,7 @@ class OkexSpotRestApi(RestClient):
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
         self.okexIDMap = {}       # store okexID <-> OID
-        self.missing_order_Dict = {} # store missing orders due to network issue
+        self.unfinished_orders = {} # store wip orders
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
@@ -168,6 +156,7 @@ class OkexSpotRestApi(RestClient):
         order.totalVolume = orderReq.volume
         
         self.orderDict[orderID] = order
+        self.unfinished_orders[orderID] = order
 
         self.addRequest('POST', '/api/spot/v3/orders', 
                         callback=self.onSendOrder, 
@@ -230,8 +219,8 @@ class OkexSpotRestApi(RestClient):
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
-        for oid, symbol in self.missing_order_Dict.items():
-            self.queryMonoOrder(symbol, oid)
+        for oid, order in self.unfinished_orders.items():
+            self.queryMonoOrder(order.symbol, oid)
 
     def queryMonoOrder(self, symbol, oid):
         path = f'/api/spot/v3/orders/{oid}'
@@ -241,7 +230,7 @@ class OkexSpotRestApi(RestClient):
         self.addRequest('GET', path, params=req,
                             callback=self.onQueryMonoOrder,
                             extra = oid,
-                            onFailed=self.onqueryMonoOrderFailed)
+                            onFailed=self.onQueryMonoOrderFailed)
     # ----------------------------------------------------------------------
     def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
@@ -446,48 +435,47 @@ class OkexSpotRestApi(RestClient):
             if data["client_oid"] == "0":
                 data["client_oid"] = ""
             oid = str(data['client_oid'])
-        order = self.orderDict.get(oid, None)
-        
-        if not order:
-            order = self.gateway.newOrderObject(data)
-            order.totalVolume = float(data['size'])
-            order.tradedVolume = 0.0
-            order.direction, order.offset = typeMapReverse[str(data['side'])]
-        
-        # update order info
-        order.price = float(data['price'])
-        incremental_filled_size = float(data['filled_size'])
-        if incremental_filled_size:
-            order.price_avg = float(data['filled_notional'])/incremental_filled_size
-        else:
-            order.price_avg = 0.0
-        order.deliveryTime = datetime.now()
-        order.thisTradedVolume = incremental_filled_size - order.tradedVolume
-        order.status = statusMapReverse[str(data['state'])]
-        order.tradedVolume = incremental_filled_size
-        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-        if int(data['order_type']) > 1:
-            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+        if self.unfinished_orders.get(oid, None): # 跳过已完成订单
+            
+            order = self.orderDict.get(oid, None)
+            # if not order:
+            #     order = self.gateway.newOrderObject(data)
+            #     order.totalVolume = float(data['size'])
+            #     order.tradedVolume = 0.0
+            #     order.direction, order.offset = typeMapReverse[str(data['side'])]
+            if int(data['filled_size']) == order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+                return
+            # update order info
+            order.price = float(data['price'])
+            incremental_filled_size = float(data['filled_size'])
+            if incremental_filled_size:
+                order.price_avg = float(data['filled_notional'])/incremental_filled_size
+            else:
+                order.price_avg = 0.0
+            order.deliveryTime = datetime.now()
+            order.thisTradedVolume = incremental_filled_size - order.tradedVolume
+            order.status = statusMapReverse[str(data['state'])]
+            order.tradedVolume = incremental_filled_size
+            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-        order = copy(order)
-        self.gateway.onOrder(order)
-        self.orderDict[oid] = order
+            if int(data['order_type']) > 1:
+                order.priceType = priceTypeMapReverse[int(data['order_type'])]
 
-        if order.thisTradedVolume:
-            self.gateway.newTradeObject(order)
+            order = copy(order)
+            self.gateway.onOrder(order)
+            self.orderDict[oid] = order
+            self.unfinished_orders[oid] = order
 
-        sym = self.missing_order_Dict.get(order.orderID, None)
-        if sym:
-            del self.missing_order_Dict[order.orderID]    
-        if order.status in constant.STATUS_FINISHED:
-            finish_id = self.okexIDMap.get(okexID, None)
-            if finish_id:
-                del self.okexIDMap[okexID]
-            finish_order = self.orderDict.get(oid, None)
-            if finish_order:
-                del self.orderDict[oid]
+            if order.thisTradedVolume:
+                self.gateway.newTradeObject(order)
+
+            if order.status in constant.STATUS_FINISHED:
+                if self.unfinished_orders.get(oid, None):
+                    del self.unfinished_orders[oid]
+                if self.okexIDMap.get(okexID, None):
+                    del self.okexIDMap[okexID]
 
     def onQueryOrder(self, d, request):
         """{
@@ -510,18 +498,19 @@ class OkexSpotRestApi(RestClient):
             "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
             "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
             "order_type":"0"}"""
-        self.processOrderData(d)
+        if d:
+            self.processOrderData(d)
 
-    def onqueryMonoOrderFailed(self, data, request):
+    def onQueryMonoOrderFailed(self, data, request):
         """{"code":33014,"message":"Order does not exist"}"""
         order = self.orderDict.get(request.extra, None)
         order.status = constant.STATUS_REJECTED
-        order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
+        order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
         self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
         self.gateway.onOrder(order)
-        sym = self.missing_order_Dict.get(order.orderID, None)
-        if sym:
-            del self.missing_order_Dict[order.orderID]
+
+        if self.unfinished_orders.get(order.orderID, None):
+            del self.unfinished_orders[order.orderID]
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
@@ -532,6 +521,9 @@ class OkexSpotRestApi(RestClient):
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
+
+        if self.unfinished_orders.get(order.orderID, None):
+            del self.unfinished_orders[order.orderID]
         self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
     
     #----------------------------------------------------------------------
@@ -543,7 +535,6 @@ class OkexSpotRestApi(RestClient):
         order = request.extra
         self.queryMonoOrder(order.symbol, order.orderID)
         self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', logging.ERROR)
-        self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
@@ -569,7 +560,6 @@ class OkexSpotRestApi(RestClient):
             order = request.extra
             self.queryMonoOrder(order.symbol, order.orderID)
             self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
-            self.missing_order_Dict.update({order.orderID:order.symbol})
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -604,8 +594,7 @@ class OkexSpotRestApi(RestClient):
 
         url = f'{REST_HOST}/api/spot/v3/instruments/{symbol}/candles'
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
-        text = eval(r.text)
-        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume"])
+        return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume"])
 
 class OkexSpotWebsocketApi(WebsocketClient):
     """SPOT WS API"""

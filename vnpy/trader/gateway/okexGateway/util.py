@@ -1,5 +1,6 @@
 import hmac
 import base64
+from vnpy.trader.vtConstant import constant
 
 ISO_DATETIME_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 #----------------------------------------------------------------------
@@ -8,6 +9,16 @@ def generateSignature(msg, apiSecret):
     mac = hmac.new(bytes(apiSecret, encoding='utf-8'), bytes(msg,encoding='utf-8'), digestmod='sha256')
     d= mac.digest()
     return base64.b64encode(d)
+
+# 委托状态类型映射
+statusMapReverse = {}
+statusMapReverse['0'] = constant.STATUS_NOTTRADED
+statusMapReverse['1'] = constant.STATUS_PARTTRADED
+statusMapReverse['2'] = constant.STATUS_ALLTRADED
+statusMapReverse['3'] = constant.STATUS_SUBMITTED
+statusMapReverse['4'] = constant.STATUS_CANCELLING
+statusMapReverse['-1'] = constant.STATUS_CANCELLED
+statusMapReverse['-2'] = constant.STATUS_REJECTED
 
 # K线频率映射
 granularityMap = {}
