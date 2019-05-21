@@ -167,10 +167,11 @@ class OkexfRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：40次/2s"""
         symbol = self.contractMapReverse[cancelOrderReq.symbol]
+        order = self.orderDict.get(cancelOrderReq.orderID, None)
 
         path = f'/api/futures/v3/cancel_order/{symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
-                        extra=cancelOrderReq,
+                        extra=order,
                         callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
@@ -649,17 +650,17 @@ class OkexfRestApi(RestClient):
             2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
                 'error_code': '32004', 'client_oid': 'FUTURE19030516082610001', 'order_id': -1} """
         order = request.extra
-        _id = order.orderID
-
-        if data['result']:
-            order.status = constant.STATUS_CANCELLED
-            self.gateway.onOrder(order)
-            if self.unfinished_orders.get(_id, None):
-                del self.unfinished_orders[_id]
-            self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
-        else:
-            self.queryMonoOrder(self.contractMapReverse[order.symbol], _id)
-            self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+        if order:
+            _id = order.orderID
+            if data['result']:
+                order.status = constant.STATUS_CANCELLED
+                self.gateway.onOrder(order)
+                if self.unfinished_orders.get(_id, None):
+                    del self.unfinished_orders[_id]
+                self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
+            else:
+                self.queryMonoOrder(self.contractMapReverse[order.symbol], _id)
+                self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None

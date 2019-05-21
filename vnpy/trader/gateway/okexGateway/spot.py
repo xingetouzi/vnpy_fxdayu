@@ -174,10 +174,11 @@ class OkexSpotRestApi(RestClient):
             'instrument_id': cancelOrderReq.symbol,
         }
         path = f'/api/spot/v3/cancel_orders/{cancelOrderReq.orderID}'
+        order = self.orderDict.get(cancelOrderReq.orderID, None)
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder,
                         data=req,
-                        extra=cancelOrderReq,)
+                        extra=order)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -553,18 +554,19 @@ class OkexSpotRestApi(RestClient):
             2: failed cancel order: http400
         """
         order = request.extra
-        _id = order.orderID
+        if order:
+            _id = order.orderID
+            
+            if data['result']:
+                order.status = constant.STATUS_CANCELLED
+                self.gateway.onOrder(order)
+                if self.unfinished_orders.get(_id, None):
+                    del self.unfinished_orders[_id]
+                self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
 
-        if data['result']:
-            order.status = constant.STATUS_CANCELLED
-            self.gateway.onOrder(order)
-            if self.unfinished_orders.get(_id, None):
-                del self.unfinished_orders[_id]
-            self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
-
-        else:
-            self.queryMonoOrder(order.symbol, _id)
-            self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+            else:
+                self.queryMonoOrder(order.symbol, _id)
+                self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
