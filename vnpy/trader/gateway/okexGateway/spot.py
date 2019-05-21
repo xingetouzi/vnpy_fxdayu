@@ -15,7 +15,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT,statusFilter
 
 # 方向和开平映射
 typeMap = {}
@@ -445,26 +445,12 @@ class OkexSpotRestApi(RestClient):
             #     order.totalVolume = float(data['size'])
             #     order.tradedVolume = 0.0
             #     order.direction, order.offset = typeMapReverse[str(data['side'])]
-            if int(data['filled_size']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_size']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status]:
                 return
-            # update order info
-            order.price = float(data['price'])
-            incremental_filled_size = float(data['filled_size'])
-            if incremental_filled_size:
-                order.price_avg = float(data['filled_notional'])/incremental_filled_size
-            else:
-                order.price_avg = 0.0
-            order.deliveryTime = datetime.now()
-            order.thisTradedVolume = incremental_filled_size - order.tradedVolume
-            order.status = statusMapReverse[str(data['state'])]
-            order.tradedVolume = incremental_filled_size
-            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-            if int(data['order_type']) > 1:
-                order.priceType = priceTypeMapReverse[int(data['order_type'])]
+            fresh_order = self.update_order(order, data)
 
-            order = copy(order)
+            order= copy(fresh_order)
             self.gateway.onOrder(order)
             self.orderDict[oid] = order
             self.unfinished_orders[oid] = order
@@ -477,6 +463,25 @@ class OkexSpotRestApi(RestClient):
                     del self.unfinished_orders[oid]
                 if self.okexIDMap.get(okexID, None):
                     del self.okexIDMap[okexID]
+                    
+    def update_order(self,order,data):
+        order.price = float(data['price'])
+        incremental_filled_size = float(data['filled_size'])
+        if incremental_filled_size:
+            order.price_avg = float(data['filled_notional'])/incremental_filled_size
+        else:
+            order.price_avg = 0.0
+        order.deliveryTime = datetime.now()
+        order.thisTradedVolume = incremental_filled_size - order.tradedVolume
+        order.status = statusMapReverse[str(data['state'])]
+        order.tradedVolume = incremental_filled_size
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+
+        if int(data['order_type']) > 1:
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+
+        return order
 
     def onQueryOrder(self, d, request):
         """{

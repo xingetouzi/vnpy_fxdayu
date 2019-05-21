@@ -16,7 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT,statusFilter
 
 # 方向和开平映射
 typeMap = {}
@@ -472,21 +472,12 @@ class OkexSwapRestApi(RestClient):
             #     order.totalVolume = int(data['size'])
             #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-            if int(data['filled_qty']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_qty']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status]:
                 return
-            order.price = float(data['price'])
-            order.price_avg = float(data['price_avg'])
-            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-            order.tradedVolume = int(data['filled_qty'])
-            order.status = statusMapReverse[str(data['state'])]
-            order.deliveryTime = datetime.now()
-            order.fee = float(data['fee'])
-            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
-            if int(data['order_type'])>1:
-                order.priceType = priceTypeMapReverse[int(data['order_type'])]
+            
+            fresh_order = self.update_order(order, data)
 
-            order= copy(order)
+            order= copy(fresh_order)
             self.gateway.onOrder(order)
             self.orderDict[oid] = order
             self.unfinished_orders[oid] = order
@@ -499,6 +490,21 @@ class OkexSwapRestApi(RestClient):
                     del self.unfinished_orders[oid]
                 if self.okexIDMap.get(okexID, None):
                     del self.okexIDMap[okexID]
+
+    def update_order(self, order, data):
+        order.price = float(data['price'])
+        order.price_avg = float(data['price_avg'])
+        order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+        order.tradedVolume = int(data['filled_qty'])
+        order.status = statusMapReverse[str(data['state'])]
+        order.deliveryTime = datetime.now()
+        order.fee = float(data['fee'])
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+        if int(data['order_type'])>1:
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+        
+        return order
 
     def onQueryOrder(self, d, request):
         """{'order_info': [{'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0', 

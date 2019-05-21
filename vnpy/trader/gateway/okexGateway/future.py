@@ -16,7 +16,7 @@ from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT,statusFilter
 
 # 方向和开平映射
 typeMap = {}
@@ -543,22 +543,11 @@ class OkexfRestApi(RestClient):
             #     order.totalVolume = int(data['size'])
             #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-            if int(data['filled_qty']) <= order.tradedVolume and statusMapReverse[str(data['state'])] == order.status:
+            if int(data['filled_qty']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status]:
                 return
-            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-            order.status = statusMapReverse[str(data['state'])]
-            order.tradedVolume = int(data['filled_qty'])
-            order.price = float(data['price'])
-            order.price_avg = float(data['price_avg'])
-            order.deliveryTime = datetime.now()
-            order.fee = float(data['fee'])
-            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            fresh_order = self.update_order(order, data)
 
-            if int(data['order_type']) > 1:
-                order.priceType = priceTypeMapReverse[int(data['order_type'])]
-            
-            order= copy(order)
+            order= copy(fresh_order)
             self.gateway.onOrder(order)
             self.orderDict[oid] = order
             self.unfinished_orders[oid] = order
@@ -572,6 +561,22 @@ class OkexfRestApi(RestClient):
                 if self.okexIDMap.get(okexID, None):
                     del self.okexIDMap[okexID]
 
+    def update_order(self,order,data):
+        order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+        order.status = statusMapReverse[str(data['state'])]
+        order.tradedVolume = int(data['filled_qty'])
+        order.price = float(data['price'])
+        order.price_avg = float(data['price_avg'])
+        order.deliveryTime = datetime.now()
+        order.fee = float(data['fee'])
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+
+        if int(data['order_type']) > 1:
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+
+        return order
+        
     def onQueryMonoOrder(self, d, request):
         """request : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
             headers: {'OK-ACCESS-KEY': 'xxxxxxxxxx', 

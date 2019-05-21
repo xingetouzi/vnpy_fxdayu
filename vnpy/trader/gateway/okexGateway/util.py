@@ -20,6 +20,15 @@ statusMapReverse['4'] = constant.STATUS_CANCELLING
 statusMapReverse['-1'] = constant.STATUS_CANCELLED
 statusMapReverse['-2'] = constant.STATUS_REJECTED
 
+statusFilter = {
+    constant.STATUS_NOTTRADED:0,
+    constant.STATUS_SUBMITTED:0,
+    constant.STATUS_PARTTRADED:1,
+    constant.STATUS_CANCELLING:1,
+    constant.STATUS_ALLTRADED:2,
+    constant.STATUS_CANCELLED:2,
+    constant.STATUS_REJECTED:2
+}
 # K线频率映射
 granularityMap = {}
 granularityMap['1min'] =60
