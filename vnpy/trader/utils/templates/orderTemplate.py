@@ -1578,4 +1578,5 @@ class OrderTemplate(CtaTemplate):
 
     def notifyPosition(self, key, value):
         message = "%-24s %10s" % (key, value)
+        self.writeLog(message)
         self.notify("Position: %s" % self.name, message)
