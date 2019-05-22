@@ -21,8 +21,8 @@ statusMapReverse['-1'] = constant.STATUS_CANCELLED
 statusMapReverse['-2'] = constant.STATUS_REJECTED
 
 statusFilter = {
+    constant.STATUS_SUBMITTED:-1,
     constant.STATUS_NOTTRADED:0,
-    constant.STATUS_SUBMITTED:0,
     constant.STATUS_PARTTRADED:1,
     constant.STATUS_CANCELLING:1,
     constant.STATUS_ALLTRADED:2,

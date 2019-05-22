@@ -155,6 +155,7 @@ class OkexfRestApi(RestClient):
         order.offset = orderReq.offset
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
+        order.status = constant.STATUS_SUBMITTED
         
         self.orderDict[orderID] = order
         self.unfinished_orders[orderID] = order
@@ -227,7 +228,7 @@ class OkexfRestApi(RestClient):
                             callback=self.onQueryOrder)
 
         for oid, order in self.unfinished_orders.items():
-            self.queryMonoOrder(order.symbol, oid)
+            self.queryMonoOrder(self.contractMapReverse[order.symbol], oid)
 
     def queryMonoOrder(self,symbol,oid):
         """限速规则：40次/2s"""
@@ -534,10 +535,8 @@ class OkexfRestApi(RestClient):
 
     def getQueue(self):
         while True:
-            try:
+            if not self.order_queue.empty():
                 self.processOrderData(self.order_queue.get())
-            except Exception:
-                pass
 
     def processOrderData(self, data):
         okexID = data['order_id']
@@ -556,7 +555,7 @@ class OkexfRestApi(RestClient):
             #     order.totalVolume = int(data['size'])
             #     order.direction, order.offset = typeMapReverse[str(data['type'])]
 
-            if int(data['filled_qty']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status]:
+            if int(data['filled_qty']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] <= statusFilter[order.status]:
                 return
             order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
             order.status = statusMapReverse[str(data['state'])]
