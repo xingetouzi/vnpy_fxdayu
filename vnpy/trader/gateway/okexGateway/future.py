@@ -12,6 +12,7 @@ import logging
 import requests
 from requests import ConnectionError
 import queue
+import threading
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
@@ -59,8 +60,9 @@ class OkexfRestApi(RestClient):
         self.contractMapReverse = {}
 
         self.order_queue = queue.Queue()
-        self.getQueue()
-
+        t=threading.Thread(target=self.getQueue)
+        t.setDaemon(True)
+        t.start()
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
