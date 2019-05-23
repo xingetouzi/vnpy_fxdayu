@@ -204,9 +204,8 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        sym_list = [str.lower(symbol.split("-")[0]) for symbol in symbolList]
-        for symbol in list(set(sym_list)):
-            sym = str.lower(symbol.split("-")[0])
+        list_symbols = list(set(map(lambda x: str.lower(x.split("-")[0]), symbolList)))
+        for sym in list_symbols:
             self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
                             callback=self.onQueryMonoAccount)
 
@@ -630,7 +629,7 @@ class OkexfRestApi(RestClient):
 
     def onQueryMonoOrderFailed(self, data, request):
         self.putOrderQueue(data, self.ORDER_REJECT)
-        # order = self.orderDict.get(request.extra, None)
+        order = self.orderDict.get(request.extra, None)
         # order.status = constant.STATUS_REJECTED
         # order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
         self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
@@ -753,10 +752,9 @@ class OkexfRestApi(RestClient):
         if "client_oid" in data:
             oid = data["client_oid"]
         else:
-            oid = oid = self.okexIDMap[data["order_id"]]
+            oid = self.okexIDMap[data["order_id"]]
     
-        oid = str(oid)
-        order = self.orderDict.get(oid, None)
+        order = self.orderDict.get(str(oid), None)
         if order:
             if data["result"]:
                 order.status = constant.STATUS_CANCELLED
@@ -765,12 +763,12 @@ class OkexfRestApi(RestClient):
     
     def onQueueRejectOrder(self, data):
         oid = data["client_oid"]
-        order = self.orderDict.get(oid, None)
+        order = self.orderDict.get(str(oid), None)
         if order:
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = data["message"]
             self.gateway.onOrder(copy(order))
-            self.unfinished_orders.pop(oid, None)
+            self.unfinished_orders.pop(str(oid), None)
 
 ########################################################################
 class OkexfWebsocketApi(WebsocketClient):

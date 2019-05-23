@@ -2,6 +2,7 @@ import os
 import json
 import sys
 import time
+import traceback
 import zlib
 from datetime import datetime, timedelta, timezone
 from copy import copy
@@ -10,6 +11,9 @@ import pandas as pd
 import logging
 import requests
 from requests import ConnectionError
+
+import queue
+import threading
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
@@ -54,6 +58,21 @@ class OkexSpotRestApi(RestClient):
         self.orderDict = {}       # store order info
         self.okexIDMap = {}       # store okexID <-> OID
         self.unfinished_orders = {} # store wip orders
+
+        self.orderInstanceHandlers = {
+            self.ORDER_INSTANCE: self.processOrderData,
+            self.ORDER_CANCEL: self.onQueueCancelOrder,
+            self.ORDER_REJECT: self.onQueueRejectOrder
+        }
+        self.order_queue = queue.Queue()
+        self.orderThread = threading.Thread(target=self.getQueue)
+        
+    def runOrderThread(self):
+        if not self.orderThread.is_alive():
+            t = threading.Thread(target=self.getQueue)
+            t.setDaemon(True)
+            t.start()
+            self.orderThread = t
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
@@ -62,6 +81,7 @@ class OkexSpotRestApi(RestClient):
         self.init(REST_HOST)
         self.start(sessionCount)
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
+        self.runOrderThread()
         self.queryContract()
     #----------------------------------------------------------------------
     def sign(self, request):
@@ -154,6 +174,7 @@ class OkexSpotRestApi(RestClient):
         order.offset = orderReq.offset
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
+        order.status = constant.STATUS_SUBMITTED
         
         self.orderDict[orderID] = order
         self.unfinished_orders[orderID] = order
@@ -211,6 +232,7 @@ class OkexSpotRestApi(RestClient):
     def queryOrder(self):
         """限速规则：20次/2s"""
         self.gateway.writeLog('----SPOT Quary Orders,positions,Accounts----', logging.DEBUG)
+        self.runOrderThread()
         for symbol in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]:  
             # 未成交
             req = {
@@ -428,6 +450,21 @@ class OkexSpotRestApi(RestClient):
             self.processAccountData(account_info)
     
     #----------------------------------------------------------------------
+    def getQueue(self):
+        while True:
+            try:
+                data, _type = self.order_queue.get(timeout=1)
+            except queue.Empty:
+                pass
+            else:
+                try:
+                    self.onQueueData(data, _type)
+                except Exception as e:
+                    logging.error(
+                        "Handle order data error | %s | %s" % (data, traceback.format_exc())
+                    )
+                    raise e
+
     def processOrderData(self, data):
         okexID = str(data['order_id'])
         if "client_oid" not in data.keys():
@@ -437,51 +474,39 @@ class OkexSpotRestApi(RestClient):
                 data["client_oid"] = ""
             oid = str(data['client_oid'])
 
-        if self.unfinished_orders.get(oid, None): # 跳过已完成订单
-            
-            order = self.orderDict.get(oid, None)
-            # if not order:
-            #     order = self.gateway.newOrderObject(data)
-            #     order.totalVolume = float(data['size'])
-            #     order.tradedVolume = 0.0
-            #     order.direction, order.offset = typeMapReverse[str(data['side'])]
-            if int(data['filled_size']) <= order.tradedVolume and statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status]:
+        order = self.orderDict.get(oid, None)
+        if order:
+            if statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status] or (int(data['filled_size']) < order.tradedVolume):
+                return
+            if statusMapReverse[str(data['state'])] == order.status and int(data['filled_size']) == order.tradedVolume:
                 return
 
-            fresh_order = self.update_order(order, data)
+            order.price = float(data['price'])
+            incremental_filled_size = float(data['filled_size'])
+            if incremental_filled_size:
+                order.price_avg = float(data['filled_notional'])/incremental_filled_size
+            else:
+                order.price_avg = 0.0
+            order.deliveryTime = datetime.now()
+            order.thisTradedVolume = incremental_filled_size - order.tradedVolume
+            order.status = statusMapReverse[str(data['state'])]
+            order.tradedVolume = incremental_filled_size
+            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-            order= copy(fresh_order)
+            if int(data['order_type']) > 1:
+                order.priceType = priceTypeMapReverse[int(data['order_type'])]
+
+            order= copy(order)
             self.gateway.onOrder(order)
-            self.orderDict[oid] = order
-            self.unfinished_orders[oid] = order
+            # self.orderDict[oid] = order
+            # self.unfinished_orders[oid] = order
 
             if order.thisTradedVolume:
                 self.gateway.newTradeObject(order)
 
             if order.status in constant.STATUS_FINISHED:
-                if self.unfinished_orders.get(oid, None):
-                    del self.unfinished_orders[oid]
-                if self.okexIDMap.get(okexID, None):
-                    del self.okexIDMap[okexID]
-                    
-    def update_order(self,order,data):
-        order.price = float(data['price'])
-        incremental_filled_size = float(data['filled_size'])
-        if incremental_filled_size:
-            order.price_avg = float(data['filled_notional'])/incremental_filled_size
-        else:
-            order.price_avg = 0.0
-        order.deliveryTime = datetime.now()
-        order.thisTradedVolume = incremental_filled_size - order.tradedVolume
-        order.status = statusMapReverse[str(data['state'])]
-        order.tradedVolume = incremental_filled_size
-        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
-
-        if int(data['order_type']) > 1:
-            order.priceType = priceTypeMapReverse[int(data['order_type'])]
-
-        return order
+                self.unfinished_orders.pop(oid, None)
 
     def onQueryOrder(self, d, request):
         """{
@@ -490,7 +515,7 @@ class OkexSpotRestApi(RestClient):
             "filled_size": "0.1291771", "filled_notional": "10000.0000", "status": "filled"
         }"""
         for data in d:
-            self.processOrderData(data)
+            self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrder(self,d,request):
         """reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
@@ -505,24 +530,24 @@ class OkexSpotRestApi(RestClient):
             "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
             "order_type":"0"}"""
         if d:
-            self.processOrderData(d)
+            self.putOrderQueue(d, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
         """{"code":33014,"message":"Order does not exist"}"""
         order = self.orderDict.get(request.extra, None)
-        order.status = constant.STATUS_REJECTED
-        order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
-        self.gateway.onOrder(order)
+        # order.status = constant.STATUS_REJECTED
+        # order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
+        # self.gateway.onOrder(order)
 
-        if self.unfinished_orders.get(order.orderID, None):
-            del self.unfinished_orders[order.orderID]
+        # if self.unfinished_orders.get(order.orderID, None):
+        #     del self.unfinished_orders[order.orderID]
+        self.putOrderQueue(data, self.ORDER_REJECT)
         self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        # self.gateway.writeLog(f"{data} onsendorderfailed, {request.response.text}", logging.ERROR)
         order = request.extra
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
@@ -563,10 +588,11 @@ class OkexSpotRestApi(RestClient):
             _id = order.orderID
             
             if data['result']:
-                order.status = constant.STATUS_CANCELLED
-                self.gateway.onOrder(order)
-                if self.unfinished_orders.get(_id, None):
-                    del self.unfinished_orders[_id]
+                # order.status = constant.STATUS_CANCELLED
+                # self.gateway.onOrder(order)
+                # if self.unfinished_orders.get(_id, None):
+                #     del self.unfinished_orders[_id]
+                self.putOrderQueue(data, self.ORDER_CANCEL)
                 self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
 
             else:
@@ -607,6 +633,43 @@ class OkexSpotRestApi(RestClient):
         url = f'{REST_HOST}/api/spot/v3/instruments/{symbol}/candles'
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
         return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume"])
+    
+    ORDER_INSTANCE = 0
+    ORDER_CANCEL = 1
+    ORDER_REJECT = 2
+
+    def putOrderQueue(self, data, _type):
+        self.order_queue.put((data, _type))
+
+    def onQueueData(self, data, _type):
+        method = self.orderInstanceHandlers[_type]
+        try:
+            method(data)
+        except Exception as e:
+            logging.error("Process order data error | %s | %s", data, traceback.format_exc())
+    
+    def onQueueCancelOrder(self, data):
+        if "client_oid" in data:
+            oid = data["client_oid"]
+        else:
+            oid = self.okexIDMap[data["order_id"]]
+    
+        order = self.orderDict.get(str(oid), None)
+        if order:
+            if data["result"]:
+                order.status = constant.STATUS_CANCELLED
+                self.gateway.onOrder(copy(order))
+                self.unfinished_orders.pop(order.vtOrderID, None)
+    
+    def onQueueRejectOrder(self, data):
+        oid = data["client_oid"]
+        order = self.orderDict.get(str(oid), None)
+        if order:
+            order.status = constant.STATUS_REJECTED
+            order.rejectedInfo = data["message"]
+            self.gateway.onOrder(copy(order))
+            self.unfinished_orders.pop(str(oid), None)
+
 
 class OkexSpotWebsocketApi(WebsocketClient):
     """SPOT WS API"""
@@ -823,7 +886,7 @@ class OkexSpotWebsocketApi(WebsocketClient):
             'timestamp': '2019-03-05T03:30:00.000Z', 'type': 'limit'}]
         }"""
         for idx, data in enumerate(d):
-            self.restGateway.processOrderData(data)
+            self.restGateway.putOrderQueue(data, self.restGateway.ORDER_INSTANCE)
         
     #----------------------------------------------------------------------
     def onAccount(self, d):
