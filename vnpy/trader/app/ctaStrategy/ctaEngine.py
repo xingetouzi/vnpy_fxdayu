@@ -219,11 +219,12 @@ class CtaEngine(object):
         # 如果查询成功
         if order:
             # 检查是否报单还有效，只有有效时才发出撤单指令
-            orderFinished = (order.status == constant.STATUS_ALLTRADED 
-                            or order.status == constant.STATUS_CANCELLED 
-                            or order.status == constant.STATUS_REJECTED
-                            or order.status == constant.STATUS_CANCELLING)
-            
+            # orderFinished = (order.status == constant.STATUS_ALLTRADED 
+            #                 or order.status == constant.STATUS_CANCELLED 
+            #                 or order.status == constant.STATUS_REJECTED
+            #                 or order.status == constant.STATUS_CANCELLING)
+
+            orderFinished = False
             if not orderFinished:
                 req = VtCancelOrderReq()
                 req.vtSymbol = order.vtSymbol
