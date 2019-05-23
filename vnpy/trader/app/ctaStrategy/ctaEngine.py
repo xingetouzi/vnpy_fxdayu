@@ -556,8 +556,8 @@ class CtaEngine(object):
         a=b=[]
         self.record_order,a = a,self.record_order
         self.record_tick,b = b,self.record_tick
-        self.db_client["orders"].insert_many(a)
-        self.db_client["tick"].insert_many(b)
+        self.db_client["test-order"].insert_many(a)
+        self.db_client["test-tick"].insert_many(b)
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
         """插入数据到数据库（这里的data可以是VtTickData或者VtBarData）"""
@@ -804,7 +804,7 @@ class CtaEngine(object):
                 self.loadStrategy(setting)
 
                 self.location = setting["location"]
-                self.db_client = pymongo.MongoClient(setting["mongo"])["speed-test"]
+                self.db_client = pymongo.MongoClient(setting["mongo"])["dayu-orders"]
 
         # for strategy in self.strategyDict.values():
         #     self.loadSyncData(strategy)
