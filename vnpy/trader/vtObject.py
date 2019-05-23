@@ -54,7 +54,8 @@ class VtTickData(VtBaseData):
         
         self.upperLimit = EMPTY_FLOAT           # 涨停价
         self.lowerLimit = EMPTY_FLOAT           # 跌停价
-        
+        self.location =  EMPTY_STRING 
+        self.time_diff = None
         # 十档行情
         self.bidPrice1 = EMPTY_FLOAT
         self.bidPrice2 = EMPTY_FLOAT
@@ -196,6 +197,9 @@ class VtOrderData(VtBaseData):
         self.fee = EMPTY_FLOAT                  # 挂单手续费
         self.orderDatetime = None               # 订单的发单日期时间，python的datetime时间对象
         self.cancelDatetime = None              # 订单的撤单日期时间，python的datetime时间对象
+
+        self.stg_create_time = None
+        self.stg_receive_time = None
 
         # CTP/LTS相关
         self.frontID = EMPTY_INT                # 前置机编号

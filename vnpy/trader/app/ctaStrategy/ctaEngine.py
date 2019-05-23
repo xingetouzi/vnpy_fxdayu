@@ -28,7 +28,7 @@ from copy import copy
 from vnpy.event import Event
 from vnpy.trader.vtEvent import *
 from vnpy.trader.language import constant
-from vnpy.trader.vtObject import VtTickData, VtBarData
+from vnpy.trader.vtObject import VtTickData, VtBarData, VtOrderData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader.vtFunction import todayDate, getJsonPath
 # from vnpy.trader.utils.notification import notify
@@ -37,6 +37,7 @@ import logging
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
+import pymongo
 
 ########################################################################
 class CtaEngine(object):
@@ -65,6 +66,7 @@ class CtaEngine(object):
         # 保存vtOrderID和strategy对象映射的字典（用于推送order和trade数据）
         # key为vtOrderID，value为strategy对象
         self.orderStrategyDict = {}
+        self.order_dict = {}
 
         # 本地停止单编号计数
         self.stopOrderCount = 0
@@ -89,6 +91,7 @@ class CtaEngine(object):
 
         # 注册事件监听
         self.registerEvent()
+        self.qryEnabled = True
 
         # self.path = os.path.join(os.getcwd(), u"reports" )
         # if not os.path.isdir(self.path):
@@ -96,6 +99,10 @@ class CtaEngine(object):
         
         # 上期所昨持仓缓存
         self.ydPositionDict = {}  
+        self.record_tick = []
+        self.record_order = []
+        self.db_client = None
+        self.location = ""
 
     #----------------------------------------------------------------------
     def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
@@ -207,6 +214,18 @@ class CtaEngine(object):
             vtOrderIDList.append(vtOrderID)
             self.writeCtaLog('策略%s: 发送%s委托%s, 交易：%s，%s，数量：%s @ %s'
                          %(strategy.name, priceType, vtOrderID, vtSymbol, orderType, volume, price ))
+
+
+            order = VtOrderData()
+            order.vtOrderID = vtOrderID
+            order.price = price
+            order.symbol = contract.symbol
+            order.vtSymbol = contract.vtSymbol
+            order.volume = volume
+            order.stg_create_time = datetime.now()
+            order.deliverTime = order.stg_create_time
+            order.location = self.location
+            self.record_order.append(order.__dict__)
 
         return vtOrderIDList
 
@@ -378,6 +397,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def processTickEvent(self, event):
         """处理行情推送"""
+        
         tick = event.dict_['data']
         # 收到tick行情后，先处理本地停止单（检查是否要立即发出）
         self.processStopOrder(tick)
@@ -398,7 +418,10 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    
+            
+            tick.location = self.location
+            tick.time_diff = (tick.localTime-tick.datetime).total_seconds()
+            self.record_tick.append(tick.__dict__)
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
         """处理委托推送"""
@@ -406,32 +429,6 @@ class CtaEngine(object):
         vtOrderID = order.vtOrderID
         if vtOrderID in self.orderStrategyDict:
             strategy = self.orderStrategyDict[vtOrderID]
-
-            if order.status == constant.STATUS_CANCELLED:
-                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_CLOSE:
-                    posName = order.vtSymbol + "_SHORT"
-                    strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
-                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_CLOSE:
-                    posName = order.vtSymbol + "_LONG"
-                    strategy.eveningDict[posName] += order.totalVolume - order.tradedVolume
-
-            elif order.status == constant.STATUS_ALLTRADED or order.status == constant.STATUS_PARTTRADED:
-                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_OPEN:
-                    posName = order.vtSymbol + "_LONG"
-                    strategy.eveningDict[posName] += order.thisTradedVolume
-                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_OPEN:
-                    posName = order.vtSymbol + "_SHORT"
-                    strategy.eveningDict[posName] += order.thisTradedVolume
-                    
-            elif order.status == constant.STATUS_NOTTRADED:
-                if order.direction == constant.DIRECTION_LONG and order.offset == constant.OFFSET_CLOSE:
-                    posName = order.vtSymbol + "_SHORT"
-                    strategy.eveningDict[posName] -= order.totalVolume
-                elif order.direction == constant.DIRECTION_SHORT and order.offset == constant.OFFSET_CLOSE:
-                    posName = order.vtSymbol + "_LONG"
-                    strategy.eveningDict[posName] -= order.totalVolume
-                
-
             # 如果委托已经完成（拒单、撤销、全成），则从活动委托集合中移除
             if order.status in constant.STATUS_FINISHED:
                 s = self.strategyOrderDict[strategy.name]
@@ -439,6 +436,9 @@ class CtaEngine(object):
                     s.remove(vtOrderID)
 
             self.callStrategyFunc(strategy, strategy.onOrder, order)
+            order.location = self.location
+            order.stg_receive_time = datetime.now()
+            self.record_order.append(order.__dict__)
 
     #----------------------------------------------------------------------
     def processTradeEvent(self, event):
@@ -524,7 +524,40 @@ class CtaEngine(object):
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)
         self.eventEngine.register(EVENT_ACCOUNT, self.processAccountEvent)
         self.eventEngine.register(EVENT_ERROR, self.processErrorEvent)
+        self.eventEngine.register(EVENT_TIMER, self.query)
+    #----------------------------------------------------------------------
+    def initQuery(self, freq = 59):
+        """初始化连续查询"""
+        if self.qryEnabled:
+            # 需要循环的查询函数列表
+            self.qryFunctionList = [self.queryInfo]
 
+            self.qryCount = 0           # 查询触发倒计时
+            self.qryTrigger = freq      # 查询触发点
+            self.qryNextFunction = 0    # 上次运行的查询函数索引
+
+    def query(self,event):
+        self.qryCount += 1
+
+        if self.qryCount > self.qryTrigger:
+            # 清空倒计时
+            self.qryCount = 0
+
+            # 执行查询函数
+            function = self.qryFunctionList[self.qryNextFunction]
+            function()
+
+            # 计算下次查询函数的索引，如果超过了列表长度，则重新设为0
+            self.qryNextFunction += 1
+            if self.qryNextFunction == len(self.qryFunctionList):
+                self.qryNextFunction = 0
+
+    def queryInfo(self):
+        a=b=[]
+        self.record_order,a = a,self.record_order
+        self.record_tick,b = b,self.record_tick
+        self.db_client["orders"].insert_many(a)
+        self.db_client["tick"].insert_many(b)
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
         """插入数据到数据库（这里的data可以是VtTickData或者VtBarData）"""
@@ -769,6 +802,9 @@ class CtaEngine(object):
                         continue
 
                 self.loadStrategy(setting)
+
+                self.location = setting["location"]
+                self.db_client = pymongo.MongoClient(setting["mongo"])["speed-test"]
 
         # for strategy in self.strategyDict.values():
         #     self.loadSyncData(strategy)
