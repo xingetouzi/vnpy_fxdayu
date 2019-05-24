@@ -3,6 +3,7 @@ from vnpy.trader.vtObject import VtOrderData, VtTickData
 from vnpy.trader.vtConstant import *
 from vnpy.trader.language import constant
 from vnpy.trader.app.ctaStrategy import ctaBase
+from vnpy.trader.utils.templates.notify import makeNotify
 from datetime import datetime, timedelta, timezone
 from collections import Iterable
 import numpy as np
@@ -1545,7 +1546,6 @@ class OrderTemplate(CtaTemplate):
                     self.onOrder(op.order)
                 return
 
-        print('send cancel', vtOrderID)    
         return super().cancelOrder(vtOrderID)
 
     def isCancel(self, op):
@@ -1560,3 +1560,23 @@ class OrderTemplate(CtaTemplate):
         
         maximum = self.maximumOrderVolume(vtSymbol, orderType, price)
         return maximum >= volume
+
+    def notify(self, title, message, *channels):
+        text = makeNotify(
+            message,
+            (title,),
+            channels if channels else (self.author,)
+        )
+        self.writeLog(text)
+    
+    def simpleNotify(self, message):
+        self.notify(
+            self.name,
+            message,
+            self.author
+        )
+
+    def notifyPosition(self, key, value, *channels):
+        message = "%-24s %10s" % (key, value)
+        self.writeLog(message)
+        self.notify("Position: %s" % self.name, message, *channels)
