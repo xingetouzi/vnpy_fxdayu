@@ -215,7 +215,6 @@ class CtaEngine(object):
         """撤单"""
         # 查询报单对象
         order = self.mainEngine.getOrder(vtOrderID)
-
         # 如果查询成功
         if order:
             # 检查是否报单还有效，只有有效时才发出撤单指令
@@ -223,7 +222,7 @@ class CtaEngine(object):
                             or order.status == constant.STATUS_CANCELLED 
                             or order.status == constant.STATUS_REJECTED
                             or order.status == constant.STATUS_CANCELLING)
-            
+
             if not orderFinished:
                 req = VtCancelOrderReq()
                 req.vtSymbol = order.vtSymbol
