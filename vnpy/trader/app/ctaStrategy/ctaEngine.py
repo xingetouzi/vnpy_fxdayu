@@ -20,6 +20,7 @@
 from __future__ import division
 import json
 import os
+import pandas as pd
 import traceback
 import importlib
 from collections import OrderedDict, defaultdict
@@ -91,7 +92,15 @@ class CtaEngine(object):
 
         # 注册事件监听
         self.registerEvent()
+        self.record_tick = []
+        self.record_order = []
+        self.db_client = None
+        self.location = ""
         self.qryEnabled = True
+        self.qryCount = 0           # 查询触发倒计时
+        self.qryTrigger = 59      # 查询触发点
+        self.qryNextFunction = 0    # 上次运行的查询函数索引
+        self.qryFunctionList = [self.queryInfo]   # 上次运行的查询函数索引
 
         # self.path = os.path.join(os.getcwd(), u"reports" )
         # if not os.path.isdir(self.path):
@@ -99,10 +108,6 @@ class CtaEngine(object):
         
         # 上期所昨持仓缓存
         self.ydPositionDict = {}  
-        self.record_tick = []
-        self.record_order = []
-        self.db_client = None
-        self.location = ""
 
     #----------------------------------------------------------------------
     def sendOrder(self, vtSymbol, orderType, price, volume, priceType, strategy):
@@ -254,6 +259,13 @@ class CtaEngine(object):
 
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
+                
+                order.status = u"cancel req"
+                order.deliverTime = datetime.now()
+                order.cancelTime = datetime.now()
+                order.location = self.location
+                order=copy(order)
+                self.record_order.append(order.__dict__)
 
     def batchCancelOrder(self,vtOrderIDList):
         """批量撤单"""
@@ -553,11 +565,18 @@ class CtaEngine(object):
                 self.qryNextFunction = 0
 
     def queryInfo(self):
-        a=b=[]
-        self.record_order,a = a,self.record_order
-        self.record_tick,b = b,self.record_tick
-        self.db_client["test-order"].insert_many(a)
-        self.db_client["test-tick"].insert_many(b)
+        a=[]
+        b=[]
+        if self.db_client:
+            #print(len(self.record_order),"----qry-----\n",len(self.record_tick))
+            self.record_order,a = a,self.record_order
+            self.record_tick,b = b,self.record_tick
+            print(len(a),len(self.record_order),"----qry-----",len(b),len(self.record_tick))
+            try:
+                #self.db_client["test-order"].insert_many(a)
+                self.db_client["test-tick"].insert_many(b)
+            except Exception as e:
+                self.writeCtaLog(f"insert error {e}\n {a}")
     #----------------------------------------------------------------------
     def insertData(self, dbName, collectionName, data):
         """插入数据到数据库（这里的data可以是VtTickData或者VtBarData）"""

@@ -11,24 +11,15 @@ import pandas as pd
 import logging
 import requests
 from requests import ConnectionError
+import queue
+import threading
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtConstant import constant
-from .util import generateSignature, ERRORCODE, ISO_DATETIME_FORMAT
+from .util import generateSignature, statusMapReverse, ERRORCODE, ISO_DATETIME_FORMAT,statusFilter
 
-# 委托状态类型映射
-# Status("-2":Failed,"-1":Cancelled,"0":Open ,"1":Partially Filled, "2":Fully Filled,
-# "3":Submitting,"4":Cancelling,)
-statusMapReverse = {}
-statusMapReverse['0'] = constant.STATUS_NOTTRADED    # futures
-statusMapReverse['1'] = constant.STATUS_PARTTRADED
-statusMapReverse['2'] = constant.STATUS_ALLTRADED
-statusMapReverse['3'] = constant.STATUS_SUBMITTED
-statusMapReverse['4'] = constant.STATUS_CANCELLING
-statusMapReverse['-1'] = constant.STATUS_CANCELLED
-statusMapReverse['-2'] = constant.STATUS_REJECTED
 # 方向和开平映射
 typeMap = {}
 typeMap[(constant.DIRECTION_LONG, constant.OFFSET_OPEN)] = '1'
@@ -46,6 +37,7 @@ priceTypeMap[constant.PRICETYPE_FAK] = 3
 priceTypeMapReverse = {v:k for k,v in priceTypeMap.items()}
 
 SUBGATEWAY_NAME = "FUTURE"
+
 ########################################################################
 class OkexfRestApi(RestClient):
     """Futures REST API实现"""
@@ -61,12 +53,27 @@ class OkexfRestApi(RestClient):
         
         self.contractDict = {}    # store contract info
         self.orderDict = {}       # store order info
+        self.unfinished_orders = {}   # store wip orders
         self.okexIDMap = {}       # store okexID <-> OID
-        self.missing_order_Dict = {} # store missing orders due to network issue
 
         self.contractMap= {}
         self.contractMapReverse = {}
 
+        self.orderInstanceHandlers = {
+            self.ORDER_INSTANCE: self.processOrderData,
+            self.ORDER_CANCEL: self.onQueueCancelOrder,
+            self.ORDER_REJECT: self.onQueueRejectOrder
+        }
+        self.order_queue = queue.Queue()
+        self.orderThread = threading.Thread(target=self.getQueue)
+    
+    def runOrderThread(self):
+        if not self.orderThread.is_alive():
+            t = threading.Thread(target=self.getQueue)
+            t.setDaemon(True)
+            t.start()
+            self.orderThread = t
+        
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
@@ -75,7 +82,9 @@ class OkexfRestApi(RestClient):
         self.init(REST_HOST)
         self.start(sessionCount)
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
+        self.runOrderThread()
         self.queryContract()
+
     # #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -161,8 +170,10 @@ class OkexfRestApi(RestClient):
         order.offset = orderReq.offset
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
+        order.status = constant.STATUS_SUBMITTED
         
         self.orderDict[orderID] = order
+        self.unfinished_orders[orderID] = order
 
         self.addRequest('POST', '/api/futures/v3/order', 
                         callback=self.onSendOrder, 
@@ -177,10 +188,11 @@ class OkexfRestApi(RestClient):
     def cancelOrder(self, cancelOrderReq):
         """限速规则：40次/2s"""
         symbol = self.contractMapReverse[cancelOrderReq.symbol]
+        order = self.orderDict.get(cancelOrderReq.orderID, None)
 
         path = f'/api/futures/v3/cancel_order/{symbol}/{cancelOrderReq.orderID}'
         self.addRequest('POST', path, 
-                        extra=cancelOrderReq,
+                        extra=order,
                         callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
@@ -192,9 +204,8 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbolList):
         """限速规则：20次/2s"""
-        sym_list = [str.lower(symbol.split("-")[0]) for symbol in symbolList]
-        for symbol in list(set(sym_list)):
-            sym = str.lower(symbol.split("-")[0])
+        list_symbols = list(set(map(lambda x: str.lower(x.split("-")[0]), symbolList)))
+        for sym in list_symbols:
             self.addRequest('GET', f'/api/futures/v3/accounts/{sym}', 
                             callback=self.onQueryMonoAccount)
 
@@ -219,6 +230,7 @@ class OkexfRestApi(RestClient):
     def queryOrder(self):
         """限速规则：20次/2s"""
         self.gateway.writeLog('----FUTURE Quary Orders,positions,Accounts----', logging.DEBUG)
+        self.runOrderThread()
         for contract in self.gateway.gatewayMap[SUBGATEWAY_NAME]["symbols"]: 
             symbol = self.contractMapReverse[contract]
             # 6 = 未成交, 部分成交
@@ -230,15 +242,16 @@ class OkexfRestApi(RestClient):
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
-        for oid, symbol in self.missing_order_Dict.items():
-            self.queryMonoOrder(symbol, oid)
+        for oid, order in self.unfinished_orders.items():
+            self.queryMonoOrder(self.contractMapReverse[order.symbol], oid)
 
     def queryMonoOrder(self,symbol,oid):
+        """限速规则：40次/2s"""
         path = f'/api/futures/v3/orders/{symbol}/{oid}'
         self.addRequest('GET', path, params=None,
-                            callback=self.onQueryMonoOrder,
-                            extra = oid,
-                            onFailed=self.onqueryMonoOrderFailed)
+                        callback=self.onQueryMonoOrder,
+                        extra = oid,
+                        onFailed=self.onQueryMonoOrderFailed)
     # ----------------------------------------------------------------------
     def cancelAll(self, symbol=None, orders=None):
         """撤销所有挂单,若交易所支持批量撤单,使用批量撤单接口
@@ -534,6 +547,22 @@ class OkexfRestApi(RestClient):
                 self.processPositionData(data)
     
     #----------------------------------------------------------------------
+
+    def getQueue(self):
+        while True:
+            try:
+                data, _type = self.order_queue.get(timeout=1)
+            except queue.Empty:
+                pass
+            else:
+                try:
+                    self.onQueueData(data, _type)
+                except Exception as e:
+                    logging.error(
+                        "Handle order data error | %s | %s" % (data, traceback.format_exc())
+                    )
+                    raise e
+
     def processOrderData(self, data):
         okexID = data['order_id']
         if "client_oid" not in data.keys():
@@ -541,51 +570,41 @@ class OkexfRestApi(RestClient):
         else:
             oid = str(data['client_oid'])
         order = self.orderDict.get(oid, None)
+        if order:
+            if statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status] or (int(data['filled_qty']) < order.tradedVolume):
+                return
+            if statusMapReverse[str(data['state'])] == order.status and int(data['filled_qty']) == order.tradedVolume:
+                return
+           
+            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
+            order.status = statusMapReverse[str(data['state'])]
+            order.tradedVolume = int(data['filled_qty'])
+            order.price = float(data['price'])
+            order.price_avg = float(data['price_avg'])
+            order.deliveryTime = datetime.now()
+            order.fee = float(data['fee'])
+            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-        if not order:
-            order = self.gateway.newOrderObject(data)
-            order.symbol = self.contractMap[order.symbol]
-            order.vtSymbol = constant.VN_SEPARATOR.join([order.symbol, order.gatewayName])
-            order.totalVolume = int(data['size'])
-            order.direction, order.offset = typeMapReverse[str(data['type'])]
+            if int(data['order_type']) > 1:
+                order.priceType = priceTypeMapReverse[int(data['order_type'])]
 
-        order.price = float(data['price'])
-        order.price_avg = float(data['price_avg'])
-        order.deliveryTime = datetime.now()
-        order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-        order.status = statusMapReverse[str(data['state'])]
-        order.tradedVolume = int(data['filled_qty'])
-        order.fee = float(data['fee'])
-        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+            order= copy(order)
+            self.gateway.onOrder(order)
+            # self.orderDict[oid] = order
+            # self.unfinished_orders[oid] = order
 
-        if int(data['order_type'])>1:
-            order.priceType = priceTypeMapReverse[int(data['order_type'])]
+            if order.thisTradedVolume:
+                self.gateway.newTradeObject(order)
+
+            if order.status in constant.STATUS_FINISHED:
+                self.unfinished_orders.pop(oid, None)
         
-        order= copy(order)
-        self.gateway.onOrder(order)
-        self.orderDict[oid] = order
-
-        if order.thisTradedVolume:
-            self.gateway.newTradeObject(order)
-
-        sym = self.missing_order_Dict.get(order.orderID, None)
-        if sym:
-            del self.missing_order_Dict[order.orderID]
-
-        if order.status in constant.STATUS_FINISHED:
-            finish_id = self.okexIDMap.get(okexID, None)
-            if finish_id:
-                del self.okexIDMap[okexID]
-            finish_order = self.orderDict.get(oid, None)
-            if finish_order:
-                del self.orderDict[oid]
-
-    def onQueryMonoOrder(self,d,request):
-        """reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
-            headers: {'OK-ACCESS-KEY': 'abf4d2bc-6d3e-4bc8-87bc-e4ff925184a1', 
-            'OK-ACCESS-SIGN': b'CVIADeytMotrJ6KyL+R97J9MZAx7sfQ1F0zkvqMYYIo=', 
-            'OK-ACCESS-TIMESTAMP': '2019-03-22T03:22:11.937Z', 'OK-ACCESS-PASSPHRASE': 'okexsb', 
+    def onQueryMonoOrder(self, d, request):
+        """request : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
+            headers: {'OK-ACCESS-KEY': 'xxxxxxxxxx', 
+            'OK-ACCESS-SIGN': b'xxxxxxxxxxxxxx', 
+            'OK-ACCESS-TIMESTAMP': '2019-03-22T03:22:11.937Z', 'OK-ACCESS-PASSPHRASE': 'xxxxx', 
             'Content-Type': 'application/json'}
             params: None
             data: null
@@ -593,7 +612,9 @@ class OkexfRestApi(RestClient):
             "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
             "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
             "order_type":"0"}"""
-        self.processOrderData(d)
+        if d:
+            # self.order_queue.put(d)
+            self.putOrderQueue(d, self.ORDER_INSTANCE)
 
     def onQueryOrder(self, d, request):
         """{'result': True, 'order_info': [
@@ -603,17 +624,19 @@ class OkexfRestApi(RestClient):
             """
         #print(data,"onQueryOrder")
         for data in d['order_info']:
-            self.processOrderData(data)
+            # self.order_queue.put(data)
+            self.putOrderQueue(data, self.ORDER_INSTANCE)
 
-    def onqueryMonoOrderFailed(self, data, request):
+    def onQueryMonoOrderFailed(self, data, request):
+        self.putOrderQueue(data, self.ORDER_REJECT)
         order = self.orderDict.get(request.extra, None)
-        order.status = constant.STATUS_REJECTED
-        order.rejectedInfo = "onSendOrderError: OKEX server error or network issue"
+        # order.status = constant.STATUS_REJECTED
+        # order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
         self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
-        self.gateway.onOrder(order)
-        sym = self.missing_order_Dict.get(order.orderID, None)
-        if sym:
-            del self.missing_order_Dict[order.orderID]
+        # self.gateway.onOrder(order)
+
+        # if self.unfinished_orders.get(order.orderID, None):
+        #     del self.unfinished_orders[order.orderID]
 
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
@@ -626,6 +649,9 @@ class OkexfRestApi(RestClient):
         order.status = constant.STATUS_REJECTED
         order.rejectedInfo = str(request.response.text)
         self.gateway.onOrder(order)
+
+        if self.unfinished_orders.get(order.orderID, None):
+            del self.unfinished_orders[order.orderID]
         self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
     
     #----------------------------------------------------------------------
@@ -637,7 +663,6 @@ class OkexfRestApi(RestClient):
         order = request.extra
         self.queryMonoOrder(self.contractMapReverse[order.symbol], order.orderID)
         self.gateway.writeLog(f'下单报错, 前往查单: {order.vtSymbol}, {order.orderID}', logging.WARNING)
-        self.missing_order_Dict.update({order.orderID:order.symbol})
     
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
@@ -655,13 +680,15 @@ class OkexfRestApi(RestClient):
                 'order_id': 2427283076158464, 'instrument_id': 'ETH-USD-190329'} 
             2:{'error_message': 'You have not uncompleted order at the moment', 'result': False, 
                 'error_code': '32004', 'client_oid': 'FUTURE19030516082610001', 'order_id': -1} """
-        if data['result']:
-            self.gateway.writeLog(f"交易所返回{str(data['instrument_id'])}撤单成功: oid-{str(data['client_oid'])}")
-        else:
-            order = request.extra
-            self.queryMonoOrder(self.contractMapReverse[order.symbol], order.orderID)
-            self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
-            self.missing_order_Dict.update({order.orderID:order.symbol})
+        order = request.extra
+        if order:
+            _id = order.orderID
+            if data['result']:
+                self.putOrderQueue(data, self.ORDER_CANCEL)
+                self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
+            else:
+                self.queryMonoOrder(self.contractMapReverse[order.symbol], _id)
+                self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
     
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -705,8 +732,43 @@ class OkexfRestApi(RestClient):
         url = f'{REST_HOST}/api/futures/v3/instruments/{instrument_id}/candles'
 
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
-        text = eval(r.text)
-        return pd.DataFrame(text, columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
+        return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
+
+    ORDER_INSTANCE = 0
+    ORDER_CANCEL = 1
+    ORDER_REJECT = 2
+
+    def putOrderQueue(self, data, _type):
+        self.order_queue.put((data, _type))
+
+    def onQueueData(self, data, _type):
+        method = self.orderInstanceHandlers[_type]
+        try:
+            method(data)
+        except Exception as e:
+            logging.error("Process order data error | %s | %s", data, traceback.format_exc())
+    
+    def onQueueCancelOrder(self, data):
+        if "client_oid" in data:
+            oid = data["client_oid"]
+        else:
+            oid = self.okexIDMap[data["order_id"]]
+    
+        order = self.orderDict.get(str(oid), None)
+        if order:
+            if data["result"]:
+                order.status = constant.STATUS_CANCELLED
+                self.gateway.onOrder(copy(order))
+                self.unfinished_orders.pop(order.vtOrderID, None)
+    
+    def onQueueRejectOrder(self, data):
+        oid = data["client_oid"]
+        order = self.orderDict.get(str(oid), None)
+        if order:
+            order.status = constant.STATUS_REJECTED
+            order.rejectedInfo = data["message"]
+            self.gateway.onOrder(copy(order))
+            self.unfinished_orders.pop(str(oid), None)
 
 ########################################################################
 class OkexfWebsocketApi(WebsocketClient):
@@ -975,7 +1037,8 @@ class OkexfWebsocketApi(WebsocketClient):
         'size': '1', 'price': '50.0', 'contract_val': '10', 'order_id': '2398741637121024', 
         'order_type': '0', 'timestamp': '2019-02-28T07:11:32.657Z', 'status': '0'},]}"""
         for idx, data in enumerate(d):
-            self.restGateway.processOrderData(data)
+            # self.restGateway.order_queue.put(data)
+            self.restGateway.putOrderQueue(data, self.restGateway.ORDER_INSTANCE)
         
     #----------------------------------------------------------------------
     def onAccount(self, d):
