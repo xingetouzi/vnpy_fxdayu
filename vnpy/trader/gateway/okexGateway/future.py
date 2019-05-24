@@ -480,9 +480,10 @@ class OkexfRestApi(RestClient):
         if data['margin_mode'] =='crossed':
             currency = str.upper(request.path.split("/")[-1])
         elif data['margin_mode'] =='fixed':
-            for contracts in data['contracts']:
-                currency = contracts['instrument_id'].split("-")[0]
-        self.processAccountData(data, currency)
+            if data.get("contracts", None):
+                for contracts in data['contracts']:
+                    currency = contracts['instrument_id'].split("-")[0]
+                    self.processAccountData(data, currency)
 
     def onQueryAccount(self, d, request):
         """{'info': {
@@ -569,7 +570,7 @@ class OkexfRestApi(RestClient):
     def processOrderData(self, data):
         okexID = data['order_id']
         if "client_oid" not in data.keys():
-            oid = self.okexIDMap.get(okexID, "not_exist")
+            oid = self.okexIDMap.get(okexID, "")
         else:
             oid = str(data['client_oid'])
         order = self.orderDict.get(oid, None)
@@ -597,6 +598,8 @@ class OkexfRestApi(RestClient):
 
             if order.thisTradedVolume:
                 self.gateway.newTradeObject(order)
+        # else:
+        #     logging.info("Client oid not exsits: %s | %s", oid, data)
         
     def onQueryMonoOrder(self, d, request):
         """request : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
@@ -613,6 +616,8 @@ class OkexfRestApi(RestClient):
         if d:
             # self.order_queue.put(d)
             self.putOrderQueue(d, self.ORDER_INSTANCE)
+        else:
+            self.onQueryMonoOrderFailed(d, request)
 
     def onQueryOrder(self, d, request):
         """{'result': True, 'order_info': [
@@ -620,9 +625,7 @@ class OkexfRestApi(RestClient):
             'filled_qty': '0', 'fee': '0', 'order_id': '2398983698358272', 'price': '50', 'price_avg': '0', 'status': '0', 
             'type': '1', 'contract_val': '10', 'leverage': '20', 'client_oid': '', 'pnl': '0', 'order_type': '0'}]} 
             """
-        #print(data,"onQueryOrder")
         for data in d['order_info']:
-            # self.order_queue.put(data)
             self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
@@ -631,7 +634,7 @@ class OkexfRestApi(RestClient):
             "message": "Order not exists"
         }, self.ORDER_REJECT)
         oid = request.extra
-        self.gateway.writeLog(f'Query order: {oid} | result: {data}', logging.ERROR)
+        self.gateway.writeLog(f'Query order failed: {oid} | result: {data}', logging.ERROR)
         
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
@@ -639,10 +642,10 @@ class OkexfRestApi(RestClient):
         下单失败回调：服务器明确告知下单失败
         {"code":32015,"message":"Risk rate lower than 100% before opening position"}
         """
-        client_oid = request.extra.vtOrderID
-        self.putOrderQueue((
+        client_oid = request.extra.orderID
+        self.putOrderQueue(
             {"client_oid": client_oid, "message": data.get("message", "")}, self.ORDER_REJECT
-        ))
+        )
         self.gateway.writeLog(f'Order rejected: {client_oid}, {data}', logging.ERROR)
 
     
@@ -671,7 +674,7 @@ class OkexfRestApi(RestClient):
         # reject
         else:
             self.putOrderQueue(
-                {"client_oid": request.extra.vtOrderID, "message": data.get("error_message", "")},
+                {"client_oid": request.extra.orderID, "message": data.get("error_message", "")},
                 self.ORDER_REJECT
             )
             self.gateway.writeLog("onSendOrder error | %s " % data, logging.ERROR)
@@ -719,7 +722,6 @@ class OkexfRestApi(RestClient):
         """
         Python内部错误处理：默认行为是仍给excepthook
         """
-        print(request,"onerror,Python内部错误")
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
@@ -747,7 +749,6 @@ class OkexfRestApi(RestClient):
         self.order_queue.put((data, _type))
 
     def onQueueData(self, data, _type):
-        print(_type, data)
         method = self.orderInstanceHandlers[_type]
         try:
             method(data)
@@ -773,6 +774,8 @@ class OkexfRestApi(RestClient):
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = data["message"]
             self.gateway.onOrder(copy(order))
+        else:
+            logging.warning("Order not exits | %s", oid)
     
     def onQueuePendOrder(self, client_oid):
         order = self.orderDict.get(str(client_oid), None)

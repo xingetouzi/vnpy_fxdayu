@@ -263,9 +263,9 @@ class RestClient(object):
                 request.status = RequestStatus.failed
                 
                 if request.onFailed:
-                    request.onFailed(httpStatusCode, request)
-                else:
-                    self.onFailed(httpStatusCode, request)
+                    jsonBody = response.json()
+                    request.onFailed(jsonBody, request)
+                self.onFailed(httpStatusCode, request)
         except:
             request.status = RequestStatus.error
             t, v, tb = sys.exc_info()
