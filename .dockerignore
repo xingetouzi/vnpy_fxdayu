@@ -1,0 +1,52 @@
+*.py[cod]
+# C extensions
+*.so
+
+# Packages
+*.egg
+*.egg-info
+*.log
+build
+eggs
+parts
+bin
+var
+sdist
+develop-eggs
+.installed.cfg
+lib
+lib64
+docs
+__pycache__
+node_modules
+package-lock.json
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
+.coverage
+.tox
+nosetests.xml
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+.idea
+*.env
+.env.*
+
+*.csv
+static/
+!*/static/
+
+# MAC
+.DS_Store
+
+temp
+reports
+.ipynb_checkpoints
+.vscode
+*.orig
+
+Dockerfile
