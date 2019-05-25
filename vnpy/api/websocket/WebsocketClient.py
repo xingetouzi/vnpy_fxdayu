@@ -135,18 +135,17 @@ class WebsocketClient(object):
                 logging.warn(
                     "the %sth attempt to connect websocket failed, next try at %s seconds later",
                     connect_times, connect_backoff)
-                et, ev, tb = sys.exc_info()
-                self.onError(et, ev, tb)
+                self._reportError()
                 time.sleep(connect_backoff)
                 connect_times += 1
                 connect_backoff = min(max_connnect_backoff,
                                       connect_backoff << 1)
-        try:
-            logging.debug("connected to websocket")
-            self.onConnected()
-        except Exception:
-            et, ev, tb = sys.exc_info()
-            self.onError(et, ev, tb)
+        if self._active:
+            try:
+                logging.debug("connected to websocket")
+                self.onConnected()
+            except Exception:
+                self._reportError()
 
     #----------------------------------------------------------------------
     def _disconnect(self):
@@ -163,6 +162,12 @@ class WebsocketClient(object):
     def _getWs(self):
         with self._ws_lock:
             return self._ws
+
+    #----------------------------------------------------------------------
+    def _reportError(self):
+        if self._active:  # skip the error occurred due to the closed socket in normally close processing
+            et, ev, tb = sys.exc_info()
+            self.onError(et, ev, tb)
 
     #----------------------------------------------------------------------
     def _run(self):
@@ -186,18 +191,17 @@ class WebsocketClient(object):
                         try:
                             data = self.unpackData(text)
                         except ValueError as e:
-                            print('websocket unable to parse data: ' + text)
+                            logging.error('websocket unable to parse data: ' +
+                                          text)
                             raise e
                         self.onPacket(data)
                 except websocket.WebSocketConnectionClosedException:  # 在调用recv之前ws就被关闭了
                     self._reconnect()
                 except:  # Python内部错误（onPacket内出错）
-                    et, ev, tb = sys.exc_info()
-                    self.onError(et, ev, tb)
+                    self._reportError()
                     self._reconnect()
         except:
-            et, ev, tb = sys.exc_info()
-            self.onError(et, ev, tb)
+            self._reportError()
 
     #----------------------------------------------------------------------
     @staticmethod
@@ -217,9 +221,7 @@ class WebsocketClient(object):
                 self._connectingEvent.wait()  # 只有ws连接上的时候才能发送心跳
                 self._ping()
             except:
-                et, ev, tb = sys.exc_info()
-                # todo: just log this, notifying user is not necessary
-                self.onError(et, ev, tb)
+                self._reportError()
                 self._reconnect()
             for i in range(60):
                 if not self._active:
