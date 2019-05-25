@@ -15,7 +15,7 @@ from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
 
 REST_HOST = os.environ.get('OKEX_REST_URL', 'https://www.okex.com')
-WEBSOCKET_HOST = os.environ.get('OKEX_WEBSOKCET_URL', 'wss://real.okex.com:10442/ws/v3')
+WEBSOCKET_HOST = os.environ.get('OKEX_WEBSOCKET_URL', 'wss://real.okex.com:10442/ws/v3')
 
 ########################################################################
 class OkexGateway(VtGateway):
