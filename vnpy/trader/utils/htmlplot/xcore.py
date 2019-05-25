@@ -528,7 +528,8 @@ class XMultiPlot(object):
                         (number, _id, ikey)
                     ] = index
         aligned, allIndex = alignment(indexes, self.freq)
-        self.allIndex.update(allIndex.to_dict())
+        for key, value in allIndex.items():
+            self.allIndex[int(key)] = value
         for key, value in aligned.items():
             number, _id, ikey = key
             self.figures[number].plots[_id].align(ikey, value)
