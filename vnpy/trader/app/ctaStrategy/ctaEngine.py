@@ -260,7 +260,7 @@ class CtaEngine(object):
                 self.mainEngine.cancelOrder(req, order.gatewayName)
                 self.writeCtaLog('策略%s: 对本地订单%s，品种%s发送撤单委托'%(order.byStrategy, vtOrderID, order.vtSymbol))
                 
-                order.status = u"cancel req"
+                order.status = "cancel req"
                 order.deliverTime = datetime.now()
                 order.cancelTime = datetime.now()
                 order.location = self.location
