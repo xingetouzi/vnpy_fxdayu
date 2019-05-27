@@ -82,10 +82,10 @@ class OkexfRestApi(RestClient):
         
         self.init(REST_HOST)
         self.start(sessionCount)
+        self.queryContract()
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
         self.runOrderThread()
-        self.queryContract()
-
+        
     # #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -629,12 +629,13 @@ class OkexfRestApi(RestClient):
             self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
+        client_oid = request.extra
         self.putOrderQueue({
-            "client_oid": request.extra,
+            "client_oid": client_oid,
             "message": "Order not exists"
         }, self.ORDER_REJECT)
-        oid = request.extra
-        self.gateway.writeLog(f'Query order failed: {oid} | result: {data}', logging.ERROR)
+        
+        self.gateway.writeLog(f'Query order failed: {client_oid} | result: {data}', logging.ERROR)
         
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
@@ -834,7 +835,7 @@ class OkexfWebsocketApi(WebsocketClient):
             else:
                 self.gateway.writeLog(f'{SUBGATEWAY_NAME} info {packet}')
         elif 'error_code' in packet.keys():
-            print(f"{SUBGATEWAY_NAME} error:{packet['error_code']}")
+            self.gateway.writeLog(f"{SUBGATEWAY_NAME} ws error:{packet['error_code']}")
         else:
             channel = packet['table']
             callback = self.callbackDict.get(channel, None)

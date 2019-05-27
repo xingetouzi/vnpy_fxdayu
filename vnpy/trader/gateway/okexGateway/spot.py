@@ -62,7 +62,8 @@ class OkexSpotRestApi(RestClient):
         self.orderInstanceHandlers = {
             self.ORDER_INSTANCE: self.processOrderData,
             self.ORDER_CANCEL: self.onQueueCancelOrder,
-            self.ORDER_REJECT: self.onQueueRejectOrder
+            self.ORDER_REJECT: self.onQueueRejectOrder,
+            self.ORDER_PEND: self.onQueuePendOrder
         }
         self.order_queue = queue.Queue()
         self.orderThread = threading.Thread(target=self.getQueue)
@@ -73,6 +74,7 @@ class OkexSpotRestApi(RestClient):
             t.setDaemon(True)
             t.start()
             self.orderThread = t
+
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
@@ -80,9 +82,10 @@ class OkexSpotRestApi(RestClient):
         
         self.init(REST_HOST)
         self.start(sessionCount)
+        self.queryContract()
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
         self.runOrderThread()
-        self.queryContract()
+        
     #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -195,11 +198,11 @@ class OkexSpotRestApi(RestClient):
             'instrument_id': cancelOrderReq.symbol,
         }
         path = f'/api/spot/v3/cancel_orders/{cancelOrderReq.orderID}'
-        order = self.orderDict.get(cancelOrderReq.orderID, None)
         self.addRequest('POST', path, 
                         callback=self.onCancelOrder,
                         data=req,
-                        extra=order)
+                        extra=cancelOrderReq,
+                        onFailed=self.onCancelOrderFailed)
 
     #----------------------------------------------------------------------
     def queryContract(self):
@@ -242,8 +245,11 @@ class OkexSpotRestApi(RestClient):
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
 
-        for oid, order in self.unfinished_orders.items():
-            self.queryMonoOrder(order.symbol, oid)
+        for oid, order in list(self.unfinished_orders.items()):
+            if order.status not in constant.STATUS_FINISHED:
+                self.queryMonoOrder(order.symbol, oid)
+            else:
+                self.unfinished_orders.pop(oid, None)
 
     def queryMonoOrder(self, symbol, oid):
         path = f'/api/spot/v3/orders/{oid}'
@@ -499,14 +505,9 @@ class OkexSpotRestApi(RestClient):
 
             order= copy(order)
             self.gateway.onOrder(order)
-            # self.orderDict[oid] = order
-            # self.unfinished_orders[oid] = order
 
             if order.thisTradedVolume:
                 self.gateway.newTradeObject(order)
-
-            if order.status in constant.STATUS_FINISHED:
-                self.unfinished_orders.pop(oid, None)
 
     def onQueryOrder(self, d, request):
         """{
@@ -518,45 +519,36 @@ class OkexSpotRestApi(RestClient):
             self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrder(self,d,request):
-        """reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
-            headers: {'OK-ACCESS-KEY': 'abf4d2bc-6d3e-4bc8-87bc-e4ff925184a1', 
-            'OK-ACCESS-SIGN': b'CVIADeytMotrJ6KyL+R97J9MZAx7sfQ1F0zkvqMYYIo=', 
-            'OK-ACCESS-TIMESTAMP': '2019-03-22T03:22:11.937Z', 'OK-ACCESS-PASSPHRASE': 'okexsb', 
-            'Content-Type': 'application/json'}
-            params: None
-            data: null
-            response:{"instrument_id":"ETH-USD-190628","size":"1","timestamp":"2019-03-22T03:22:13.000Z",
-            "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
-            "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
-            "order_type":"0"}"""
         if d:
             self.putOrderQueue(d, self.ORDER_INSTANCE)
+        else:
+            self.onQueryMonoOrderFailed(d, request)
 
     def onQueryMonoOrderFailed(self, data, request):
-        """{"code":33014,"message":"Order does not exist"}"""
-        order = self.orderDict.get(request.extra, None)
-        # order.status = constant.STATUS_REJECTED
-        # order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
-        # self.gateway.onOrder(order)
-
-        # if self.unfinished_orders.get(order.orderID, None):
-        #     del self.unfinished_orders[order.orderID]
-        self.putOrderQueue(data, self.ORDER_REJECT)
-        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
+        """ reuqest : GET /api/spot/v3/orders/TESTSPOT190527114846 failed because 400:
+            headers: {'OK-ACCESS-KEY': 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxx', 'OK-ACCESS-SIGN': b'xx+xx/xx+xx=', 
+            'OK-ACCESS-TIMESTAMP': '2019-05-27T03:50:11.779Z', 'OK-ACCESS-PASSPHRASE': 'xxxx', 'Content-Type': 'application/json'}
+            params: {'instrument_id': 'ETH-USDT'}
+            data: null
+            response:{"code":33014,"message":"Order does not exist"}"""
+        client_oid = request.extra
+        self.putOrderQueue({
+            "client_oid": client_oid,
+            "message": "Order not exists"
+        }, self.ORDER_REJECT)
+        
+        self.gateway.writeLog(f'Query order failed: {client_oid} | result: {data}', logging.ERROR)
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        order = request.extra
-        order.status = constant.STATUS_REJECTED
-        order.rejectedInfo = str(request.response.text)
-        self.gateway.onOrder(order)
+        client_oid = request.extra.orderID
+        self.putOrderQueue(
+            {"client_oid": client_oid, "message": data.get("message", "")}, self.ORDER_REJECT
+        )
+        self.gateway.writeLog(f'Order rejected: {client_oid}, {data}', logging.ERROR)
 
-        if self.unfinished_orders.get(order.orderID, None):
-            del self.unfinished_orders[order.orderID]
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
-    
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
         """
@@ -570,34 +562,47 @@ class OkexSpotRestApi(RestClient):
     #----------------------------------------------------------------------
     def onSendOrder(self, data, request):
         """1:{'client_oid': 'SPOT19030511351110001', 'order_id': '2426209593007104', 'result': True}
-           2: http400 if rejected
+           2:{'client_oid': 'TESTSPOT19052711372502', 'error_code': '33017', 'error_message': 'Greater than the maximum available balance', 'order_id': '-1', 'result': False}
         """
-        if data['error_message']:
-            self.onSendOrderFailed(data, request)
-        else:
+        if data['result']:
+            self.putOrderQueue(
+                request.extra.vtOrderID, self.ORDER_PEND
+            )
             self.okexIDMap[str(data['order_id'])] = str(data['client_oid'])
             self.gateway.writeLog(f"RECORD: successful order, oid:{str(data['client_oid'])} <--> okex_id:{str(data['order_id'])}")
+            
+        else:
+            self.onSendOrderFailed(data, request)
 
     #----------------------------------------------------------------------
+    def onCancelOrderFailed(self, data, request):
+        """reuqest : POST /api/spot/v3/cancel_orders/TESTSPOT190527114846 failed because 400:
+            headers: {'OK-ACCESS-KEY': 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxx', 'OK-ACCESS-SIGN': b'xx+xx/xx+xx=', 
+            'OK-ACCESS-TIMESTAMP': '2019-05-27T03:50:56.290Z', 'OK-ACCESS-PASSPHRASE': 'xxxxxx', 'Content-Type': 'application/json'}
+            params: None
+            data: {"instrument_id": "ETH-USDT"}
+            response:{"code":33014,"message":"Order does not exist"}"""
+        client_oid = request.extra.orderID
+        self.putOrderQueue(
+            {"client_oid": client_oid, "message": data.get("message", "")}, self.ORDER_REJECT
+        )
+        self.gateway.writeLog(f'Order rejected: {client_oid}, {data}', logging.ERROR)
+
+
     def onCancelOrder(self, data, request):
-        """ 1: {'result': True, 'order_id': '1882519016480768', 'instrument_id': 'EOS-USD-181130'} 
+        """ 1:  {'client_oid': 'TESTSPOT19052711432002', 'error_code': '', 'error_message': '', 'order_id': '2896212823513088', 'result': True}
             2: failed cancel order: http400
         """
-        order = request.extra
-        if order:
-            _id = order.orderID
-            
-            if data['result']:
-                # order.status = constant.STATUS_CANCELLED
-                # self.gateway.onOrder(order)
-                # if self.unfinished_orders.get(_id, None):
-                #     del self.unfinished_orders[_id]
-                self.putOrderQueue(data, self.ORDER_CANCEL)
-                self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
 
-            else:
-                self.queryMonoOrder(order.symbol, _id)
-                self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+        if data['result']:
+            self.putOrderQueue(data, self.ORDER_CANCEL)
+            self.gateway.writeLog(f"Cancel order success: {data}")
+        else:
+            orderReq = request.extra
+            if orderReq:
+                client_oid = data.get("client_oid", orderReq.orderID)
+                self.queryMonoOrder(orderReq.symbol, client_oid)
+            self.gateway.writeLog(f"Cancel order error: {request.response}", logging.WARNING)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -633,10 +638,11 @@ class OkexSpotRestApi(RestClient):
         url = f'{REST_HOST}/api/spot/v3/instruments/{symbol}/candles'
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
         return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume"])
-    
+
     ORDER_INSTANCE = 0
     ORDER_CANCEL = 1
     ORDER_REJECT = 2
+    ORDER_PEND = 3
 
     def putOrderQueue(self, data, _type):
         self.order_queue.put((data, _type))
@@ -647,7 +653,7 @@ class OkexSpotRestApi(RestClient):
             method(data)
         except Exception as e:
             logging.error("Process order data error | %s | %s", data, traceback.format_exc())
-    
+
     def onQueueCancelOrder(self, data):
         if "client_oid" in data:
             oid = data["client_oid"]
@@ -659,7 +665,6 @@ class OkexSpotRestApi(RestClient):
             if data["result"]:
                 order.status = constant.STATUS_CANCELLED
                 self.gateway.onOrder(copy(order))
-                self.unfinished_orders.pop(order.vtOrderID, None)
     
     def onQueueRejectOrder(self, data):
         oid = data["client_oid"]
@@ -668,8 +673,14 @@ class OkexSpotRestApi(RestClient):
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = data["message"]
             self.gateway.onOrder(copy(order))
-            self.unfinished_orders.pop(str(oid), None)
-
+        else:
+            logging.warning("Order not exits | %s", oid)
+    
+    def onQueuePendOrder(self, client_oid):
+        order = self.orderDict.get(str(client_oid), None)
+        if order and (order.status == constant.STATUS_SUBMITTED):
+            order.status = constant.STATUS_NOTTRADED
+            self.gateway.onOrder(copy(order))
 
 class OkexSpotWebsocketApi(WebsocketClient):
     """SPOT WS API"""

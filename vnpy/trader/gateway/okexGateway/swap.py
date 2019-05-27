@@ -64,7 +64,8 @@ class OkexSwapRestApi(RestClient):
         self.orderInstanceHandlers = {
             self.ORDER_INSTANCE: self.processOrderData,
             self.ORDER_CANCEL: self.onQueueCancelOrder,
-            self.ORDER_REJECT: self.onQueueRejectOrder
+            self.ORDER_REJECT: self.onQueueRejectOrder,
+            self.ORDER_PEND: self.onQueuePendOrder
         }
         self.order_queue = queue.Queue()
         self.orderThread = threading.Thread(target=self.getQueue)
@@ -83,9 +84,10 @@ class OkexSwapRestApi(RestClient):
         
         self.init(REST_HOST)
         self.start(sessionCount)
+        self.queryContract()
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
         self.runOrderThread()
-        self.queryContract()
+        
     #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -190,7 +192,7 @@ class OkexSwapRestApi(RestClient):
         path = f'/api/swap/v3/cancel_order/{cancelOrderReq.symbol}/{cancelOrderReq.orderID}'
         order = self.orderDict.get(cancelOrderReq.orderID, None)
         self.addRequest('POST', path, 
-                        extra=order,
+                        extra=cancelOrderReq,
                         callback=self.onCancelOrder)
 
     #----------------------------------------------------------------------
@@ -236,8 +238,12 @@ class OkexSwapRestApi(RestClient):
             path = f'/api/swap/v3/orders/{symbol}'
             self.addRequest('GET', path, params=req,
                             callback=self.onQueryOrder)
-        for oid, order in self.unfinished_orders.items():
-            self.queryMonoOrder(order.symbol, oid)
+
+        for oid, order in list(self.unfinished_orders.items()):
+            if order.status not in constant.STATUS_FINISHED:
+                self.queryMonoOrder(order.symbol, oid)
+            else:
+                self.unfinished_orders.pop(oid, None)
 
     def queryMonoOrder(self,symbol,oid):
         path = f'/api/swap/v3/orders/{symbol}/{oid}'
@@ -519,14 +525,9 @@ class OkexSwapRestApi(RestClient):
                 order.priceType = priceTypeMapReverse[int(data['order_type'])]
             order= copy(order)
             self.gateway.onOrder(order)
-            # self.orderDict[oid] = order
-            # self.unfinished_orders[oid] = order
 
             if order.thisTradedVolume:
                 self.gateway.newTradeObject(order)
-
-            if order.status in constant.STATUS_FINISHED:
-                self.unfinished_orders.pop(oid, None)
 
     def onQueryOrder(self, d, request):
         """{'order_info': [{'client_oid': '', 'contract_val': '10', 'fee': '0.000000', 'filled_qty': '0', 
@@ -547,44 +548,30 @@ class OkexSwapRestApi(RestClient):
         """ GET 200 {'code': 35029, 'message': 'Order does not exist'} """
         errorcode = d.get("code", None)
         if errorcode:
-            order = self.orderDict.get(request.extra, None)
-            # order.status = constant.STATUS_REJECTED
-            # order.rejectedInfo = str(d['code']) + d['message']
-            # self.gateway.onOrder(order)
-
-            # if self.unfinished_orders.get(order.orderID, None):
-            #     del self.unfinished_orders[order.orderID]
-            self.putOrderQueue(d, self.ORDER_REJECT)
-            self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
+            self.onQueryMonoOrderFailed(d, request)
         else:
             self.putOrderQueue(d, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
         """ {'code': 35029, 'message': 'Order does not exist'} """
-        order = self.orderDict.get(request.extra, None)
-        # order.status = constant.STATUS_REJECTED
-        # order.rejectedInfo = "onQueryMonoOrderFailed: OKEX never received this order"
-        # self.gateway.onOrder(order)
+        client_oid = request.extra
+        self.putOrderQueue({
+            "client_oid": client_oid,
+            "message": "Order not exists"
+        }, self.ORDER_REJECT)
         
-        # if self.unfinished_orders.get(order.orderID, None):
-        #     del self.unfinished_orders[order.orderID]
-        self.putOrderQueue(data, self.ORDER_REJECT)
-        self.gateway.writeLog(f'查单结果：{order.orderID}, 交易所查无此订单', logging.ERROR)
+        self.gateway.writeLog(f'Query order failed: {client_oid} | result: {data}', logging.ERROR)
 
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
         下单失败回调：服务器明确告知下单失败
         """
-        order = request.extra
-        order.status = constant.STATUS_REJECTED
-        order.rejectedInfo = str(request.response.text)
-        self.gateway.onOrder(order)
-
-        if self.unfinished_orders.get(order.orderID, None):
-            del self.unfinished_orders[order.orderID]
-        self.gateway.writeLog(f'交易所拒单: {order.vtSymbol}, {order.orderID}, {order.rejectedInfo}', logging.ERROR)
-    
+        self.putOrderQueue(
+                {"client_oid": request.extra.orderID, "message": data.get("error_message", "")},
+                self.ORDER_REJECT
+            )
+        self.gateway.writeLog("onSendOrder error | %s " % data, logging.ERROR)
     #----------------------------------------------------------------------
     def onSendOrderError(self, exceptionType, exceptionValue, tb, request):
         """
@@ -604,6 +591,9 @@ class OkexSwapRestApi(RestClient):
         if data['error_message']:
             self.onSendOrderFailed(data, request)
         else:
+            self.putOrderQueue(
+                request.extra.vtOrderID, self.ORDER_PEND
+            )
             self.okexIDMap[str(data['order_id'])] = str(data['client_oid'])
             self.gateway.writeLog(f"RECORD: successful order, oid:{str(data['client_oid'])} <--> okex_id:{str(data['order_id'])}")
 
@@ -612,19 +602,19 @@ class OkexSwapRestApi(RestClient):
         """ 1:{'result': 'true', 'client_oid': 'SWAP19030509595810002', 'order_id': '66-4-4e5916645-0'},
             2:{'error_message': 'Order does not exist', 'result': 'true', 'error_code': '35029', 'order_id': '-1'}
         """
-        order = request.extra
-        if order:
-            _id = order.orderID
-            if not (str(data['order_id']) == "-1"):
-                # order.status = constant.STATUS_CANCELLED
-                # self.gateway.onOrder(order)
-                # if self.unfinished_orders.get(_id, None):
-                #     del self.unfinished_orders[_id]
-                self.putOrderQueue(data, self.ORDER_CANCEL)
-                self.gateway.writeLog(f"交易所返回{order.vtSymbol}撤单成功: oid-{_id}")
-            else:
-                self.queryMonoOrder(order.symbol, _id)
-                self.gateway.writeLog(f'撤单报错, 前往查单: {order.vtSymbol},{data}', logging.WARNING)
+        if not (str(data['order_id']) == "-1"):
+            # order.status = constant.STATUS_CANCELLED
+            # self.gateway.onOrder(order)
+            # if self.unfinished_orders.get(_id, None):
+            #     del self.unfinished_orders[_id]
+            self.putOrderQueue(data, self.ORDER_CANCEL)
+            self.gateway.writeLog(f"Cancel order success: {data}")
+        else:
+            orderReq = request.extra
+            if orderReq:
+                client_oid = data.get("client_oid", orderReq.orderID)
+                self.queryMonoOrder(orderReq.symbol, client_oid)
+            self.gateway.writeLog(f"Cancel order error: {data}", logging.WARNING)
 
     #----------------------------------------------------------------------
     def onFailed(self, httpStatusCode, request):  # type:(int, Request)->None
@@ -664,6 +654,7 @@ class OkexSwapRestApi(RestClient):
     ORDER_INSTANCE = 0
     ORDER_CANCEL = 1
     ORDER_REJECT = 2
+    ORDER_PEND = 3
 
     def putOrderQueue(self, data, _type):
         self.order_queue.put((data, _type))
@@ -674,7 +665,7 @@ class OkexSwapRestApi(RestClient):
             method(data)
         except Exception as e:
             logging.error("Process order data error | %s | %s", data, traceback.format_exc())
-    
+
     def onQueueCancelOrder(self, data):
         if "client_oid" in data:
             oid = data["client_oid"]
@@ -686,7 +677,6 @@ class OkexSwapRestApi(RestClient):
             if data["result"]:
                 order.status = constant.STATUS_CANCELLED
                 self.gateway.onOrder(copy(order))
-                self.unfinished_orders.pop(order.vtOrderID, None)
     
     def onQueueRejectOrder(self, data):
         oid = data["client_oid"]
@@ -695,7 +685,14 @@ class OkexSwapRestApi(RestClient):
             order.status = constant.STATUS_REJECTED
             order.rejectedInfo = data["message"]
             self.gateway.onOrder(copy(order))
-            self.unfinished_orders.pop(str(oid), None)
+        else:
+            logging.warning("Order not exits | %s", oid)
+    
+    def onQueuePendOrder(self, client_oid):
+        order = self.orderDict.get(str(client_oid), None)
+        if order and (order.status == constant.STATUS_SUBMITTED):
+            order.status = constant.STATUS_NOTTRADED
+            self.gateway.onOrder(copy(order))
 
 class OkexSwapWebsocketApi(WebsocketClient):
     """永续合约 WS API"""
