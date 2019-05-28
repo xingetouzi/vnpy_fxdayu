@@ -457,8 +457,11 @@ class OkexfRestApi(RestClient):
             self.gateway.onContract(contract)
             self.contractMapReverse.update({universal_symbol:contract_symbol})
         
-        if not self.mature == max(matureDate):
-            self.mature=max(matureDate)
+        max_v = max(matureDate)
+        if not self.mature:
+            self.mature = max_v
+        if not (self.mature==max_v):
+            self.mature = max_v
             if self.wsGateway:
                 self.wsGateway.login()
 

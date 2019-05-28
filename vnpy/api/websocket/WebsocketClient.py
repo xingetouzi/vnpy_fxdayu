@@ -221,7 +221,7 @@ class WebsocketClient(object):
             except:
                 self._reportError()
                 self._reconnect()
-            for i in range(60):
+            for i in range(20):
                 if not self._active:
                     break
                 time.sleep(1)
