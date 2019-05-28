@@ -1,14 +1,12 @@
-# encoding: UTF-8
-
-
 ########################################################################
 import json
+import logging
 import ssl
 import sys
 import time
 import traceback
 from datetime import datetime
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
 
 import websocket
 
@@ -33,27 +31,28 @@ class WebsocketClient(object):
     关于ping：
     在调用start()之后，该类每60s会自动发送一个ping帧至服务器。
     """
-    
+
     #----------------------------------------------------------------------
     def __init__(self):
         """Constructor"""
         self.host = None  # type: str
-        
+
         self._ws_lock = Lock()
         self._ws = None  # type: websocket.WebSocket
-        
+
         self._workerThread = None  # type: Thread
         self._pingThread = None  # type: Thread
+        self._connectingEvent = Event()
         self._active = False
 
         # for debugging:
         self._lastSentText = None
         self._lastReceivedText = None
-        
+
     #----------------------------------------------------------------------
     def init(self, host):
         self.host = host
-    
+
     #----------------------------------------------------------------------
     def start(self):
         """
@@ -61,14 +60,14 @@ class WebsocketClient(object):
         :note 注意：启动之后不能立即发包，需要等待websocket连接成功。
         websocket连接成功之后会响应onConnected函数
         """
-        
+
         self._active = True
         self._workerThread = Thread(target=self._run)
         self._workerThread.start()
-        
+
         self._pingThread = Thread(target=self._runPing)
         self._pingThread.start()
-        
+
     #----------------------------------------------------------------------
     def stop(self):
         """
@@ -93,40 +92,66 @@ class WebsocketClient(object):
         text = json.dumps(dictObj)
         self._recordLastSentText(text)
         return self._getWs().send(text, opcode=websocket.ABNF.OPCODE_TEXT)
-    
+
     #----------------------------------------------------------------------
     def sendText(self, text):  # type: (str)->None
         """发送文本数据"""
         return self._getWs().send(text, opcode=websocket.ABNF.OPCODE_TEXT)
-    
+
     #----------------------------------------------------------------------
     def sendBinary(self, data):  # type: (bytes)->None
         """发送字节数据"""
         return self._getWs().send_binary(data)
-    
+
     #----------------------------------------------------------------------
     def _reconnect(self):
         """重连"""
         if self._active:
+            logging.warn("websocket disconnected, try to reconnect.")
             self._disconnect()
             self._connect()
 
     #----------------------------------------------------------------------
     def _createConnection(self, *args, **kwargs):
         return websocket.create_connection(*args, **kwargs)
-    
+
     #----------------------------------------------------------------------
     def _connect(self):
         """"""
-        self._ws = self._createConnection(self.host, sslopt={'cert_reqs': ssl.CERT_NONE})
-        self.onConnected()
-    
+        max_connnect_backoff = 1 << 5
+        connect_backoff = 1
+        connect_times = 1
+        logging.debug("connecting to websocket")
+        while self._active:
+            try:
+                with self._ws_lock:
+                    self._ws = self._createConnection(
+                        self.host, sslopt={'cert_reqs': ssl.CERT_NONE})
+                self._connectingEvent.set()
+                break
+            except Exception:
+                logging.warn(
+                    "the %sth attempt to connect websocket failed, next try at %s seconds later",
+                    connect_times, connect_backoff)
+                self._reportError()
+                time.sleep(connect_backoff)
+                connect_times += 1
+                connect_backoff = min(max_connnect_backoff,
+                                      connect_backoff << 1)
+        if self._active:
+            try:
+                logging.debug("connected to websocket")
+                self.onConnected()
+            except Exception:
+                self._reportError()
+
     #----------------------------------------------------------------------
     def _disconnect(self):
         """
         断开连接
         """
         with self._ws_lock:
+            self._connectingEvent.clear()
             if self._ws:
                 self._ws.close()
                 self._ws = None
@@ -135,7 +160,13 @@ class WebsocketClient(object):
     def _getWs(self):
         with self._ws_lock:
             return self._ws
-    
+
+    #----------------------------------------------------------------------
+    def _reportError(self):
+        if self._active:  # skip the error occurred due to the closed socket in normally close processing
+            et, ev, tb = sys.exc_info()
+            self.onError(et, ev, tb)
+
     #----------------------------------------------------------------------
     def _run(self):
         """
@@ -147,6 +178,7 @@ class WebsocketClient(object):
             # todo: onDisconnect
             while self._active:
                 try:
+                    self._connectingEvent.wait()  # 只有ws连接上的时候才能读数据
                     ws = self._getWs()
                     if ws:
                         text = ws.recv()
@@ -157,20 +189,18 @@ class WebsocketClient(object):
                         try:
                             data = self.unpackData(text)
                         except ValueError as e:
-                            print('websocket unable to parse data: ' + text)
+                            logging.error('websocket unable to parse data: ' +
+                                          text)
                             raise e
                         self.onPacket(data)
                 except websocket.WebSocketConnectionClosedException:  # 在调用recv之前ws就被关闭了
                     self._reconnect()
-                except:                                            # Python内部错误（onPacket内出错）
-                    et, ev, tb = sys.exc_info()
-                    self.onError(et, ev, tb)
+                except:  # Python内部错误（onPacket内出错）
+                    self._reportError()
                     self._reconnect()
         except:
-            et, ev, tb = sys.exc_info()
-            self.onError(et, ev, tb)
-            self._reconnect()
-    
+            self._reportError()
+
     #----------------------------------------------------------------------
     @staticmethod
     def unpackData(data):
@@ -186,23 +216,22 @@ class WebsocketClient(object):
     def _runPing(self):
         while self._active:
             try:
+                self._connectingEvent.wait()  # 只有ws连接上的时候才能发送心跳
                 self._ping()
             except:
-                et, ev, tb = sys.exc_info()
-                # todo: just log this, notifying user is not necessary
-                self.onError(et, ev, tb)
+                self._reportError()
                 self._reconnect()
-            for i in range(20):
+            for i in range(60):
                 if not self._active:
                     break
                 time.sleep(1)
-    
+
     #----------------------------------------------------------------------
     def _ping(self):
         ws = self._getWs()
         if ws:
             ws.send('ping', websocket.ABNF.OPCODE_PING)
-    
+
     #----------------------------------------------------------------------
     @staticmethod
     def onConnected():
@@ -210,7 +239,7 @@ class WebsocketClient(object):
         连接成功回调
         """
         pass
-    
+
     #----------------------------------------------------------------------
     @staticmethod
     def onDisconnected():
@@ -218,7 +247,7 @@ class WebsocketClient(object):
         连接断开回调
         """
         pass
-    
+
     #----------------------------------------------------------------------
     @staticmethod
     def onPacket(packet):
@@ -229,15 +258,16 @@ class WebsocketClient(object):
         @:return:
         """
         pass
-    
+
     #----------------------------------------------------------------------
     def onError(self, exceptionType, exceptionValue, tb):
         """
         Python错误回调
         todo: 以后详细的错误信息最好记录在文件里，用uuid来联系/区分具体错误
         """
-        sys.stderr.write(self.exceptionDetail(exceptionType, exceptionValue, tb))
-        
+        sys.stderr.write(
+            self.exceptionDetail(exceptionType, exceptionValue, tb))
+
         # 丢给默认的错误处理函数（所以如果不重载onError，一般的结果是程序会崩溃）
         return sys.excepthook(exceptionType, exceptionValue, tb)
 
@@ -247,15 +277,16 @@ class WebsocketClient(object):
         text = "[{}]: Unhandled WebSocket Error:{}\n".format(
             datetime.now().isoformat(),
             exceptionType
-        )
+        ) #yapf: disable
         text += "LastSentText:\n{}\n".format(self._lastSentText)
         text += "LastReceivedText:\n{}\n".format(self._lastReceivedText)
         text += "Exception trace: \n"
-        text += "".join(traceback.format_exception(
-            exceptionType,
-            exceptionValue,
-            tb,
-        ))
+        text += "".join(
+            traceback.format_exception(
+                exceptionType,
+                exceptionValue,
+                tb,
+            ))
         return text
 
     #----------------------------------------------------------------------
