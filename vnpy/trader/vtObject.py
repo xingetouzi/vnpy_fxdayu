@@ -373,12 +373,9 @@ class VtCancelOrderReq(object):
 
 ########################################################################
 class VtRecorder(object):
-    """撤单时传入的对象类"""
-
     #----------------------------------------------------------------------
     def __init__(self):
         """Constructor"""
-        self.table = EMPTY_STRING              # 代码
-        self.info = None
+        self.table = ""
+        self.info = {}
         self.account = ""
-   

@@ -44,6 +44,8 @@ class OrEngine(object):
         self.mapping_future = {"1":"开多","2":"开空","3":"平多","4":"平空"}
         self.cacheDict = {"future":[],"swap":[],"spot":[],"error":[]}
         self.r_date = date.today()
+        self.web_hook = ""
+        self.auth = {}
         
         # 负责执行数据库插入的单独线程相关
         self.active = False                     # 工作状态
@@ -65,7 +67,11 @@ class OrEngine(object):
         with open(self.settingFilePath) as f:
             orSetting = json.load(f)
             self.db = pymongo.MongoClient(orSetting['mongouri'])[orSetting["db_name"]]
-            self.receiver = orSetting['receiver']
+            self.mail_receiver = orSetting['mail_receiver']
+
+            self.web_hook = orSetting['web_hook']
+            self.web_auth = {"auth":orSetting['web_auth']}
+
 
             setQryFreq = orSetting.get('interval', 60)
             self.daily_trigger = orSetting.get('daily_trigger_hour', 60)
@@ -248,7 +254,7 @@ class OrEngine(object):
                 f = open(TXT_FILE, "r")
                 text = f.readlines()
                 f.close()
-                for addr in self.receiver:
+                for addr in self.mail_receiver:
                     email(text, addr)
 
             # store price
@@ -267,10 +273,11 @@ class OrEngine(object):
                         txt = msg.get(error.gatewayName,[])
                         ding = f'> code:{error.errorID}, msg:{error.errorMsg} \n\n'
                         txt.append(ding)
-                        msg[error.gatewayName] = txt
+                        msg["error"][error.gatewayName] = txt
 
                 else:  # order
                     if table in ["future", "swap"]:
+                        req = []
                         for order_info in info:
                             order = order_info.info
                             if order["state"] in ["-1", "2"]:
@@ -282,7 +289,11 @@ class OrEngine(object):
                                     ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}\n\n"
                                     txt.append(ding)
                                     msg[stg][order['account']] = txt
+                                    
+                                    req.append({"name":stg,"symbol":order['instrument_id'],"type":order['type'],"price":order['price_avg'],"qty":order['filled_qty']})
+
                             self.db[table].insert_one(order)
+                            requests.post(self.web_hook, data={"orders":req}, cookies=self.web_auth)
 
                     elif table == "spot":
                         for order in info:
@@ -316,7 +327,7 @@ class OrEngine(object):
                     notify(f"订单收集", ding) 
 
         # 收集账户信息
-        self.accountQuery() 
+        #self.accountQuery() 
     #----------------------------------------------------------------------
     def registerEvent(self):
         """注册事件监听"""

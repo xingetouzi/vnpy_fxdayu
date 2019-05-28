@@ -1,7 +1,9 @@
 {
     "mongouri": "",
     "db_name":"",
-
+    "mail_receiver":[],
     "interval" : 60,
-    "daily_trigger_hour": 8
+    "daily_trigger_hour": 8,
+    "web_hook":"",
+    "web_auth":""
 }

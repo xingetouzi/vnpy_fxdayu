@@ -1,18 +1,18 @@
 import os
 import json
 import time
+import logging
 from datetime import datetime, timezone, timedelta
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
 from vnpy.trader.vtGateway import *
-from vnpy.trader.vtConstant import *
+from vnpy.trader.vtConstant import constant
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from .future import OkexfRestApi, OkexfWebsocketApi 
 from .swap import OkexSwapRestApi, OkexSwapWebsocketApi
 from .spot import OkexSpotRestApi, OkexSpotWebsocketApi
 from .util import ISO_DATETIME_FORMAT, granularityMap
-import pymongo
 
 REST_HOST = 'https://www.okex.com'
 WEBSOCKET_HOST = 'wss://real.okex.com:10442/ws/v3'
@@ -38,9 +38,9 @@ class OkexGateway(VtGateway):
         self.gatewayMap = {}
         self.stgMap = {}
 
-        self.orderID = 10000
+        self.orderID = 1
         self.tradeID = 0
-        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * 100000
+        self.loginTime = int(datetime.now().strftime('%y%m%d%H%M%S')) * 100
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -48,7 +48,7 @@ class OkexGateway(VtGateway):
         try:
             f = open(self.filePath)
         except IOError:
-            self.writeLog(u"读取连接配置出错，请检查")
+            self.writeLog(u"读取连接配置出错，请检查配置文件", logging.ERROR)
             return
 
         # 解析connect.json文件
@@ -61,9 +61,8 @@ class OkexGateway(VtGateway):
             self.passphrase = str(setting['passphrase'])
             sessionCount = int(setting['sessionCount'])
             subscrib_symbols = setting['symbols']
-            key_name = setting["note"]
         except KeyError as e:
-            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查{e}")
+            self.writeLog(f"{self.gatewayName} 连接配置缺少字段，请检查{e}", logging.ERROR)
             return
 
         # 记录订阅的交易品种类型
@@ -82,44 +81,44 @@ class OkexGateway(VtGateway):
                 spot_list.append(symbol)
 
         # 创建行情和交易接口对象
-        # future_leverage = setting.get('future_leverage', 10)
-        # swap_leverage = setting.get('swap_leverage', 1)
-        # margin_token = setting.get('margin_token', 0) 
+        future_leverage = setting.get('future_leverage', 10)
+        swap_leverage = setting.get('swap_leverage', 1)
+        margin_token = setting.get('margin_token', 0) 
 
         # 实例化对应品种类别的API
         gateway_type = set(self.symbolTypeMap.values())
         if "FUTURE" in gateway_type:
             restfutureApi = OkexfRestApi(self)
             wsfutureApi = OkexfWebsocketApi(self)     
-            self.gatewayMap['FUTURE'] = {"WS":wsfutureApi, "symbols":contract_list,"REST":restfutureApi}
+            self.gatewayMap['FUTURE'] = {"REST":restfutureApi, "WS":wsfutureApi, "leverage":future_leverage, "symbols":contract_list}
         if "SWAP" in gateway_type:
             restSwapApi = OkexSwapRestApi(self)
             wsSwapApi = OkexSwapWebsocketApi(self)
-            self.gatewayMap['SWAP'] = {"WS":wsSwapApi,  "symbols":swap_list,"REST":restSwapApi}
+            self.gatewayMap['SWAP'] = {"REST":restSwapApi, "WS":wsSwapApi, "leverage":swap_leverage, "symbols":swap_list}
         if "SPOT" in gateway_type:
             restSpotApi = OkexSpotRestApi(self)
             wsSpotApi = OkexSpotWebsocketApi(self)
-            self.gatewayMap['SPOT'] = {"WS":wsSpotApi, "symbols":spot_list,"REST":restSpotApi}
+            self.gatewayMap['SPOT'] = {"REST":restSpotApi, "WS":wsSpotApi, "leverage":margin_token, "symbols":spot_list}
 
         self.connectSubGateway(sessionCount)
 
-        # setQryEnabled = setting.get('setQryEnabled', None)
-        # self.setQryEnabled(setQryEnabled)
+        setQryEnabled = setting.get('setQryEnabled', None)
+        self.setQryEnabled(setQryEnabled)
 
-        # setQryFreq = setting.get('setQryFreq', 60)
-        # self.initQuery(setQryFreq)
+        setQryFreq = setting.get('setQryFreq', 60)
+        self.initQuery(setQryFreq)
 
     #----------------------------------------------------------------------
     def connectSubGateway(self, sessionCount):
         for subGateway in self.gatewayMap.values():
-            # subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
+            subGateway["REST"].connect(REST_HOST, subGateway["leverage"], sessionCount)
             subGateway["WS"].connect(WEBSOCKET_HOST)
 
     def subscribe(self, subscribeReq):
         """订阅行情"""
         # symbolType = self.symbolTypeMap.get(subscribeReq.symbol, None)
         # if not symbolType:
-        #     self.writeLog(f"{self.gatewayName} does not have this symbol:{subscribeReq.symbol}")
+        #     self.writeLog(f"{self.gatewayName} does not have this symbol:{subscribeReq.symbol}", logging.ERROR)
         # else:
         #     self.gatewayMap[symbolType]["WS"].subscribe(subscribeReq.symbol)
     
@@ -132,13 +131,13 @@ class OkexGateway(VtGateway):
             alpha='abcdefghijklmnopqrstuvwxyz'
             filter_text = "0123456789" + alpha + alpha.upper()
             new_name = filter(lambda ch: ch in filter_text, orderReq.byStrategy)
-            name = ''.join(list(new_name))[:10]
+            name = ''.join(list(new_name))[:13]
             self.stgMap.update({strategy_name:name})
             strategy_name = name
             
         symbolType = self.symbolTypeMap.get(orderReq.symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}")
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{orderReq.symbol}", logging.ERROR)
         else:
             self.orderID += 1
             order_id = f"{strategy_name}{symbolType[:4]}{str(self.loginTime + self.orderID)}"
@@ -149,7 +148,7 @@ class OkexGateway(VtGateway):
         """撤单"""
         symbolType = self.symbolTypeMap.get(cancelOrderReq.symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{cancelOrderReq.symbol}")
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{cancelOrderReq.symbol}", logging.ERROR)
         else:
             self.gatewayMap[symbolType]["REST"].cancelOrder(cancelOrderReq)
         
@@ -235,15 +234,15 @@ class OkexGateway(VtGateway):
     def queryInfo(self):
         """"""
         for subGateway in self.gatewayMap.values():
-            subGateway["REST"].queryMonoAccount(subGateway['symbols'])
-            subGateway["REST"].queryMonoPosition(subGateway['symbols'])
+            # subGateway["REST"].queryMonoAccount(subGateway['symbols'])
+            # subGateway["REST"].queryMonoPosition(subGateway['symbols'])
             subGateway["REST"].queryOrder()
 
     def initPosition(self, vtSymbol):
-        symbol = vtSymbol.split(VN_SEPARATOR)[0]
+        symbol = vtSymbol.split(constant.VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", logging.ERROR)
         else:
             self.gatewayMap[symbolType]["REST"].queryMonoPosition([symbol])
             self.gatewayMap[symbolType]["REST"].queryMonoAccount([symbol])
@@ -253,12 +252,12 @@ class OkexGateway(VtGateway):
 
     def loadHistoryBar(self, vtSymbol, type_, size = None, since = None, end = None):
         import pandas as pd
-        symbol = vtSymbol.split(VN_SEPARATOR)[0]
+        symbol = vtSymbol.split(constant.VN_SEPARATOR)[0]
         symbolType = self.symbolTypeMap.get(symbol, None)
         granularity = granularityMap[type_]
 
         if not symbolType:
-            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}")
+            self.writeLog(f"{self.gatewayName} does not have this symbol:{symbol}", logging.ERROR)
             return []
         else:
             subGateway = self.gatewayMap[symbolType]["REST"]
@@ -297,14 +296,15 @@ class OkexGateway(VtGateway):
         df = df[["datetime", "open", "high", "low", "close", "volume"]]
         df["datetime"] = df["datetime"].map(lambda x: datetime.fromtimestamp(x.timestamp()))
         df[['open','high','low','close','volume']] = df[['open','high','low','close','volume']].applymap(lambda x: float(x))
-        df.sort_values(by=['datetime'], axis = 0, ascending = True, inplace = True)
+        df.sort_values(by=['datetime'], axis = 0, ascending =True, inplace = True)
         return df
 
-    def writeLog(self, content):
+    def writeLog(self, content, level = logging.INFO):
         """发出日志"""
         log = VtLogData()
         log.gatewayName = self.gatewayName
         log.logContent = content
+        log.logLevel = level
         self.onLog(log)
     
     def newOrderObject(self, data):
@@ -312,14 +312,14 @@ class OkexGateway(VtGateway):
         order.gatewayName = self.gatewayName
         order.symbol = data['instrument_id']
         order.exchange = 'OKEX'
-        order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
+        order.vtSymbol = constant.VN_SEPARATOR.join([order.symbol, order.gatewayName])
 
         order.orderID = data.get("client_oid", None)
         if not order.orderID:
             order.orderID = str(data['order_id'])
             self.writeLog(f"order by other source, symbol:{order.symbol}, exchange_id: {order.orderID}")
 
-        order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
+        order.vtOrderID = constant.VN_SEPARATOR.join([self.gatewayName, order.orderID])
         return order
 
     def newTradeObject(self, order):
@@ -333,7 +333,7 @@ class OkexGateway(VtGateway):
         trade.orderID = order.orderID
         trade.vtOrderID = order.vtOrderID
         trade.tradeID = str(self.tradeID)
-        trade.vtTradeID = VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
+        trade.vtTradeID = constant.VN_SEPARATOR.join([self.gatewayName, trade.tradeID])
         
         trade.direction = order.direction
         trade.offset = order.offset
