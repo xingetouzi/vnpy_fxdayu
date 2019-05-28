@@ -273,27 +273,29 @@ class OrEngine(object):
                     if table in ["future", "swap"]:
                         for order_info in info:
                             order = order_info.info
-                            if order["state"] =='2':
-                                stg = order['strategy'] if order['strategy'] else "N/A"
-                                account = msg.get(stg,{})
-                                msg[stg] = account
-                                txt = account.get(order['account'],[])
-                                ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}\n\n"
-                                txt.append(ding)
-                                msg[stg][order['account']] = txt
+                            if order["state"] in ["-1", "2"]:
+                                if order['filled_qty'] > "0":
+                                    stg = order['strategy'] if order['strategy'] else "N/A"
+                                    account = msg.get(stg,{})
+                                    msg[stg] = account
+                                    txt = account.get(order['account'],[])
+                                    ding = f"> {order['instrument_id'].replace('-USD-','')}, {self.mapping_future[order['type']]}, {order['filled_qty']} @ {order['price_avg']}\n\n"
+                                    txt.append(ding)
+                                    msg[stg][order['account']] = txt
                             self.db[table].insert_one(order)
 
                     elif table == "spot":
                         for order in info:
                             order = order_info.info
-                            if order["state"] =='2':
-                                stg = order['strategy'] if order['strategy'] else "N/A"
-                                account = msg.get(stg,{})
-                                msg[stg] = account
-                                txt = account.get(order['account'],[])
-                                ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}\n\n"
-                                txt.append(ding)
-                                msg[stg][order['account']] = txt
+                            if order["state"] in ["-1", "2"]:
+                                if order['filled_size'] > "0":
+                                    stg = order['strategy'] if order['strategy'] else "N/A"
+                                    account = msg.get(stg,{})
+                                    msg[stg] = account
+                                    txt = account.get(order['account'],[])
+                                    ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}\n\n"
+                                    txt.append(ding)
+                                    msg[stg][order['account']] = txt
                             self.db[table].insert_one(order)
                         
                         
