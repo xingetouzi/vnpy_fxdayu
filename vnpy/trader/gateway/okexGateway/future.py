@@ -50,7 +50,7 @@ class OkexfRestApi(RestClient):
         self.gateway = gateway                  # type: okexGateway # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
         self.leverage = 0
-        self.wsGateway = self.gateway.gatewayMap[SUBGATEWAY_NAME]["WS"]
+        self.wsGateway = None
         self.mature =""
         
         self.contractDict = {}    # store contract info
@@ -86,6 +86,7 @@ class OkexfRestApi(RestClient):
         self.queryContract()
         self.gateway.writeLog(f'{SUBGATEWAY_NAME} REST API 连接成功')
         self.runOrderThread()
+        self.wsGateway = self.gateway.gatewayMap[SUBGATEWAY_NAME]["WS"]
     # #----------------------------------------------------------------------
     def sign(self, request):
         """okex的签名方案"""
@@ -431,7 +432,7 @@ class OkexfRestApi(RestClient):
             
             self.contractDict[contract.symbol] = contract
             self.contractMap[contract.symbol] = "-".join([data['underlying_index'], str.upper(data['alias']).replace("_","-")])
-            matureDate.add(str(d['instrument_id'])[8:])
+            matureDate.add(str(data['instrument_id'])[8:])
             
         self.gateway.writeLog(u'OKEX 交割合约信息查询成功')
 
@@ -458,7 +459,8 @@ class OkexfRestApi(RestClient):
         
         if not self.mature == max(matureDate):
             self.mature=max(matureDate)
-            self.wsGateway.login()
+            if self.wsGateway:
+                self.wsGateway.login()
 
         self.queryOrder()
         self.queryAccount()
