@@ -25,11 +25,15 @@ def setConfig(root=None):
     optimize.root = root
     # 设置引擎参数
     optimize.engineSetting = {
-        "startDate": "20180915 00:00",
-        "endDate": "20190115 23:59",
-        "slippage": 0.002,
-        "rate": 0.0005,
-        "dbName": "VnTrader_1Min_Db",
+        "startDate": '20180601 00:00:00',
+        "endDate": '20190520 23:59:00',
+        "contracts":[
+            {
+                "symbol":"eos.usd.q:okef",
+                "rate" : 5/10000, # 单边手续费
+                "slippage" : 0.002 # 滑价
+            }
+        ]
     }
     # 设置策略固定参数
     optimize.globalSetting = {
@@ -42,13 +46,17 @@ def setConfig(root=None):
         "adxLowThrehold": range(10, 20, 5)
     }
     optimize.initOpt()
-    
+
+
+# 格式化输出
+def fprint(text):
+    print(f"{text:-<100}")
 
 
 # 简单优化，无并行，无缓存
 def runSimple():
     start = datetime.now()
-    print("run simple | start: %s -------------------------------------------" % start)
+    fprint("run simple | start: %s " % start)
 
     setConfig()
 
@@ -59,28 +67,27 @@ def runSimple():
     print(report)
     
     end = datetime.now()
-    print("run simple | end: %s | expire: %s -----------------------------" % (end, end-start))
+    fprint("run simple | end: %s | expire: %s " % (end, end-start))
 
 
 # 并行优化 无缓存
 def runSimpleParallel():
     start = datetime.now()
-    print("run simple | start: %s -------------------------------------------" % start)
+    fprint("run simple | start: %s " % start)
 
     setConfig()
-    # optimize.runParallel() 并行优化，返回回测结果
     report = optimize.runParallel()
     print(report)
 
     end = datetime.now()
-    print("run simple | end: %s | expire: %s -----------------------------" % (end, end-start))
+    fprint("run simple | end: %s | expire: %s " % (end, end-start))
 
 
 # 简单优化，无并行，有缓存
 def runMemory():
 
     start = datetime.now()
-    print("run memory | start: %s -------------------------------------------" % start)
+    fprint("run memory | start: %s " % start)
 
     setConfig("test-memory")
     # 开始优化，优化返回此次回测结果
@@ -88,13 +95,13 @@ def runMemory():
     print(report)
     
     end = datetime.now()
-    print("run memory | end: %s | expire: %s -----------------------------" % (end, end-start))
+    fprint("run memory | end: %s | expire: %s " % (end, end-start))
 
 
 # 并行优化，有缓存
 def runMemoryParallel():
     start = datetime.now()
-    print("run memory | start: %s -------------------------------------------" % start)
+    fprint("run memory | start: %s " % start)
 
     setConfig("test-memory-parallel")
     report = optimize.runParallel()
@@ -102,7 +109,7 @@ def runMemoryParallel():
     print(report)
 
     end = datetime.now()
-    print("run memory | end: %s | expire: %s -----------------------------" % (end, end-start))
+    fprint("run memory | end: %s | expire: %s " % (end, end-start))
 
 
 def main():
@@ -146,12 +153,28 @@ if __name__ == '__main__':
 |size|float|合约大小|1|
 |priceTick|float|价格最小变动|0|
 |dbName|str|回测数据库名|"VnTrader_1Min_Db"|
+|contracts|list|分合约设置交易信息|[]|
+
+
+* contracts数据结构
+
+    可以通过contracts分合约设置交易信息，其中每个合约用一个dict表示，合约支持的字段见下表。
+
+
+|key|type|description|default|
+|:-|:-|:-|:-|
+|symbol|str|合约名|无默认值，必填|
+|rate|float|单边手续费|0|
+|slippage|float|滑点|0|
+
 
 * globalSetting常用属性
-  
+
+
 |key|type|description|default|
 |:-|:-|:-|:-|
 |symbolList|list|回测品种|无默认值，必填|
+
 
 ### 模块方法
 
