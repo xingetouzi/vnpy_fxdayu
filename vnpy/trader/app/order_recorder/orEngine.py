@@ -314,17 +314,17 @@ class OrEngine(object):
                 self.cacheDict[table] = []
 
                 # send dingding
-                if msg:
-                    ding = ""
-                    for table, category in msg.items():
-                        ding += f"### {table}\n"
-                        for account, txts in category.items():
-                            ding+=f"#### - {account}:\n"
-                            for text in txts:
-                                ding+=text
+                #if msg:
+                #    ding = ""
+                #    for table, category in msg.items():
+                #        ding += f"### {table}\n"
+                #        for account, txts in category.items():
+                #            ding+=f"#### - {account}:\n"
+                #            for text in txts:
+                #                ding+=text
 
-                    ding+=f"\n {now}"
-                    notify(f"订单收集", ding) 
+                #    ding+=f"\n {now}"
+                #    notify(f"订单收集", ding) 
 
         # 收集账户信息
         #self.accountQuery() 
