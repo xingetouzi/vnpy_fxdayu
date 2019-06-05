@@ -263,7 +263,7 @@ class OrEngine(object):
 
     def queryInfo(self):
         now = datetime.now().strftime('%y%m%d %H:%M:%S')
-        print(now,"routine")
+        
         for table, info in self.cacheDict.items():
             if info:
                 msg ={}
@@ -276,6 +276,7 @@ class OrEngine(object):
                         msg["error"][error.gatewayName] = txt
 
                 else:  # order
+                    i=0
                     if table in ["future", "swap"]:
                         req = []
                         for order_info in info:
@@ -291,9 +292,11 @@ class OrEngine(object):
                                     msg[stg][order['account']] = txt
                                     
                                     req.append({"name":stg,"symbol":order['instrument_id'],"type":order['type'],"price":order['price_avg'],"qty":order['filled_qty']})
-
-                            self.db[table].insert_one(order)
-                            requests.post(self.web_hook, data={"orders":req}, cookies=self.web_auth)
+                            try:
+                                self.db["orders"].insert_one(order)
+                                i+=1
+                            except:
+                                pass
 
                     elif table == "spot":
                         for order in info:
@@ -307,10 +310,14 @@ class OrEngine(object):
                                     ding = f"> {order['instrument_id']}, {order['side']}, {order['filled_size']} @ {order['price']} USDT:{order['filled_notional']}\n\n"
                                     txt.append(ding)
                                     msg[stg][order['account']] = txt
-                            self.db[table].insert_one(order)
+                            try:
+                                self.db["orders"].insert_one(order)
+                                i+=1
+                            except:
+                                pass
                         
                         
-
+                print(now,"routine,insert:",i)
                 self.cacheDict[table] = []
 
                 # send dingding

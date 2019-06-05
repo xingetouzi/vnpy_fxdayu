@@ -595,41 +595,41 @@ class OkexfRestApi(RestClient):
             oid = str(data['client_oid'])
         order = self.orderDict.get(oid, None)
 
-        if order:
+        if not order:
+            order = self.gateway.newOrderObject(data)
+            self.orderDict[oid]=order
+        else:
             if statusFilter[statusMapReverse[str(data['state'])]] < statusFilter[order.status] or (int(data['filled_qty']) < order.tradedVolume):
                 return
             if statusMapReverse[str(data['state'])] == order.status and int(data['filled_qty']) == order.tradedVolume:
                 return
 
-            data["account"] = self.gatewayName
-            data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME[:4])[0] if "client_oid" in data.keys() else ""
-            data["datetime"],a,b = self.gateway.convertDatetime(data["timestamp"])
+        data["account"] = self.gatewayName
+        data["strategy"] = data["client_oid"].split(SUBGATEWAY_NAME[:4])[0] if "client_oid" in data.keys() else ""
+        data["datetime"],a,b = self.gateway.convertDatetime(data["timestamp"])
+        print(data)
 
-            rc = VtRecorder()
-            rc.account = self.gatewayName
-            rc.table = str.lower(SUBGATEWAY_NAME)
-            rc.info = data
-            self.gateway.writeLog(str(data))
-            self.gateway.onRecorder(rc)
+        rc = VtRecorder()
+        rc.account = self.gatewayName
+        rc.table = str.lower(SUBGATEWAY_NAME)
+        rc.info = data
+        self.gateway.writeLog(str(data))
+        self.gateway.onRecorder(rc)
 
-            order.thisTradedVolume = int(data['filled_qty']) - order.tradedVolume
-            order.status = statusMapReverse[str(data['state'])]
-            order.tradedVolume = int(data['filled_qty'])
-            order.price = float(data['price'])
-            order.price_avg = float(data['price_avg'])
-            order.deliveryTime = datetime.now()
-            order.fee = float(data['fee'])
-            order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
-            order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+        order.status = statusMapReverse[str(data['state'])]
+        order.tradedVolume = int(data['filled_qty'])
+        order.price = float(data['price'])
+        order.price_avg = float(data['price_avg'])
+        order.deliveryTime = datetime.now()
+        order.fee = float(data['fee'])
+        order.orderDatetime = datetime.strptime(str(data['timestamp']), ISO_DATETIME_FORMAT)
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
 
-            if int(data['order_type']) > 1:
-                order.priceType = priceTypeMapReverse[int(data['order_type'])]
+        if int(data['order_type']) > 1:
+            order.priceType = priceTypeMapReverse[int(data['order_type'])]
 
-            order= copy(order)
-            self.gateway.onOrder(order)
-
-            if order.thisTradedVolume:
-                self.gateway.newTradeObject(order)
+        order= copy(order)
+        self.gateway.onOrder(order)
 
     def onQueryMonoOrder(self,d,request):
         """reuqest : GET /api/futures/v3/orders/ETH-USD-190628/BarFUTU19032211220110001 ready because 200:
