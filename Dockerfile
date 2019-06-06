@@ -1,4 +1,4 @@
-FROM continuumio/anaconda3
+FROM continuumio/anaconda3:5.3.0
 
 WORKDIR /opt/vnpy_fxdayu
 
@@ -18,7 +18,7 @@ RUN pip install --no-cache -r requirements.txt
 
 COPY . .
 
-RUN ./install.sh -q -n
+RUN bash ./install.sh -q -n
 
 ENV PYTHONUNBUFFERED=1
 # RUN apt-get clean
