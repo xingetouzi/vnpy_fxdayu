@@ -8,7 +8,7 @@ RUN apt-get install -y wget git bash build-essential libgl1-mesa-glx
 COPY install.sh ./
 
 # ./install.sh --quiet --deps-only
-RUN chmod +x install.sh && ./install.sh -q -n -d 
+RUN chmod +x install.sh && bash ./install.sh -q -n -d 
 
 COPY requirements.txt ./
 
