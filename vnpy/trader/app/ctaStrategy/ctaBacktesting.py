@@ -3,6 +3,7 @@
 可以使用和实盘相同的代码进行回测。
 '''
 from datetime import datetime, timedelta
+from time import time
 from collections import OrderedDict, defaultdict
 from itertools import product
 import multiprocessing
@@ -15,20 +16,22 @@ import matplotlib.pyplot as plt
 import json
 from vnpy.rpc import RpcClient, RpcServer, RemoteException
 import logging
-
+import random
+from functools import lru_cache
 # 如果安装了seaborn则设置为白色风格
 try:
     import seaborn as sns
     sns.set_style('whitegrid')
 except ImportError:
     pass
-
+from deap import creator, base, tools, algorithms
 from vnpy.trader.vtObject import VtTickData, VtBarData, VtLogData
 from vnpy.trader.language import constant
 from vnpy.trader.vtGateway import VtOrderData, VtTradeData
 
 from vnpy.trader.app.ctaStrategy.ctaBase import *
-
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMax)
 ########################################################################
 class BacktestingEngine(object):
     """
@@ -54,6 +57,7 @@ class BacktestingEngine(object):
         self.engineType = ENGINETYPE_BACKTESTING  # 引擎类型为回测
 
         self.strategy = None  # 回测策略
+        self.strategy_class = None
         self.mode = self.BAR_MODE  # 回测模式，默认为K线
 
         self.startDate = ''
@@ -76,7 +80,8 @@ class BacktestingEngine(object):
 
         self.cachePath = os.path.join(os.path.expanduser("~"), "vnpy_data")  # 本地数据缓存地址
         self.logActive = False  # 回测日志开关
-        self.logPath = os.path.join(os.getcwd(), "Backtest_Log")  # 回测日志自定义路径
+        self.path = os.path.join(os.getcwd(), "Backtest_Log")  # 回测日志自定义路径
+        self.logPath = ""
         self.strategy_setting = {}  # 缓存策略配置
 
         self.dataStartDate = None  # 回测数据开始日期，datetime对象
@@ -160,7 +165,7 @@ class BacktestingEngine(object):
         """设置历史数据所用的数据库"""
         self.dbURI = dbURI
 
-    def setDatabase(self, bardbName=None, tickdbName=None):
+    def setDatabase(self, bardbName="", tickdbName=""):
         self.bardbName = bardbName
         self.tickdbName = tickdbName
 
@@ -170,14 +175,14 @@ class BacktestingEngine(object):
         self.capital = capital
 
     # ----------------------------------------------------------------------
-    def setContracts(self, contracts = {}):
+    def setContracts(self, contracts = []):
         self.contracts = contracts
 
     # -------------------------------------------------
     def setLog(self, active=False, path=None):
         """设置是否出交割单和日志"""
         if path:
-            self.logPath = path
+            self.path = path
         self.logActive = active
         
     # -------------------------------------------------
@@ -403,7 +408,7 @@ class BacktestingEngine(object):
         new_name = filter(lambda ch: ch in filter_text, str(symbolList))
         symbol_name = ''.join(list(new_name))
         Folder_Name = f'{self.strategy.name.replace("Strategy","")}_{symbol_name}_{datetime.now().strftime("%y%m%d%H%M")}'
-        self.logPath = os.path.join(self.logPath, Folder_Name[:50])
+        self.logPath = os.path.join(self.path, Folder_Name[:50])
         if not os.path.isdir(self.logPath):
             os.makedirs(self.logPath)
 
@@ -422,6 +427,7 @@ class BacktestingEngine(object):
                 symbolList.append(symbol_info["symbol"])
                 self.contracts_info.update({symbol_info["symbol"]:symbol_info})
             setting['symbolList'] = symbolList
+        self.strategy_class = strategyClass
         self.strategy = strategyClass(self, setting)
         self.strategy.name = self.strategy.className
         self.initPosition(self.strategy)
@@ -1204,6 +1210,133 @@ class BacktestingEngine(object):
 
         return resultList
 
+    def run_ga_optimization(self, optimization_setting, population_size=100, ngen_size=30, output=True):
+        """"""
+        # Get optimization setting and target
+        settings = optimization_setting.generate_setting_ga()
+        target_name = optimization_setting.optimizeTarget
+
+        if not settings:
+            self.output("优化参数组合为空，请检查")
+            return
+
+        if not target_name:
+            self.output("优化目标未设置，请检查")
+            return
+
+        # Define parameter generation function
+        def generate_parameter():
+            """"""
+            return random.choice(settings)
+        
+        def mutate_individual(individual, indpb):
+            """"""
+            size = len(individual)
+            paramlist = generate_parameter()
+            for i in range(size):
+                if random.random() < indpb:
+                    individual[i] = paramlist[i]
+            return individual,
+
+        # Create ga object function
+        global ga_engine_class
+        global ga_target_name
+        global ga_strategy_class
+        global ga_setting
+        global ga_start
+        global ga_init_hours
+        global ga_contracts
+        global ga_capital
+        global ga_end
+        global ga_mode
+        global ga_strategy_setting
+        global ga_dburi
+        global ga_db_bar
+        global ga_db_tick
+
+        ga_engine_class = self.__class__
+        ga_strategy_class = self.strategy_class
+        ga_setting = settings[0]
+        ga_target_name = target_name
+        ga_mode = self.mode
+        ga_start = self.startDate
+        ga_end = self.endDate
+        ga_capital = self.capital
+        ga_contracts = self.contracts
+        ga_init_hours = self.initHours
+        ga_strategy_setting = self.strategy_setting
+        ga_dburi = self.dbURI
+        ga_db_bar = self.bardbName
+        ga_db_tick = self.tickdbName
+        
+        # Set up genetic algorithem
+        toolbox = base.Toolbox() 
+        toolbox.register("individual", tools.initIterate, creator.Individual, generate_parameter)                          
+        toolbox.register("population", tools.initRepeat, list, toolbox.individual)                                            
+        toolbox.register("mate", tools.cxTwoPoint)                                               
+        toolbox.register("mutate", mutate_individual, indpb=1)               
+        toolbox.register("evaluate", ga_optimize)                                                
+        toolbox.register("select", tools.selNSGA2)       
+
+        total_size = len(settings)
+        pop_size = population_size                      # number of individuals in each generation
+        lambda_ = pop_size                              # number of children to produce at each generation
+        mu = int(pop_size * 0.8)                        # number of individuals to select for the next generation
+
+        cxpb = 0.95         # probability that an offspring is produced by crossover    
+        mutpb = 1 - cxpb    # probability that an offspring is produced by mutation
+        ngen = ngen_size    # number of generation
+                
+        pop = toolbox.population(pop_size)      
+        hof = tools.ParetoFront()               # end result of pareto front
+
+        stats = tools.Statistics(lambda ind: ind.fitness.values)
+        np.set_printoptions(suppress=True)
+        stats.register("mean", np.mean, axis=0)
+        stats.register("std", np.std, axis=0)
+        stats.register("min", np.min, axis=0)
+        stats.register("max", np.max, axis=0)
+
+        # Multiprocessing is not supported yet.
+        # pool = multiprocessing.Pool(multiprocessing.cpu_count())
+        # toolbox.register("map", pool.map)
+
+        # Run ga optimization
+        self.output(f"参数优化空间：{total_size}")
+        self.output(f"每代族群总数：{pop_size}")
+        self.output(f"优良筛选个数：{mu}")
+        self.output(f"迭代次数：{ngen}")
+        self.output(f"交叉概率：{cxpb:.0%}")
+        self.output(f"突变概率：{mutpb:.0%}")
+
+        start = time()
+
+        algorithms.eaMuPlusLambda(
+            pop, 
+            toolbox, 
+            mu, 
+            lambda_, 
+            cxpb, 
+            mutpb, 
+            ngen, 
+            stats,
+            halloffame=hof
+        )    
+        
+        end = time()
+        cost = int((end - start))
+
+        self.output(f"遗传算法优化完成，耗时{cost}秒")
+        
+        # Return result list
+        results = []
+
+        for parameter_values in hof:
+            setting = dict(parameter_values)
+            target_value = ga_optimize(parameter_values)[0]
+            results.append((setting, target_value, {}))
+        
+        return results
     # ----------------------------------------------------------------------
     def updateDailyClose(self, symbol, dt, price):
         """更新每日收盘价"""
@@ -1583,6 +1716,14 @@ class OptimizationSetting(object):
         """设置优化目标字段"""
         self.optimizeTarget = target
 
+    def generate_setting_ga(self):
+        """""" 
+        settings_ga = []
+        settings = self.generateSetting()     
+        for d in settings:            
+            param = [tuple(i) for i in d.items()]
+            settings_ga.append(param)
+        return settings_ga
 
 ########################################################################
 class HistoryDataServer(RpcServer):
@@ -1646,8 +1787,8 @@ def formatNumber(n):
 # ----------------------------------------------------------------------
 def optimize(backtestEngineClass, strategyClass, setting, targetName,
              mode, startDate, initHours, endDate,
-             db_URI, bardbName, tickdbName,
-             contracts = {}, prepared_data = []):
+             db_URI="", bardbName="", tickdbName="",
+             contracts = {}):
     """多进程优化时跑在每个进程中运行的函数"""
     engine = backtestEngineClass()
     engine.setBacktestingMode(mode)
@@ -1658,7 +1799,7 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
     engine.setDatabase(bardbName, tickdbName)
 
     engine.initStrategy(strategyClass, setting)
-    engine.runBacktesting(prepared_data)
+    engine.runBacktesting()
 
     df = engine.calculateDailyResult()
     df, d = engine.calculateDailyStatistics(df)
@@ -1669,6 +1810,32 @@ def optimize(backtestEngineClass, strategyClass, setting, targetName,
     # return (str(setting), targetValue, d)
     return (setting, targetValue, d)
 
+@lru_cache(maxsize=1000000)
+def _ga_optimize(parameter_values):
+    """"""
+    setting = dict(parameter_values)
+    setting.update(ga_strategy_setting)
+
+    result = optimize(
+        ga_engine_class,
+        ga_strategy_class,
+        setting,
+        ga_target_name,
+        ga_mode,
+        ga_start,
+        ga_init_hours,
+        ga_end,
+        ga_dburi,
+        ga_db_bar,
+        ga_db_tick,
+        ga_contracts
+    )
+    return (result[1],)
+
+
+def ga_optimize(parameter_values):
+    """"""
+    return _ga_optimize(tuple(parameter_values))
 
 def gen_dates(b_date, days):
     day = timedelta(days=1)
@@ -1716,6 +1883,23 @@ def get_minutes_list(start=None, end=None):
     for d in gen_minutes(start, days, minutes):
         data.append(d)
     return data
+
+# GA related global value
+ga_engine_class = None
+ga_end = None
+ga_mode = None
+ga_target_name = None
+ga_strategy_class = None
+ga_setting = None
+ga_start = None
+ga_contracts = None
+ga_capital = None
+ga_engine_class = None
+ga_init_hours = None
+ga_strategy_setting = None
+ga_dburi = None
+ga_db_bar = None
+ga_db_tick = None
 
 
 class PatchedBacktestingEngine(BacktestingEngine):
