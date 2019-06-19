@@ -3,6 +3,7 @@ websocket-client==0.48.0
 qdarkstyle
 SortedContainers
 pandas>=0.23
+deap
 flask-restful
 flask-socketio
 aiohttp
