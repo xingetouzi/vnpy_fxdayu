@@ -1597,16 +1597,16 @@ class TradingResult(object):
 
         self.turnover = (self.entryPrice + self.exitPrice) * size * abs(volume)  # 成交金额
 
-        if backtestResultType == "Linear":
-            self.commission = self.turnover * rate  # 手续费成本
-            self.slippage = slippage * 2 * size * abs(volume)  # 滑点成本
-
-            self.pnl = (self.exitPrice - self.entryPrice) * volume * size - self.commission - self.slippage  # 净盈亏
         if backtestResultType == "Inverse":
             self.commission = rate * self.turnover/ self.exitPrice  # 手续费成本
             self.slippage = slippage/self.entryPrice * size * abs(volume) + slippage/self.exitPrice * size * abs(volume)  # 滑点成本
 
             self.pnl = (self.exitPrice - self.entryPrice) * volume * size / self.exitPrice - self.commission - self.slippage# 净盈亏
+        else:
+            self.commission = self.turnover * rate  # 手续费成本
+            self.slippage = slippage * 2 * size * abs(volume)  # 滑点成本
+
+            self.pnl = (self.exitPrice - self.entryPrice) * volume * size - self.commission - self.slippage  # 净盈亏
 
 
 ########################################################################
