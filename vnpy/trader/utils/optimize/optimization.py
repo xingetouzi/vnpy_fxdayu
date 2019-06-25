@@ -42,16 +42,20 @@ def runStrategy(engineClass, strategyClass, engineSetting, globalSetting, strate
     return engine
 
 
-def runPerformance(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number=0):
+def runPerformance(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number=0, save_path=None):
     engine = runStrategy(engineClass, strategyClass, engineSetting, globalSetting, strategySetting.copy())
     dr = engine.calculateDailyResult()
     ds, r = engine.calculateDailyStatistics(dr)
+    if save_path is not None:
+        if not os.path.isdir(save_path):
+            os.makedirs(save_path)
+        ds.to_hdf(f"{save_path}/{number}.hd5", "/", format="table", complevel=9)
     return {"setting": strategySetting, "result": r, INDEX_NAME: number}
 
 
-def runPerformanceParallel(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number=0):
+def runPerformanceParallel(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number=0, save_path=None):
     try:
-        r = runPerformance(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number)
+        r = runPerformance(engineClass, strategyClass, engineSetting,  globalSetting, strategySetting, number, save_path)
     except:
         pe = ParallelError(
             number=number,
@@ -189,7 +193,7 @@ class Optimization(object):
         
         return self
     
-    def runParallel(self, processes=None):
+    def runParallel(self, processes=None, save_path=None):
         if not self.ready:
             return self
 
@@ -199,7 +203,7 @@ class Optimization(object):
         for index, strategySetting in self.iter_settings():
             pool.apply_async(
                 runPerformanceParallel, 
-                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting, index),
+                (self.engineClass, self.strategyClass, self.engineSetting, self.globalSetting, strategySetting, index, save_path),
                 callback=self.callback,
                 error_callback=self.error_callback
             )
