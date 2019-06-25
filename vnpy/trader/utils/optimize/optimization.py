@@ -49,7 +49,7 @@ def runPerformance(engineClass, strategyClass, engineSetting,  globalSetting, st
     if save_path is not None:
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
-        ds.to_hdf(f"{save_path}/{number}.hd5", "/", format="table", complevel=9)
+        ds.to_hdf(f"{save_path}/{number}.hd5", "/table", format="table", complevel=9)
     return {"setting": strategySetting, "result": r, INDEX_NAME: number}
 
 
