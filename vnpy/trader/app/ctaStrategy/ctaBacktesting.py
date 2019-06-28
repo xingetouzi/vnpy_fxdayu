@@ -1423,6 +1423,7 @@ class BacktestingEngine(object):
 
         df['balance'] = df['netPnl'].cumsum() + self.capital
         df['return'] = df["netPnl"] / self.capital
+        df['retWithoutFee'] = df["totalPnl"] / self.capital
         df['highlevel'] = df['balance'].rolling(min_periods=1, window=len(df), center=False).max()
         df['drawdown'] = df['balance'] - df['highlevel']
         df['ddPercent'] = df['drawdown'] / df['highlevel'] * 100
@@ -1458,11 +1459,19 @@ class BacktestingEngine(object):
         annualizedReturn = totalReturn / totalDays * 240
         dailyReturn = df['return'].mean() * 100
         returnStd = df['return'].std() * 100
+        dailyReturnWithoutFee = df['retWithoutFee'].mean() * 100
+        returnWithoutFeeStd = df['retWithoutFee'].std() * 100
 
         if returnStd:
             sharpeRatio = dailyReturn / returnStd * np.sqrt(240)
         else:
             sharpeRatio = 0
+        if returnWithoutFeeStd:
+            SRWithoutFee = dailyReturnWithoutFee / returnWithoutFeeStd * np.sqrt(240)
+        else:
+            SRWithoutFee = 0
+        theoreticalSRWithoutFee = 0.1155 * np.sqrt(dailyTradeCount * 240)
+        calmarRatio = annualizedReturn/abs(maxDdPercent)
 
         # 返回结果
         result = {
@@ -1486,9 +1495,14 @@ class BacktestingEngine(object):
             'dailyTradeCount': float(dailyTradeCount),
             'totalReturn': float(totalReturn),
             'annualizedReturn': float(annualizedReturn),
+            'calmarRatio': float(calmarRatio),
             'dailyReturn': float(dailyReturn),
             'returnStd': float(returnStd),
-            'sharpeRatio': float(sharpeRatio)
+            'sharpeRatio': float(sharpeRatio),
+            'dailyReturnWithoutFee': float(dailyReturnWithoutFee),
+            'returnWithoutFeeStd': float(returnWithoutFeeStd),
+            'SRWithoutFee': float(SRWithoutFee),
+            'theoreticalSRWithoutFee': float(theoreticalSRWithoutFee)
         }
 
         return df, result
@@ -1522,6 +1536,7 @@ class BacktestingEngine(object):
         self.output(u'总盈亏：\t%s' % formatNumber(result['totalNetPnl']))
         self.output(u'最大回撤: \t%s' % formatNumber(result['maxDrawdown']))
         self.output(u'百分比最大回撤: %s%%' % formatNumber(result['maxDdPercent']))
+        self.output(u'卡玛比率：\t%s' % formatNumber(result['calmarRatio']))
 
         self.output(u'总手续费：\t%s' % formatNumber(result['totalCommission']))
         self.output(u'总滑点：\t%s' % formatNumber(result['totalSlippage']))
@@ -1537,6 +1552,11 @@ class BacktestingEngine(object):
         self.output(u'日均收益率：\t%s%%' % formatNumber(result['dailyReturn']))
         self.output(u'收益标准差：\t%s%%' % formatNumber(result['returnStd']))
         self.output(u'Sharpe Ratio：\t%s' % formatNumber(result['sharpeRatio']))
+
+        self.output(u'日均收益率(0交易成本)：\t%s%%' % formatNumber(result['dailyReturnWithoutFee']))
+        self.output(u'收益标准差(0交易成本)：\t%s%%' % formatNumber(result['returnWithoutFeeStd']))
+        self.output(u'Sharpe Ratio(0交易成本)：\t%s' % formatNumber(result['SRWithoutFee']))
+        self.output(u'理论可实现Sharpe Ratio(0交易成本)：\t%s' % formatNumber(result['theoreticalSRWithoutFee']))
 
         # 绘图
         fig = plt.figure(figsize=(10, 16))
@@ -1559,7 +1579,7 @@ class BacktestingEngine(object):
 
         # 输出回测绩效图
         if self.logActive:
-            filename = os.path.join(self.logPath, u"回测绩效图.png")
+            filename = os.path.join(self.logPath, u"每日净值图.png")
             plt.savefig(filename)
             self.output(u'策略回测绩效图已保存')
 
@@ -1568,6 +1588,10 @@ class BacktestingEngine(object):
             with open(filename, 'w') as f:
                 json.dump(self.strategy_setting, f, indent=4)
             self.output(u'BacktestingResult saved')
+
+            filename = os.path.join(self.logPath, u"每日净值.csv")
+            df.to_csv(filename, sep=',')
+            self.output(u'每日净值已保存')
 
         plt.show()
 

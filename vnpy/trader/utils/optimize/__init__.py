@@ -79,11 +79,11 @@ def run():
         return opt.report()
 
 
-def runParallel(process=None):
+def runParallel(process=None, save_path=None):
     if isinstance(_memory, OptMemory):
         _memory.save_report()
 
-    opt = getOpt().runParallel(process)
+    opt = getOpt().runParallel(process, save_path)
     if isinstance(_memory, OptMemory):
         return _memory.save_report()
     else:
