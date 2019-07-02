@@ -698,7 +698,6 @@ class CtpTdApi(TdApi):
     def onFrontConnected(self):
         """服务器连接"""
         self.connectionStatus = True
-
         self.writeLog(text.TRADING_SERVER_CONNECTED)
 
         if self.requireAuthentication:
@@ -1689,7 +1688,6 @@ class CtpTdApi(TdApi):
         self.appID = appID                  # 产品ID
         self.authCode = authCode            # 验证码
         self.userProductInfo = userProductInfo  # 产品信息
-
         # 如果尚未建立服务器连接，则进行连接
         if not self.connectionStatus:
             # 创建C++环境中的API对象，这里传入的参数是需要用来保存.con文件的文件夹路径
@@ -1701,11 +1699,12 @@ class CtpTdApi(TdApi):
             self.subscribePublicTopic(0)
 
             # 注册服务器地址
+            
             self.registerFront(self.address)
-
+            
             # 初始化连接，成功会调用onFrontConnected
             self.init()
-
+            
         # 若已经连接但尚未登录，则进行登录
         else:
             if self.requireAuthentication and not self.authStatus:
@@ -1732,13 +1731,14 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def authenticate(self):
         """申请验证"""
-        if self.userID and self.brokerID and self.authCode and self.userProductInfo:
+        if self.userID and self.brokerID and self.authCode and self.appID:
             req = {}
             req['UserID'] = self.userID
             req['BrokerID'] = self.brokerID
             req['AuthCode'] = self.authCode
             req['AppID'] = self.appID
-            req['UserProductInfo'] = self.userProductInfo
+            if self.userProductInfo:
+                req['UserProductInfo'] = self.userProductInfo
             self.reqID +=1
             self.reqAuthenticate(req, self.reqID)
 
