@@ -49,7 +49,7 @@ def getWeight(nvDf_dict, weightMethod="equal"):
     return result
 
 
-def combineNV(nvDf_dict, weightMethod="equal", weight=None):
+def combineNV(nvDf_dict, weightMethod="equal", weight=None, normalized=True):
     '''
     :param nvDf_dict:各子策略净值表
     :param weightMethod: 内置加权方法 equal：等权 equal_vol:波动性标准化 equal_maxdd:最大回撤标准化 sharpe:夏普比率加权 calmar：卡玛比率加权
@@ -76,11 +76,13 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None):
     if weight is None:
         weight = getWeight(nvDf_dict, weightMethod)
     else:
-        _sum = 0
-        for name in weight.keys():
-            _sum += weight[name]
-        for name in weight.keys():
-            weight[name] = weight[name] / _sum
+        weight = weight.copy()
+        if normalized:
+            _sum = 0
+            for name in weight.keys():
+                _sum += weight[name]
+            for name in weight.keys():
+                weight[name] = weight[name] / _sum
 
     # 净值归一化
     for name in nvDf_dict.keys():
@@ -95,6 +97,7 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None):
         df["totalPnl"] = df["totalPnl"] / capital
         df["balance"] = df["balance"] / capital
         tradeCount = df["tradeCount"].copy()
+        nvDf_dict[name] = df * weight[name]
         if weight[name] > 0:
             nvDf_dict[name]["tradeCount"] = tradeCount
 
