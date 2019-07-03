@@ -58,9 +58,12 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None):
     '''
     nvDf_dict = copy.deepcopy(nvDf_dict)
     # 对齐数据
-    _ = nvDf_dict[list(nvDf_dict.keys())[0]]
+    _index = set(nvDf_dict[list(nvDf_dict.keys())[0]].index)
     for name in nvDf_dict.keys():
-        nvDf_dict[name] = nvDf_dict[name].reindex(_.index).replace([np.inf, -np.inf], np.nan)
+        _index = _index & set(nvDf_dict[name].index)
+    _index = sorted(list(_index))
+    for name in nvDf_dict.keys():
+        nvDf_dict[name] = nvDf_dict[name].reindex(_index).replace([np.inf, -np.inf], np.nan)
         nvDf_dict[name][
             ["netPnl", "slippage", "commission", "turnover", "tradeCount", "tradingPnl", "positionPnl", "totalPnl",
              "return", "retWithoutFee"]] = \
@@ -92,7 +95,6 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None):
         df["totalPnl"] = df["totalPnl"] / capital
         df["balance"] = df["balance"] / capital
         tradeCount = df["tradeCount"].copy()
-        nvDf_dict[name] = df * weight[name]
         if weight[name] > 0:
             nvDf_dict[name]["tradeCount"] = tradeCount
 
@@ -113,9 +115,13 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None):
 
 def getPearsonrMatrix(nvDf_dict):
     nvDf_dict = copy.deepcopy(nvDf_dict)
-    _ = nvDf_dict[list(nvDf_dict.keys())[0]]
+    # 对齐数据
+    _index = set(nvDf_dict[list(nvDf_dict.keys())[0]].index)
     for name in nvDf_dict.keys():
-        nvDf_dict[name] = nvDf_dict[name].reindex(_.index).replace([np.inf, -np.inf], np.nan)
+        _index = _index & set(nvDf_dict[name].index)
+    _index = sorted(list(_index))
+    for name in nvDf_dict.keys():
+        nvDf_dict[name] = nvDf_dict[name].reindex(_index).replace([np.inf, -np.inf], np.nan)
     x1 = np.vstack([df["return"].fillna(0) for df in nvDf_dict.values()])
     x2 = np.vstack([df["retWithoutFee"].fillna(0) for df in nvDf_dict.values()])
     r1 = pd.DataFrame(np.corrcoef(x1), columns=nvDf_dict.keys(), index=nvDf_dict.keys())
