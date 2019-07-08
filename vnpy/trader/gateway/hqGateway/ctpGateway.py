@@ -121,6 +121,7 @@ class CtpGateway(VtGateway):
         self.positions = {}
         self.contractMap = {}
         self.ref = int(datetime.today().strftime("%Y%m%d")) * 10000
+        self.send_TP_Time = None
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -232,11 +233,16 @@ class CtpGateway(VtGateway):
             self.tdApi.close()
 
     #----------------------------------------------------------------------
+    def queryInfo(self):
+        self.qryAccount()
+        self.qryOrder()
+        self.qryPosition()
+        self.processPos()
     def initQuery(self, freq = 60):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
-            self.qryFunctionList = [self.processPos,self.qryAccount]
+            self.qryFunctionList = [self.queryInfo]
             self.qryCount = 0           # 查询触发倒计时
             self.qryTrigger = freq      # 查询触发点
             self.qryNextFunction = 0    # 上次运行的查询函数索引
@@ -496,38 +502,42 @@ class CtpGateway(VtGateway):
             self.send_TP(str(self.ref), strategyId, data)
 
     def send_TP(self, ref, strategyId, result):
-        data = {
-        "msgType": "PlaceTargetPosition",
-        "msgBody" : {
-            "strategyId": strategyId,
-            "token":"ae3e0db3-95b8-4bea-ad7c-64c89eea583f",
-            "targetPositionList" : result,
-            "orderId": ref,
-            "orderTag": ref
-            }
-        }
-        r = requests.post("http://218.17.157.200:18057/api", data = data)
-        print(data,"\n",r)
-        """
-        返回值示例
-        {
-        "msgType": "OnRspOrderStateHttp",
-        "msgBody": {
-                "data": {
-                    "orderState": " 指令发送成功 编号 ： 6522406993280597711",
-                    "orderId": "12312",
-                    "orderTag": "test"
-                },
-                "err": {
-                    "level": "0",
-                    "MSGInfo": "",
-                    "wstrFile": "",
-                    "iLine": "0"
+        if not self.send_TP_Time:
+            self.send_TP_Time = datetime.now()
+        if (datetime.now()-self.send_TP_Time).total_seconds() > 299:
+            data = {
+            "msgType": "PlaceTargetPosition",
+            "msgBody" : {
+                "strategyId": strategyId,
+                "token":"ae3e0db3-95b8-4bea-ad7c-64c89eea583f",
+                "targetPositionList" : result,
+                "orderId": ref,
+                "orderTag": ref
                 }
             }
-        }
-        """
-        self.mdApi.writeLog(r.text)
+            r = requests.post("http://218.17.157.200:18057/api", data = data)
+            print(data,"\n",r)
+            """
+            返回值示例
+            {
+            "msgType": "OnRspOrderStateHttp",
+            "msgBody": {
+                    "data": {
+                        "orderState": " 指令发送成功 编号 ： 6522406993280597711",
+                        "orderId": "12312",
+                        "orderTag": "test"
+                    },
+                    "err": {
+                        "level": "0",
+                        "MSGInfo": "",
+                        "wstrFile": "",
+                        "iLine": "0"
+                    }
+                }
+            }
+            """
+            self.mdApi.writeLog(r.text)
+            self.send_TP_Time = datetime.now()
 
 ########################################################################
 class CtpMdApi(MdApi):
