@@ -469,11 +469,14 @@ class CtpGateway(VtGateway):
             # self.send_TP(str(order.orderID), order.byStrategy, [data])
 
     def matchOrder(self, tick):
+        if all([self.low,self.high]):
+            self.high = tick.lastPrice
+            self.low = tick.lastPrice
         self.high = max(self.high, tick.lastPrice)
         self.low = min(self.low, tick.lastPrice)
         if self.time:
             if tick.datetime >= self.time:
-                print(tick.datetime, self.high, self.low)
+                print("matchOrder:",tick.datetime, self.high, self.low)
                 for orderid, order in list(self.pendingOrder.items()):
                     if order.direction == DIRECTION_LONG:
                         if order.price > self.low:
@@ -487,7 +490,7 @@ class CtpGateway(VtGateway):
         self.time = tick.datetime.replace(second=0, microsecond=0) + timedelta(minutes = 1)
         
     def processPos(self):
-        print(datetime.now(), "processPos")
+        print("processPos:", datetime.now())
         for strategyId, pos in self.positions.items():
             data = []
             for symbol, volume in pos.items():
@@ -502,9 +505,14 @@ class CtpGateway(VtGateway):
             self.send_TP(str(self.ref), strategyId, data)
 
     def send_TP(self, ref, strategyId, result):
+        print("self.send_TP_Time",self.send_TP_Time)
         if not self.send_TP_Time:
             self.send_TP_Time = datetime.now()
         if (datetime.now()-self.send_TP_Time).total_seconds() > 299:
+            headers = {
+                "User-Agent":"Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.146 Safari/537.36",
+                "Content-Type": "application/json"
+                }
             data = {
             "msgType": "PlaceTargetPosition",
             "msgBody" : {
@@ -515,8 +523,8 @@ class CtpGateway(VtGateway):
                 "orderTag": ref
                 }
             }
-            r = requests.post("http://218.17.157.200:18057/api", data = data)
-            print(data,"\n",r)
+            r = requests.post("http://218.17.157.200:18057/api", headers = headers, data = data)
+            print(data,"\n",r.json())
             """
             返回值示例
             {
