@@ -240,8 +240,11 @@ class DaemonApp(object):
                     p.recv()
                     raise KeyboardInterrupt
                 else:
-                    if not app.activeStrategyCount():
+                    if not app.ee.isActive:
                         app.stop()
+                    elif not app.activeStrategyCount():
+                        app.stop()
+                    
                     continue
         except KeyboardInterrupt:
             app.stop()
