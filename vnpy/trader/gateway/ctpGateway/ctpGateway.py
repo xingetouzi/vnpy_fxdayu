@@ -114,6 +114,7 @@ class CtpGateway(VtGateway):
         self.jaqsUser = None
         self.jaqsPass = None
         self.ds = None
+        self.contractMap = {}
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -291,7 +292,7 @@ class CtpGateway(VtGateway):
         if self.dbURI and not self.jaqsUser:
             symbol = vtSymbol.split(':')[0]
             maincontract = re.split(r'(\d)', symbol)[0]
-            query_symbol = '_'.join([maincontract,type_])
+            query_symbol = f"{str.upper(maincontract)}88:CTP"
 
             self.dbClient = pymongo.MongoClient(self.dbURI)
             if self.dbName not in self.dbClient.list_database_names():
@@ -308,10 +309,10 @@ class CtpGateway(VtGateway):
 
                 data_df = pd.DataFrame(list(Cursor))
                 data_df.sort_values(by=['datetime'], inplace=True)
+                data_df["vtSymbol"] = query_symbol
             else:
                 self.tdApi.writeLog('History Data of %s not found in DB'%query_symbol)
                 data_df = pd.DataFrame([])
-                
             return data_df
 
         elif self.jaqsUser and not self.dbURI:
@@ -1107,11 +1108,10 @@ class CtpTdApi(TdApi):
 
         # 推送
         self.gateway.onContract(contract)
-        self.contractsList.append(contract.symbol + VN_SEPARATOR + contract.exchange)
-        a = {"contracts":self.contractsList}
 
-        with open(getTempPath('contractList.json'),'w') as f:
-            json.dump(a,f,indent=4, ensure_ascii=False)
+        self.gateway.contractMap.update({contract.symbol:contract.exchange})
+        with open(getTempPath('contractMap.json'),'w') as f:
+            json.dump(self.gateway.contractMap, f, indent=4, ensure_ascii=False)
 
         # 缓存合约代码和交易所映射
         symbolExchangeDict[contract.symbol] = contract.exchange
@@ -1770,6 +1770,7 @@ class CtpTdApi(TdApi):
         req = {}
 
         req['InstrumentID'] = orderReq.symbol
+        req['ExchangeID'] = self.gateway.contractMap[orderReq.symbol]
         req['LimitPrice'] = orderReq.price
         req['VolumeTotalOriginal'] = int(orderReq.volume)
 
@@ -1819,7 +1820,7 @@ class CtpTdApi(TdApi):
         req = {}
 
         req['InstrumentID'] = cancelOrderReq.symbol
-        req['ExchangeID'] = cancelOrderReq.exchange
+        req['ExchangeID'] = self.gateway.contractMap[cancelOrderReq.symbol]
         req['OrderRef'] = cancelOrderReq.orderID
         req['FrontID'] = cancelOrderReq.frontID
         req['SessionID'] = cancelOrderReq.sessionID
