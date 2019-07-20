@@ -129,6 +129,13 @@ class BacktestingEngine(object):
     # 参数设置相关
     # ------------------------------------------------
 
+    def setDataRange(self, tradeStart, tradeEnd, historyStart):
+        self.dataStartDate = tradeStart
+        self.dataEndDate = tradeEnd
+        self.strategyStartDate = historyStart
+        self.startDate = tradeStart.strftime(constant.DATETIME)
+        self.endDate = tradeEnd.strftime(constant.DATETIME)
+
     # ----------------------------------------------------------------------
     def setStartDate(self, startDate='20100416 01:00:00', initHours=0):
         """设置回测的启动日期"""

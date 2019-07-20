@@ -468,7 +468,8 @@ class BarManager(object):
             delta = int(unit_s * size * 1.5)
         else:
             delta = unit_s * size * 9
-        start = dtstart - timedelta(seconds=delta)
+        # start = dtstart - timedelta(seconds=delta)
+        start = self._engine.strategyStartDate
         end = dtstart + timedelta(days=2, seconds=unit_s) # fetch one unit time more forward, plus two day to skip weekends.
         cache = self._caches[symbol]
         bars_1min = cache.fetch(start, end)
