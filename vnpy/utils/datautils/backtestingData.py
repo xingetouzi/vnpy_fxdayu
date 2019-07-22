@@ -7,7 +7,7 @@ import re
 import os
 
 
-SOURCE_COLUMNS = (
+SOURCE_COLUMNS = [
     "datetime", 
     "open",
     "high",
@@ -15,10 +15,7 @@ SOURCE_COLUMNS = (
     "close",
     "volume",
     "openInterest"
-)
-
-
-
+]
 
 
 class DataSource(object):
@@ -41,7 +38,7 @@ class MongoDBDataSource(DataSource):
     def searchByRange(self, symbol, start=None, end=None):
         return read(
             self.db[symbol],
-            self.columns,
+            fields=self.columns,
             **{self.index: (start, end)}
         ).sort_values(self.index)
     
@@ -80,7 +77,7 @@ class DailyHDFCache(object):
     def put(self, symbol, data):
         assert isinstance(data, pd.DataFrame)
         path = self.vtSymbolPath(symbol)
-        for date, frame in data.groupby(data[self.index].dt.format("%Y%m%d")):
+        for date, frame in data.groupby(data[self.index].dt.strftime("%Y%m%d")):
             filename = os.path.join(path, f"{date}.hd5")
             frame.reset_index(drop=True, inplace=True)
             self.writeTable(filename, frame, self.keep)
@@ -97,9 +94,9 @@ class DailyHDFCache(object):
         files.sort()
         configfile = os.path.join(path, "index.json")
         index = {
+            "start": readTableAttribute(os.path.join(path, files[0]), "start").strftime("%Y-%m-%d %H:%M:%S"),
+            "end": readTableAttribute(os.path.join(path, files[-1]), "end").strftime("%Y-%m-%d %H:%M:%S"),
             "index": files,
-            "start": readTableAttribute(os.path.join(path, files[0]), "start"),
-            "end": readTableAttribute(os.path.join(path, files[-1]), "end")
         }
         with open(configfile, "w") as f:
             json.dump(index, f, indent=2)
