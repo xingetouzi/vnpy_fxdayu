@@ -18,6 +18,7 @@ from vnpy.rpc import RpcClient, RpcServer, RemoteException
 import logging
 import random
 from functools import lru_cache
+import vnpy.utils.datautils.backtestingData as backtestingData
 
 # 如果安装了seaborn则设置为白色风格
 try:
@@ -112,6 +113,58 @@ class BacktestingEngine(object):
 
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
+        
+        # 处理缓存数据
+        self.historyDataHandler = None
+        self._hdhEnabled = False
+        self._updateRule = "auto"
+
+    def setHistoryUpdateRule(self, rule):
+        self._updateRule = rule
+
+    def initHistoryDataHandler(self):
+        import pymongo
+        db = pymongo.MongoClient(self.dbURI)[self.bardbName]
+        source = backtestingData.MongoDBDataSource(db)
+        cache = backtestingData.DailyHDFCache(self.cachePath)
+        self.historyDataHandler = backtestingData.HistoryDataHandler(
+            source,
+            cache,
+            self._updateRule
+        )
+
+    def prepareData(self, symbolList):
+        if not self.historyDataHandler:
+            self.initHistoryDataHandler()
+        for symbol in symbolList:
+            self.historyDataHandler.prepareData(
+                symbol, 
+                self.strategyStartDate, 
+                self.dataEndDate
+            )
+    
+    def _loadHistoryDataNew(self, symbolList, startDate, endDate, dataMode=None):
+        data = self.historyDataHandler.loadData(symbolList, startDate, endDate)
+        if len(data):
+            data["date"] = data["datetime"].apply(self.dt2date)
+            data["time"] = data["datetime"].apply(self.dt2time)
+            return [self.genBar(record) for record in data.to_dict("record")]
+        else:
+            return []
+
+    @staticmethod
+    def dt2date(dt):
+        return dt.strftime("%Y%m%d")
+    
+    @staticmethod
+    def dt2time(dt):
+        return dt.strftime("%H:%M:%S")
+    
+    @staticmethod
+    def genBar(record):
+        bar = VtBarData()
+        bar.__dict__.update(record)
+        return bar
 
     # ------------------------------------------------
     # 通用功能
@@ -146,6 +199,7 @@ class BacktestingEngine(object):
         self.strategyStartDate = historyStart
         self.startDate = tradeStart.strftime(constant.DATETIME)
         self.endDate = tradeEnd.strftime(constant.DATETIME)
+        self._hdhEnabled = True
 
     # ----------------------------------------------------------------------
     def setBacktestResultType(self, _type):
@@ -232,8 +286,13 @@ class BacktestingEngine(object):
         self.hdsClient = RpcClient(reqAddress, subAddress)
         self.hdsClient.start()
 
-    # ----------------------------------------------------------------------
     def loadHistoryData(self, symbolList, startDate, endDate=None, dataMode=None):
+        if self._hdhEnabled:
+            return self._loadHistoryDataNew(symbolList, startDate, endDate, dataMode)
+        else:
+            return self._loadHistoryData(symbolList, startDate, endDate, dataMode)
+    # ----------------------------------------------------------------------
+    def _loadHistoryData(self, symbolList, startDate, endDate=None, dataMode=None):
         """载入历史数据:数据范围[start:end)"""
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
@@ -339,8 +398,14 @@ class BacktestingEngine(object):
             self.output(u'WARNING: 该时间段:[%s,%s) 数据量为0!' % (start, end))
             return []
 
-    # ----------------------------------------------------------------------
     def runBacktesting(self):
+        if self._hdhEnabled:
+            self.prepareData(self.strategy.symbolList)
+
+        return self._runBacktesting()
+
+    # ----------------------------------------------------------------------
+    def _runBacktesting(self):
         """运行回测"""
 
         dataLimit = 1000000
