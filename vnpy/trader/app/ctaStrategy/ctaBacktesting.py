@@ -73,8 +73,8 @@ class BacktestingEngine(object):
         self.capital = 1000000  # 回测时的起始本金（默认100万）
 
         self.dbClient = None  # 数据库客户端
-        self.dbURI = ''  # 回测数据库地址
-        self.bardbName = ''  # bar数据库名
+        self.dbURI = 'localhost'  # 回测数据库地址
+        self.bardbName = 'VnTrader_1Min_Db'  # bar数据库名
         self.tickdbName = ''  # tick数据库名
         self.dbCursor = None  # 数据库指针
         self.hdsClient = None  # 历史数据服务器客户端

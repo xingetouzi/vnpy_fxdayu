@@ -25,8 +25,13 @@ def setConfig(root=None):
     optimize.root = root
     # 设置引擎参数
     optimize.engineSetting = {
-        "startDate": '20180601 00:00:00',
-        "endDate": '20190520 23:59:00',
+        "timeRange": {
+            "tradeStart"：datetime(2019, 1, 1)，
+            "tradeEnd"：datetime(2019, 2, 1)，
+            "historyStart"：datetime(2018, 12, 1)
+        },
+        "dbURI": "localhost",
+        "bardbName": "vnTrader_1Min_Db",
         "contracts":[
             {
                 "symbol":"eos.usd.q:okef",
@@ -143,17 +148,31 @@ if __name__ == '__main__':
   
 |key|type|description|default|
 |:-|:-|:-|:-|
-|startDate|str|回测开始时间，模式："YYYYmmdd HH:MM"。|无默认值，必填|
-|endDate|str|回测结束时间，模式："YYYYmmdd HH:MM"。|无默认值，必填|
 |mode|str|回测模式，可选有'tick' 和 'bar'。|'bar'|
-|initHours|int|开始时回溯小时数。|0|
+|timeRange|dict|回测时间范围|无默认值，必填|
 |captial|float|回测时的起始本金。|1000000|
 |slippage|float|回测时假设的滑点。|0|
 |rate|float|回测时假设的佣金比例。|0|
 |size|float|合约大小|1|
 |priceTick|float|价格最小变动|0|
-|dbName|str|回测数据库名|"VnTrader_1Min_Db"|
+|dbURI|str|mongodb地址|"localhost"|
+|bardbName|str|回测数据库名|"VnTrader_1Min_Db"|
 |contracts|list|分合约设置交易信息|[]|
+|-|-|-|-|
+|startDate|str|回测开始时间，模式："YYYYmmdd HH:MM"。早期设置回测时间的参数，建议改为用timeRange设置时间。|无默认值，必填|
+|endDate|str|回测结束时间，模式："YYYYmmdd HH:MM"。早期设置回测时间的参数，建议改为用timeRange设置时间。|无默认值，必填|
+|initHours|int|开始时回溯小时数。早期设置回测时间的参数，建议改为用timeRange设置时间。|0|
+
+
+* timeRange参数
+    
+    通过timeRange指定回测起止时间和历史数据范围。
+
+|key|type|description|
+|:-|:-|:-|
+|tradeStart|datetime.datetime|回测开始时间|
+|tradeEnd|datetime.datetime|回测结束数据(历史数据结束时间)|
+|historyStart|datetime.datetime|历史数据开始时间(回测开始时需要预加载数据，需要大于回测开始时间)|
 
 
 * contracts数据结构
