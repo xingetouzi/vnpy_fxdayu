@@ -319,6 +319,12 @@ class EventEngine2(object):
         if handler in self.__generalHandlers:
             self.__generalHandlers.remove(handler)
 
+    def inactivate(self):
+        self.__active = False
+    
+    @property
+    def isActive(self):
+        return self.__active
 
 ########################################################################
 class Event:

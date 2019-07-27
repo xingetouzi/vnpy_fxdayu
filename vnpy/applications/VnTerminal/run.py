@@ -141,6 +141,13 @@ class App(object):
         le.info(u"开始所有策略")
         cta.startAll()
 
+    def activeStrategyCount(self):
+        count = 0
+        for name, strategy in self.cta.strategyDict.items():
+            if strategy.trading:
+                count += 1
+        return count
+
     def join(self):
         while self.running:
             sleep(1)
@@ -160,7 +167,7 @@ class App(object):
                 logging.info(u"交易程序正常退出")
         except Exception as e:
             logging.exception(e)
-
+        self.me.exit()        
 
 class DaemonApp(object):
     def __init__(self):
@@ -184,17 +191,10 @@ class DaemonApp(object):
 
         self.process = None  # 子进程句柄
 
-    def join(self):
+    def join(self, keep=False):
         while self.running:
             currentTime = datetime.now().time()
             recording = True
-
-            # TODO: 设置交易时段
-            # 判断当前处于的时间段
-            # if ((currentTime >= DAY_START and currentTime <= DAY_END) or
-            #     (currentTime >= NIGHT_START) or
-            #     (currentTime <= NIGHT_END)):
-            #     recording = True
 
             # 记录时间则需要启动子进程
             if recording and self.process is None:
@@ -203,15 +203,24 @@ class DaemonApp(object):
                 self.process = multiprocessing.Process(
                     target=self._run_child,
                     args=(self.pchild, ),
-                    kwargs={"monitor": self._run_with_monitor})
+                    kwargs={"monitor": self._run_with_monitor},
+                    daemon=True
+                )
                 self.process.start()
                 logging.info(u'子进程启动成功')
-
+            if self.process:
+                if not self.process.is_alive():
+                    if keep:
+                        self._stop_child()
+                    else:
+                        self.stop()
             # 非记录时间则退出子进程
-            if not recording and self.process is not None:
-                self._stop_child()
+            # if not recording and self.process is not None:
+            #     self._stop_child()
             sleep(5)
+
         logging.info("停止CTA策略守护父进程")
+    
 
     @staticmethod
     def _run_child(p, monitor=False):
@@ -231,6 +240,11 @@ class DaemonApp(object):
                     p.recv()
                     raise KeyboardInterrupt
                 else:
+                    if not app.ee.isActive:
+                        app.stop()
+                    elif not app.activeStrategyCount():
+                        app.stop()
+                    
                     continue
         except KeyboardInterrupt:
             app.stop()
@@ -260,11 +274,11 @@ class DaemonApp(object):
         logging.info(u'子进程关闭成功')
 
     def stop(self):
-        self.runing = False
+        self.running = False
         self._stop_child()
 
 
-def main(monitor=False):
+def main(monitor=False, keep=False):
     import signal
     import logging
 
@@ -276,6 +290,6 @@ def main(monitor=False):
     app = DaemonApp()
     try:
         app.run(monitor=monitor)
-        app.join()
+        app.join(keep)
     except KeyboardInterrupt:
         app.stop()

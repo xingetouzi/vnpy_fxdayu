@@ -67,6 +67,8 @@ class OkexfRestApi(RestClient):
         }
         self.order_queue = queue.Queue()
         self.orderThread = threading.Thread(target=self.getQueue)
+        self._health = False
+        self._firstFailTime = 0
     
     def runOrderThread(self):
         if not self.orderThread.is_alive():
@@ -78,6 +80,7 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def connect(self, REST_HOST, leverage, sessionCount):
         """连接服务器"""
+        self._health = True
         self.leverage = leverage
         
         self.init(REST_HOST)
@@ -176,12 +179,17 @@ class OkexfRestApi(RestClient):
         self.orderDict[orderID] = order
         self.unfinished_orders[orderID] = order
 
-        self.addRequest('POST', '/api/futures/v3/order', 
-                        callback=self.onSendOrder, 
-                        data=data, 
-                        extra=order,
-                        onFailed=self.onSendOrderFailed,
-                        onError=self.onSendOrderError)
+        if self._health:
+            self.addRequest('POST', '/api/futures/v3/order', 
+                            callback=self.onSendOrder, 
+                            data=data, 
+                            extra=order,
+                            onFailed=self.onSendOrderFailed,
+                            onError=self.onSendOrderError)
+        else:
+            order.status = constant.STATUS_REJECTED
+            order.rejectedInfo = "Gateway unreachable"
+            self.gateway.onOrder(order)
 
         return vtOrderID
     
@@ -198,8 +206,10 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryContract(self):
         """限速规则：20次/2s"""
+        print("query /api/futures/v3/instruments")
         self.addRequest('GET', '/api/futures/v3/instruments', 
                         callback=self.onQueryContract)
+        
     
     #----------------------------------------------------------------------
     def queryMonoAccount(self, symbolList):
@@ -613,6 +623,7 @@ class OkexfRestApi(RestClient):
             "filled_qty":"0","fee":"0","order_id":"2522410732495872","price":"55","price_avg":"0","status":"0",
             "type":"1","contract_val":"10","leverage":"20","client_oid":"BarFUTU19032211220110001","pnl":"0",
             "order_type":"0"}"""
+        self.unLockRequests()
         if d:
             # self.order_queue.put(d)
             self.putOrderQueue(d, self.ORDER_INSTANCE)
@@ -625,17 +636,36 @@ class OkexfRestApi(RestClient):
             'filled_qty': '0', 'fee': '0', 'order_id': '2398983698358272', 'price': '50', 'price_avg': '0', 'status': '0', 
             'type': '1', 'contract_val': '10', 'leverage': '20', 'client_oid': '', 'pnl': '0', 'order_type': '0'}]} 
             """
+        self.unLockRequests()
         for data in d['order_info']:
             self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
-        self.putOrderQueue({
-            "client_oid": request.extra,
-            "message": "Order not exists"
-        }, self.ORDER_REJECT)
-        oid = request.extra
-        self.gateway.writeLog(f'Query order failed: {oid} | result: {data}', logging.ERROR)
-        
+        if request.response.status_code == 404:
+            self.putOrderQueue({
+                "client_oid": request.extra,
+                "message": "Order not exists"
+            }, self.ORDER_REJECT)
+            oid = request.extra
+            self.gateway.writeLog(f'Query order failed: {oid} | result: {data}', logging.ERROR)
+            self.unLockRequests()
+        else:
+            self.lockRequests(data, request)
+    
+    def lockRequests(self, data, request):
+        if self._health:
+            self._health = False
+            self._firstFailTime = datetime.now().timestamp()
+            logging.error(
+                f"Bad response received and lock sending orders: status_code={request.response.status_code}, data={data}"
+            )
+        else:
+            if datetime.now().timestamp() - self._firstFailTime > 300:
+                self.gateway.sendExit()
+    
+    def unLockRequests(self):
+        self._health = True
+
     #----------------------------------------------------------------------
     def onSendOrderFailed(self, data, request):
         """
@@ -663,7 +693,7 @@ class OkexfRestApi(RestClient):
     def onSendOrder(self, data, request):
         """{'result': True, 'error_message': '', 'error_code': 0, 'client_oid': '181129173533', 
         'order_id': '1878377147147264'}"""
-        
+        self.unLockRequests()
         # success
         if data.get("result", False):
             self.putOrderQueue(
@@ -722,6 +752,8 @@ class OkexfRestApi(RestClient):
         """
         Python内部错误处理：默认行为是仍给excepthook
         """
+        if isinstance(exceptionValue, ConnectionError):
+            self.lockRequests({"message": "ConnectionError"}, request)
         e = VtErrorData()
         e.gatewayName = self.gatewayName
         e.errorID = exceptionType
