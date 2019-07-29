@@ -351,3 +351,7 @@ class OkexGateway(VtGateway):
         date_string = local_dt.strftime('%Y%m%d')
         time_string = local_dt.strftime('%H:%M:%S.%f')
         return local_dt, date_string, time_string
+    
+    def sendExit(self):
+        event = Event(EVENT_EXIT)
+        self.eventEngine.put(event)

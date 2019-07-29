@@ -53,6 +53,10 @@ class MainEngine(object):
         # 日志引擎实例
         self.logEngine = None
         self.initLogEngine()
+        self.eventEngine.register(EVENT_EXIT, self.processExit)
+
+    def processExit(self, event):
+        self.eventEngine.inactivate()
 
     #----------------------------------------------------------------------
     def addGateway(self, gatewayModule):
