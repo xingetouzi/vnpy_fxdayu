@@ -589,3 +589,6 @@ class BarManagerPlugin(CtaEnginePlugin):
     def postTickEvent(self, event):
         tick = event.dict_["data"]
         self.manager.on_tick(tick)
+    def postBarEvent(self, event):
+        bar = event.dict_["data"]
+        self.manager.on_bar(bar)

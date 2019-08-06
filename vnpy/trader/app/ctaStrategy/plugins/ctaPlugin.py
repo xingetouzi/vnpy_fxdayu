@@ -14,6 +14,8 @@ class CtaEngineWithPlugins(CtaEngine, LoggerMixin):
         self._plugin = {}
         self._preTickEventHandlers = []
         self._postTickEventHandlers = []
+        self._preBarEventHandlers = []
+        self._postBarEventHandlers = []
         self._prePositionEventHandlers = []
         self._postPositionEventHandlers = []
         self._preOrderEventHandlers = []
@@ -66,6 +68,14 @@ class CtaEngineWithPlugins(CtaEngine, LoggerMixin):
         self._postTickEventHandlers.append((plugin, func, priorty))
         self._postTickEventHandlers = self._sortedHanlders(self._postTickEventHandlers)
 
+    def registerPreBarEvent(self, plugin, func, priorty):
+        self._preBarEventHandlers.append((plugin, func, priorty))
+        self._preBarEventHandlers = self._sortedHanlders(self._prBarEventHandlers)
+
+    def registerPostBarEvent(self, plugin, func, priorty):
+        self._postBarEventHandlers.append((plugin, func, priorty))
+        self._postBarEventHandlers = self._sortedHanlders(self._postBarEventHandlers)
+
     def registerPrePositionEvent(self, plugin, func, priorty):
         self._prePositionEventHandlers.append((plugin, func, priorty))
         self._prePositionEventHandlers = self._sortedHanlders(self._prePositionEventHandlers)
@@ -104,6 +114,16 @@ class CtaEngineWithPlugins(CtaEngine, LoggerMixin):
                 func(event)
         super(CtaEngineWithPlugins, self).processTickEvent(event)
         for plugin, func, _ in self._postTickEventHandlers:
+            if plugin.is_enabled():
+                func(event)
+
+    def processBarEvent(self, event):
+        print(event,"------------")
+        for plugin, func, _ in self._preBarEventHandlers:
+            if plugin.is_enabled():
+                func(event)
+        super(CtaEngineWithPlugins, self).processBarEvent(event)
+        for plugin, func, _ in self._postBarEventHandlers:
             if plugin.is_enabled():
                 func(event)
 

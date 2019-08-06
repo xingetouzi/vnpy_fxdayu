@@ -31,7 +31,18 @@ class VtGateway(object):
         event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
         event2.dict_['data'] = tick
         self.eventEngine.put(event2)
-    
+    #----------------------------------------------------------------------
+    def onBar(self, bar):
+        """市场行情推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_BAR)
+        event1.dict_['data'] = bar
+        self.eventEngine.put(event1)
+        
+        # 特定合约代码的事件
+        event2 = Event(type_=EVENT_BAR + bar.vtSymbol)
+        event2.dict_['data'] = bar
+        self.eventEngine.put(event2)    
     #----------------------------------------------------------------------
     def onTrade(self, trade):
         """成交信息推送"""

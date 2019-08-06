@@ -397,7 +397,12 @@ class CtaEngine(object):
             for strategy in l:
                 if strategy.trading:
                     self.callStrategyFunc(strategy, strategy.onTick, tick)
-                    
+    def processBarEvent(self, event):
+        bar = event.dict_['data']
+        if bar.vtSymbol in self.tickStrategyDict:
+            for strategy in self.tickStrategyDict[bar.vtSymbol]:
+                if strategy.trading:
+                    self.callStrategyFunc(strategy, strategy.onBar, bar)
     #----------------------------------------------------------------------
     def processOrderEvent(self, event):
         """处理委托推送"""
@@ -518,6 +523,7 @@ class CtaEngine(object):
     def registerEvent(self):
         """注册事件监听"""
         self.eventEngine.register(EVENT_TICK, self.processTickEvent)
+        self.eventEngine.register(EVENT_BAR, self.processBarEvent)
         self.eventEngine.register(EVENT_POSITION, self.processPositionEvent)
         self.eventEngine.register(EVENT_ORDER, self.processOrderEvent)
         self.eventEngine.register(EVENT_TRADE, self.processTradeEvent)

@@ -19,3 +19,4 @@ EVENT_ACCOUNT = 'eAccount.'             # 账户回报事件
 EVENT_CONTRACT = 'eContract.'           # 合约基础信息回报事件
 EVENT_ERROR = 'eError.'                 # 错误回报事件
 EVENT_EXIT = "eExit."
+EVENT_BAR = "eBar"
