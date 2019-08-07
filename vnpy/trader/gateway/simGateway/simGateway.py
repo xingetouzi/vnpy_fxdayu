@@ -48,6 +48,8 @@ class SimGateway(VtGateway):
         self.fileName = self.gatewayName + '_connect.json'
         self.filePath = getJsonPath(self.fileName, __file__)
         self.dbClient = None
+        self.dbName = ""
+        self.strategyId = ""
 
         self.pendingOrder = {}
         self.positions = {}
@@ -66,13 +68,15 @@ class SimGateway(VtGateway):
             self.writeLog("LOADING SETTING ERROR")
             return
         setting = json.load(f)
-        self.dbClient = pymongo.MongoClient(setting.get('mongoDbURI',None))[setting.get('mongoDbName',None)]
+        self.dbClient = pymongo.MongoClient(setting.get('mongoDbURI', ""))
+        self.dbName = setting.get('mongoDbName', "")
+        self.strategyId = setting.get('strategyId', "")
+        capital = setting.get('capital', 10000000)
+        freq = setting.get('setQryFreq', 59)
 
         self.initContract()
-        # self.initPosition()
-        # self.initAccount()
-        self.initQuery(59)
-        
+        self.initAccount(capital)
+        self.initQuery(freq)
 
     def update_current_datetime(self, dt):
         if self.current_datetime is None or dt > self.current_datetime:
@@ -87,7 +91,12 @@ class SimGateway(VtGateway):
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq):
         """订阅行情"""
-        self.subscribe_symbol.update({subscribeReq.symbol:datetime.now()})
+        bar = VtBarData()
+        bar.symbol = subscribeReq.symbol
+        bar.exchange = "SIM"
+        bar.vtSymbol = f"{bar.symbol}:SIM"
+        bar.datetime = datetime.now() - timedelta(minutes = 1)
+        self.subscribe_symbol.update({bar.symbol: bar})
 
     def initContract(self):
         with open(f"{getTempPath('contractMap.json')}","r") as f:
@@ -102,25 +111,23 @@ class SimGateway(VtGateway):
             contract.name = contract.symbol
             contract.productClass = PRODUCT_FUTURES
             contract.minVolume = 1
+            contract.priceTick = info["price_tick"]
             contract.size = info["contract_multiple"]
             self.onContract(contract)
 
     def initPosition(self, vtSymbol):
-        try:
-            f = open(f"{getTempPath('position.json')}", "r", encoding="utf-8")
-            self.positions = json.load(f)
-            f.close()
-        except IOError:
-            self.writeLog("position.json not found")
-            self.positions = {}
-    def initAccount(self):
-        try:
-            f = open(f"{getTempPath('account.json')}", "r", encoding="utf-8")
-            self.accountDict = json.load(f)
-            f.close()
-        except IOError:
-            self.writeLog("account.json not found")
-            self.accountDict = {"balance":0,"available":0,"used_margin":0}
+        symbol, gw = vtSymbol.split(VN_SEPARATOR)
+        if not self.positions.get(symbol, None):
+            self.positions.update({symbol:{"long_price":0, "long_vol":0, "long_frozen":0, "short_price":0, "short_vol":0, "short_frozen":0}})
+
+    def initAccount(self, capital):
+        res = self.dbClient["HENGQIN"]["strategy"].find_one({"strategyId": self.strategyId})
+        if res:
+            self.accountDict = res.get("account", {"available": capital, "frozen": 0})
+            self.positions = res.get("positions", {})
+        else:
+            self.accountDict = {"available": capital, "frozen": 0}
+            self.dbClient["HENGQIN"]["strategy"].insert_one({"strategyId": self.strategyId})
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -128,9 +135,6 @@ class SimGateway(VtGateway):
         self.orderRef += 1
         oid = str(self.orderRef)
         self.makeOrder(oid, orderReq.__dict__)
-
-        # 返回订单号（字符串），便于某些算法进行动态管理
-        self.writeLog(f'Gateway 发单：{oid}')
         vtOrderID = VN_SEPARATOR.join([self.gatewayName, oid])
         return vtOrderID
 
@@ -141,8 +145,13 @@ class SimGateway(VtGateway):
         if order:
             order.status = STATUS_CANCELLED
             self.onOrder(order)
+            if order.offset == OFFSET_OPEN:
+                margin_ratio, contract_multiple = self.contractMap[order.symbol]["margin_ratio"], self.contractMap[order.symbol]["contract_multiple"]
+                used_margin = margin_ratio *contract_multiple *order.price *order.totalVolume
+                self.accountDict["frozen"] -= used_margin
+                self.accountDict["available"] += used_margin
         else:
-            self.writeLog(f"cancel failed: {cancelOrderReq.orderID} order not exists")
+            self.writeLog(f"cancellation failed: {cancelOrderReq.orderID} order not exists or finished")
 
     #----------------------------------------------------------------------
     def close(self):
@@ -150,10 +159,15 @@ class SimGateway(VtGateway):
         pass
     def setQryEnabled(self, qryEnabled):
         pass
+    def queryInfo(self):
+        self.processAccount()
+        self.processPos()
+        self.processOrder()
+        self.getBar()
         
     def initQuery(self, freq = 60):
         """初始化连续查询"""
-        self.qryFunctionList = [self.getBar]
+        self.qryFunctionList = [self.queryInfo]
         self.qryCount = 0           # 查询触发倒计时
         self.qryTrigger = freq      # 查询触发点
         self.qryNextFunction = 0    # 上次运行的查询函数索引
@@ -206,8 +220,8 @@ class SimGateway(VtGateway):
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = f"{str.upper(maincontract)}88:CTP"
 
-            if query_symbol in self.dbClient.collection_names():
-                collection = self.dbClient[query_symbol]
+            if query_symbol in self.dbClient[self.dbName].collection_names():
+                collection = self.dbClient[self.dbName][query_symbol]
 
                 if since:
                     since = datetime.strptime(str(since),"%Y%m%d")
@@ -237,13 +251,13 @@ class SimGateway(VtGateway):
 
     ###########################################
     ## SIM module
-    def makeOrder(self, oid, data):
+    def makeOrder(self, orderid, data):
         order = VtOrderData()
         order.gatewayName = self.gatewayName
         order.symbol = data['symbol']
         order.exchange = data['exchange']
         order.vtSymbol = VN_SEPARATOR.join([order.symbol, order.gatewayName])
-        order.orderID = oid
+        order.orderID = orderid
         order.vtOrderID = VN_SEPARATOR.join([self.gatewayName, order.orderID])
         order.direction = data['direction']
         order.offset = data['offset']
@@ -254,17 +268,20 @@ class SimGateway(VtGateway):
         order.orderDatetime = datetime.now()
         order.orderTime = order.orderDatetime.strftime("%Y%m%d %H:%M:%S")
         order.byStrategy = data["byStrategy"]
-        self.pendingOrder.update({oid : order})
+        self.pendingOrder.update({orderid : order})
+        self.onOrder(order)
         return order
 
     def rejectOrder(self, orderid, msg):
-        if self.pendingOrder.pop(orderid, None):
+        order = self.pendingOrder.pop(orderid, None)
+        if order:
             order.status = STATUS_REJECTED
-            order.rejectInfo = msg
+            order.rejectedInfo = msg
             self.onOrder(order)
 
     def deal(self, price, orderid):
-        if self.pendingOrder.pop(orderid, None):
+        order = self.pendingOrder.pop(orderid, None)
+        if order:
             order.price_avg = price
             order.status = STATUS_ALLTRADED
             self.onOrder(order)
@@ -287,44 +304,70 @@ class SimGateway(VtGateway):
             
             self.onTrade(trade)
 
-            p = self.positions.get(order.byStrategy, {})
-            pos = p.get(order.symbol, 0)
-            # price, pos = p.get(order.symbol, [0,0])
-            if order.offset == OFFSET_OPEN:
-                if order.direction == DIRECTION_LONG:
-                    # p_new = (price*pos + trade.price*order.totalVolume) / (pos+order.totalVolume)
-                    pos += order.totalVolume
-                else:
-                    # p_new = (price*pos - trade.price*order.totalVolume) / (pos-order.totalVolume)
-                    pos -= order.totalVolume
-            elif order.offset == OFFSET_CLOSE:
-                if order.direction == DIRECTION_LONG:
-                    # p_new = (price*pos - trade.price*order.totalVolume) / (pos-order.totalVolume)
-                    pos -= order.totalVolume
-                    # pnl = (price - trade.price) * order.totalVolume * self.contractMap[order.symbol]["multiple"]
-                else:
-                    # p_new = (price*pos + trade.price*order.totalVolume) / (pos+order.totalVolume)
-                    pos += order.totalVolume
-                    # pnl = (trade.price - price) * order.totalVolume * self.contractMap[order.symbol]["multiple"]
-                # balance, available = self.accountDict.get("balance",0), self.accountDict.get("available",0)
-                # self.accountDict.update({"balance":balance+pnl,"available":available+pnl})
-                # with open(f"{getTempPath('account.json')}","w") as f:
-                #     json.dump(self.accountDict, f, indent=4, ensure_ascii=False)
-            # self.positions.update({order.byStrategy:{order.symbol:[p_new, int(pos)]}})
-            self.positions.update({order.byStrategy:{order.symbol:int(pos)}})
+            pos_info = self.positions.get(order.symbol, {})
+            available, frozen = self.accountDict["available"], self.accountDict["frozen"]
+            margin_ratio, contract_multiple = self.contractMap[order.symbol]["margin_ratio"], self.contractMap[order.symbol]["contract_multiple"]
 
-            # data ={
-            #     "market": self.contractMap[order.symbol]["exchange"],
-            #     "symbol": order.symbol,
-            #     "volume": abs(pos)
-            # }
-            # self.send_TP(str(order.orderID), order.byStrategy, [data])
+            if order.direction == DIRECTION_LONG:
+                if order.offset == OFFSET_OPEN:
+                    long_px, long_vol = pos_info["long_price"], pos_info["long_vol"]
+                    p_new = (long_px * long_vol + price * order.totalVolume) / (long_vol + order.totalVolume)
+                    long_vol += order.totalVolume
+                    used_margin = margin_ratio *contract_multiple *order.price *order.totalVolume
+                    transaction_cost = margin_ratio *contract_multiple *price *order.totalVolume
+                    self.accountDict["frozen"] = frozen - used_margin
+                    self.accountDict["available"] = available + used_margin - transaction_cost
+                    self.positions[order.symbol]["long_price"] = p_new
+                    self.positions[order.symbol]["long_vol"] = long_vol
+
+                elif order.offset in [OFFSET_CLOSE, OFFSET_CLOSETODAY, OFFSET_CLOSEYESTERDAY]:
+                    short_px, short_vol = pos_info["short_price"], pos_info["short_vol"]
+                    diff = int(short_vol - order.totalVolume)
+                    if diff == 0:
+                        p_new = 0
+                    else:
+                        p_new = (short_px * short_vol - price * order.totalVolume) / diff
+                    short_vol -= order.totalVolume
+                    # pnl = (price - short_px) * order.totalVolume * contract_multiple
+                    contract_value = price *order.totalVolume *contract_multiple *margin_ratio
+                    self.accountDict["available"] = available + contract_value
+                    self.positions[order.symbol]["short_frozen"] -= order.totalVolume
+                    self.positions[order.symbol]["short_price"] = p_new
+                    self.positions[order.symbol]["short_vol"] = short_vol
+
+            elif order.direction == DIRECTION_SHORT:
+                if order.offset == OFFSET_OPEN:
+                    short_px, short_vol = pos_info["short_price"], pos_info["short_vol"]
+                    p_new = (short_px * short_vol + price * order.totalVolume) / (short_vol + order.totalVolume)
+                    short_vol += order.totalVolume
+                    used_margin = margin_ratio *contract_multiple *order.price *order.totalVolume
+                    transaction_cost = margin_ratio *contract_multiple *price *order.totalVolume
+                    self.accountDict["frozen"] = frozen - used_margin
+                    self.accountDict["available"] = available + used_margin - transaction_cost
+                    self.positions[order.symbol]["short_price"] = p_new
+                    self.positions[order.symbol]["short_vol"] = short_vol
+
+                elif order.offset in [OFFSET_CLOSE, OFFSET_CLOSETODAY, OFFSET_CLOSEYESTERDAY]:
+                    long_px, long_vol = pos_info["long_price"], pos_info["long_vol"]
+                    diff = int(long_vol - order.totalVolume)
+                    if diff == 0:
+                        p_new = 0
+                    else:
+                        p_new = (long_px * long_vol - price * order.totalVolume) / diff
+                    long_vol -= order.totalVolume
+                    # pnl = (long_px - price) * order.totalVolume * contract_multiple
+                    contract_value = price *order.totalVolume *contract_multiple *margin_ratio
+                    self.accountDict["available"] = available + contract_value
+                    self.positions[order.symbol]["long_frozen"] -= order.totalVolume
+                    self.positions[order.symbol]["long_price"] = p_new
+                    self.positions[order.symbol]["long_vol"] = long_vol
 
     def getBar(self):
-        for symbol, last_bar_datetime in self.subscribe_symbol.items():
+        for symbol, last_bar in self.subscribe_symbol.items():
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = f"{str.upper(maincontract)}88:CTP"
-            res = list(self.dbClient[query_symbol].find({"datetime":{"$gt":datetime(2019,8,6,14,55)}}))
+            last_bar.datetime = datetime(2019,8,7,14,58)
+            res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime}}))
             for data in res:
                 bar = VtBarData()
                 bar.open = data["open"]
@@ -338,56 +381,107 @@ class SimGateway(VtGateway):
                 bar.vtSymbol = f"{symbol}:SIM"
                 bar.datetime = data["datetime"]
                 self.onBar(bar)
-                self.processOrder(bar)
             if res:
-                self.subscribe_symbol[symbol] = bar.datetime
-        self.processPos()
+                self.subscribe_symbol[symbol] = bar
 
-    def processOrder(self, bar):
+    def processOrder(self):
         for orderid, order in list(self.pendingOrder.items()):
-            # if order.offset == OFFSET_OPEN:
-            #     available = self.accountDict.get("available", 0)
-            #     if order.direction == DIRECTION_LONG:
-            #         used_margin = self.contractMap[order.symbol]["long_marginratio"] *order.price *order.volume
-            #     elif order.direction == DIRECTION_SHORT:
-            #         used_margin = self.contractMap[order.symbol]["short_marginratio"] *order.price *order.volume
+            bar = self.subscribe_symbol[order.symbol]
+            if bar.low:
+                if order.offset == OFFSET_OPEN:
+                    available, frozen = self.accountDict["available"], self.accountDict["frozen"]
+                    margin_ratio, contract_multiple = self.contractMap[order.symbol]["margin_ratio"], self.contractMap[order.symbol]["contract_multiple"]
+                    used_margin = margin_ratio *contract_multiple *order.price *order.totalVolume
 
-            #     if available < used_margin:
-            #         self.rejectOrder(orderid, "insufficient fund")
-            #     else:
-            #         self.accountDict.update({"available":available - used_margin})
-            #         with open(f"{getTempPath('account.json')}","w") as f:
-            #             json.dump(self.accountDict, f, indent=4, ensure_ascii=False)
-            #         f.close()
+                    if available < used_margin:
+                        self.rejectOrder(orderid, "insufficient fund")
+                    else:
+                        self.accountDict["available"] = available - used_margin
+                        self.accountDict["frozen"] = frozen + used_margin
 
-            if order.direction == DIRECTION_LONG:
-                if order.price > bar.low:
-                    self.deal(bar.low, orderid)
+                elif order.offset in [OFFSET_CLOSE, OFFSET_CLOSETODAY, OFFSET_CLOSEYESTERDAY]:
+                    if order.direction == DIRECTION_SHORT:
+                        long_frozen = self.positions[order.symbol]["long_frozen"]
+                        long_available = int(self.positions[order.symbol]["long_vol"] - long_frozen)
+                        if order.totalVolume > long_available:
+                            self.rejectOrder(orderid, "insufficient position for close long")
+                        else:
+                            self.positions[order.symbol]["long_frozen"] = long_frozen + order.totalVolume
 
-            if order.direction == DIRECTION_SHORT:
-                if order.price < bar.high:
-                    self.deal(bar.high, orderid)
-                    
+                    if order.direction == DIRECTION_LONG:
+                        short_frozen = self.positions[order.symbol]["short_frozen"]
+                        short_available = int(self.positions[order.symbol]["short_vol"] - short_frozen)
+                        if order.totalVolume > short_available:
+                            self.rejectOrder(orderid, "insufficient position for close short")
+                        else:
+                            self.positions[order.symbol]["short_frozen"] = short_frozen + order.totalVolume
+
+                if order.direction == DIRECTION_LONG:
+                    if order.price > bar.low:
+                        self.deal(bar.low, orderid)
+
+                if order.direction == DIRECTION_SHORT:
+                    if order.price < bar.high:
+                        self.deal(bar.high, orderid)
+        self.dbClient["HENGQIN"]["strategy"].update_one({"strategyId": self.strategyId}, {"$set":{"account":self.accountDict,"positions":self.positions}}, upsert=True)
+
+    def processAccount(self):
+        account = VtAccountData()
+        account.gatewayName = "SIM"
+        account.accountID = self.strategyId
+        account.vtAccountID = VN_SEPARATOR.join([account.gatewayName, account.accountID])
+        account.available = self.accountDict["available"]
+        account.margin = self.accountDict["frozen"]
+        account.balance = account.available + account.margin
+        self.onAccount(account)
+
     def processPos(self):
-        print("processPos:", datetime.now(), self.positions)
-        for strategyId, pos in self.positions.items():
-            data = []
-            for symbol, volume in pos.items():
+        data = []
+        for symbol, pos in self.positions.items():
+            longPosition = VtPositionData()
+            longPosition.gatewayName = self.gatewayName
+            longPosition.symbol = symbol
+            longPosition.exchange = 'SIM'
+            longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
+
+            longPosition.direction = DIRECTION_LONG
+            longPosition.vtPositionName = VN_SEPARATOR.join([longPosition.vtSymbol, longPosition.direction])
+            longPosition.position = int(pos['long_vol'])
+            longPosition.frozen = int(pos['long_frozen'])
+            longPosition.available = longPosition.position - longPosition.frozen
+            longPosition.price = pos['long_price']
+
+            shortPosition = copy(longPosition)
+            shortPosition.direction = DIRECTION_SHORT
+            shortPosition.vtPositionName = VN_SEPARATOR.join([shortPosition.vtSymbol, shortPosition.direction])
+            shortPosition.position = int(pos['short_vol'])
+            shortPosition.frozen = int(pos['short_frozen'])
+            shortPosition.available = longPosition.position - longPosition.frozen
+            shortPosition.price = pos['short_price']
+            
+            self.onPosition(longPosition)
+            self.onPosition(shortPosition)
+
+            if pos["long_vol"]:
                 d = {
                         "market": self.contractMap[symbol]["exchange"],
                         "symbol": symbol,
-                        "volume": abs(volume)
+                        "volume": pos["long_vol"]
                     }
                 data.append(d)
-                    
+            if pos["short_vol"]:
+                d = {
+                        "market": self.contractMap[symbol]["exchange"],
+                        "symbol": symbol,
+                        "volume": pos["short_vol"] *(-1)
+                    }
+                data.append(d)
+        if data:
             self.tpRef += 1
-            self.send_TP(str(self.tpRef), strategyId, data)
-        with open(getTempPath('positions.json'),'w') as f:
-            json.dump(self.positions, f, indent=4, ensure_ascii=False)
-        f.close()
-
+            self.send_TP(str(self.tpRef), data)
+        
     ####### HENGQIN MODULES
-    def send_TP(self, ref, strategyId, result):
+    def send_TP(self, ref, result):
         print("self.send_TP_Time: ", self.send_TP_Time)
         if not self.send_TP_Time:
             self.send_TP_Time = datetime.now()
@@ -399,7 +493,7 @@ class SimGateway(VtGateway):
             data = {
             "msgType": "PlaceTargetPosition",
             "msgBody" : {
-                "strategyId": strategyId,
+                "strategyId": self.strategyId,
                 "token":"ae3e0db3-95b8-4bea-ad7c-64c89eea583f",
                 "targetPositionList" : result,
                 "orderId": ref,
@@ -407,7 +501,7 @@ class SimGateway(VtGateway):
                 }
             }
             r = requests.post("http://218.17.157.200:18057/api", headers = headers, data = data)
-            print(data,"\n",r.json())
+            print(data,"\n",r.content)
             """
             返回值示例
             {
