@@ -366,7 +366,6 @@ class SimGateway(VtGateway):
         for symbol, last_bar in self.subscribe_symbol.items():
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = f"{str.upper(maincontract)}88:CTP"
-            last_bar.datetime = datetime(2019,8,7,14,58)
             res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime}}))
             for data in res:
                 bar = VtBarData()
