@@ -12,23 +12,6 @@ import re
 import pymongo
 from vnpy.trader.vtGlobal import globalSetting
 
-# 交易所类型映射
-exchangeMap = {}
-exchangeMap[EXCHANGE_CFFEX] = 'CFFEX'
-exchangeMap[EXCHANGE_SHFE] = 'SHFE'
-exchangeMap[EXCHANGE_CZCE] = 'CZCE'
-exchangeMap[EXCHANGE_DCE] = 'DCE'
-exchangeMap[EXCHANGE_SSE] = 'SSE'
-exchangeMap[EXCHANGE_INE] = 'INE'
-exchangeMap[EXCHANGE_UNKNOWN] = ''
-exchangeMapReverse = {v:k for k,v in list(exchangeMap.items())}
-
-# 全局字典, key:symbol, value:exchange
-symbolExchangeDict = {}
-
-# 夜盘交易时间段分隔判断
-NIGHT_TRADING = datetime(1900, 1, 1, 20).time()
-
 ########################################################################
 class SimGateway(VtGateway):
     """模拟接口"""
@@ -39,7 +22,10 @@ class SimGateway(VtGateway):
         """Constructor"""
         super(SimGateway, self).__init__(eventEngine, gatewayName)
 
-        self.orderRef = EMPTY_INT           # 订单编号
+        today = datetime.today().strftime("%Y%m%d")
+        self.orderRef = int(today) *100000           # 订单编号
+        self.tpRef = int(today) * 10000
+        self.send_TP_Time = None
         self.subscribe_symbol = {}
 
         self.trade_days = None
@@ -55,9 +41,6 @@ class SimGateway(VtGateway):
         self.positions = {}
         self.accountDict = {}
         self.contractMap = {}
-
-        self.tpRef = int(datetime.today().strftime("%Y%m%d")) * 10000
-        self.send_TP_Time = None
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -99,13 +82,11 @@ class SimGateway(VtGateway):
         self.subscribe_symbol.update({bar.symbol: bar})
 
     def initContract(self):
-        with open(f"{getTempPath('contractMap.json')}","r") as f:
-            self.contractMap = json.load(f)
-        f.close()
-        for instrument_id, info in self.contractMap.items():
+        res = self.dbClient["HENGQIN"]["contract"].find({})
+        for info in res:
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
-            contract.symbol = str.upper(instrument_id)
+            contract.symbol = str.upper(info["symbol"])
             contract.exchange = info["exchange"]
             contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])          
             contract.name = contract.symbol
@@ -113,7 +94,9 @@ class SimGateway(VtGateway):
             contract.minVolume = 1
             contract.priceTick = info["price_tick"]
             contract.size = info["contract_multiple"]
+            info.pop("_id", None)
             self.onContract(contract)
+            self.contractMap.update({info["symbol"]:info})
 
     def initPosition(self, vtSymbol):
         symbol, gw = vtSymbol.split(VN_SEPARATOR)
@@ -144,7 +127,8 @@ class SimGateway(VtGateway):
         order = self.pendingOrder.pop(cancelOrderReq.orderID,None)
         if order:
             order.status = STATUS_CANCELLED
-            self.onOrder(order)
+            order.deliverTime = datetime.now()
+            self.store_order(order)
             if order.offset == OFFSET_OPEN:
                 margin_ratio, contract_multiple = self.contractMap[order.symbol]["margin_ratio"], self.contractMap[order.symbol]["contract_multiple"]
                 used_margin = margin_ratio *contract_multiple *order.price *order.totalVolume
@@ -164,6 +148,7 @@ class SimGateway(VtGateway):
         self.processPos()
         self.processOrder()
         self.getBar()
+        self.maintain_db()
         
     def initQuery(self, freq = 60):
         """初始化连续查询"""
@@ -265,11 +250,12 @@ class SimGateway(VtGateway):
         order.price = data['price']
         order.totalVolume = data['volume']
         order.tradedVolume = 0
+        order.deliverTime = datetime.now()
         order.orderDatetime = datetime.now()
         order.orderTime = order.orderDatetime.strftime("%Y%m%d %H:%M:%S")
         order.byStrategy = data["byStrategy"]
         self.pendingOrder.update({orderid : order})
-        self.onOrder(order)
+        self.store_order(order)
         return order
 
     def rejectOrder(self, orderid, msg):
@@ -277,14 +263,16 @@ class SimGateway(VtGateway):
         if order:
             order.status = STATUS_REJECTED
             order.rejectedInfo = msg
-            self.onOrder(order)
+            order.deliverTime = datetime.now()
+            self.store_order(order)
 
     def deal(self, price, orderid):
         order = self.pendingOrder.pop(orderid, None)
         if order:
             order.price_avg = price
             order.status = STATUS_ALLTRADED
-            self.onOrder(order)
+            order.deliverTime = datetime.now()
+            self.store_order(order)
 
             trade = VtTradeData()
             trade.gatewayName = self.gatewayName
@@ -366,6 +354,7 @@ class SimGateway(VtGateway):
         for symbol, last_bar in self.subscribe_symbol.items():
             maincontract = re.split(r'(\d)', symbol)[0]
             query_symbol = f"{str.upper(maincontract)}88:CTP"
+            # last_bar.datetime = datetime(2019,8,8,14,58)
             res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime}}))
             for data in res:
                 bar = VtBarData()
@@ -382,6 +371,18 @@ class SimGateway(VtGateway):
                 self.onBar(bar)
             if res:
                 self.subscribe_symbol[symbol] = bar
+    def maintain_db(self):
+        flt = {"strategyId": self.strategyId}
+        content = {"account": self.accountDict, "positions": self.positions}
+        self.dbClient["HENGQIN"]["strategy"].update_one(flt, {"$set": content}, upsert = True)
+        balance = self.accountDict["available"] + self.accountDict["frozen"]
+        self.dbClient["HENGQIN"]["account"].insert_one({"datetime":datetime.now(), "strategyId":self.strategyId, "balance":balance})
+
+    def store_order(self, order):
+        self.onOrder(order)
+        od = copy(order.__dict__)
+        od.pop("_id",None)
+        self.dbClient["HENGQIN"]["orders"].insert(od)
 
     def processOrder(self):
         for orderid, order in list(self.pendingOrder.items()):
@@ -422,8 +423,7 @@ class SimGateway(VtGateway):
                 if order.direction == DIRECTION_SHORT:
                     if order.price < bar.high:
                         self.deal(bar.high, orderid)
-        self.dbClient["HENGQIN"]["strategy"].update_one({"strategyId": self.strategyId}, {"$set":{"account":self.accountDict,"positions":self.positions}}, upsert=True)
-
+        
     def processAccount(self):
         account = VtAccountData()
         account.gatewayName = "SIM"
@@ -438,7 +438,7 @@ class SimGateway(VtGateway):
         data = []
         for symbol, pos in self.positions.items():
             longPosition = VtPositionData()
-            longPosition.gatewayName = self.gatewayName
+            longPosition.gatewayName = 'SIM'
             longPosition.symbol = symbol
             longPosition.exchange = 'SIM'
             longPosition.vtSymbol = VN_SEPARATOR.join([longPosition.symbol, longPosition.gatewayName])
