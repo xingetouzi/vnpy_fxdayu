@@ -89,6 +89,7 @@ class BacktestingEngine(object):
         self.logActive = False  # 回测日志开关
         self.path = os.path.join(os.getcwd(), "Backtest_Log")  # 回测日志自定义路径
         self.logPath = ""
+        self.showFigure = True
         self.strategy_setting = {}  # 缓存策略配置
 
         self.dataStartDate = None  # 回测数据开始日期，datetime对象
@@ -258,6 +259,10 @@ class BacktestingEngine(object):
         if path:
             self.path = path
         self.logActive = active
+
+    def setFigure(self, active = True):
+        """设置是否显示绩效图"""
+        self.showFigure = active
 
     # -------------------------------------------------
     def setCachePath(self, path):
@@ -1154,6 +1159,12 @@ class BacktestingEngine(object):
         d['tradeTimeList'] = tradeTimeList
         d['resultList'] = resultList
 
+        self.strategy_setting.update(d)
+        filename = os.path.join(self.logPath, "BacktestingResult.json")
+        with open(filename, 'w') as f:
+            json.dump(self.strategy_setting, f, indent=4)
+        f.close()
+
         return d
 
     # ----------------------------------------------------------------------
@@ -1202,7 +1213,8 @@ class BacktestingEngine(object):
             plt.savefig(filename)
             self.output(u'策略回测统计图已保存')
 
-        plt.show()
+        if self.showFigure:
+            plt.show()
 
     # ----------------------------------------------------------------------
     def clearBacktestingResult(self):
@@ -1659,13 +1671,14 @@ class BacktestingEngine(object):
             filename = os.path.join(self.logPath, "BacktestingResult.json")
             with open(filename, 'w') as f:
                 json.dump(self.strategy_setting, f, indent=4)
-            self.output(u'BacktestingResult saved')
+            f.close()
 
             filename = os.path.join(self.logPath, u"每日净值.csv")
             df.to_csv(filename, sep=',')
             self.output(u'每日净值已保存')
 
-        plt.show()
+        if self.showFigure:
+            plt.show()
 
 
 ########################################################################
