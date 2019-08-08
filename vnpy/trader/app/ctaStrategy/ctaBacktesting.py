@@ -1160,6 +1160,13 @@ class BacktestingEngine(object):
         d['resultList'] = resultList
 
         self.strategy_setting.update(d)
+        self.strategy_setting.pop("timeList",None)
+        self.strategy_setting.pop("pnlList",None)
+        self.strategy_setting.pop("capitalList",None)
+        self.strategy_setting.pop("drawdownList",None)
+        self.strategy_setting.pop("posList",None)
+        self.strategy_setting.pop("tradeTimeList",None)
+        self.strategy_setting.pop("resultList",None)
         filename = os.path.join(self.logPath, "BacktestingResult.json")
         with open(filename, 'w') as f:
             json.dump(self.strategy_setting, f, indent=4)
