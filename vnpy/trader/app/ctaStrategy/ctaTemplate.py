@@ -60,8 +60,6 @@ class CtaTemplate(object):
     def __init__(self, ctaEngine, setting):
         """Constructor"""
         self.ctaEngine = ctaEngine
-        self.posDict = {}
-        self.eveningDict = {}
         self.accountDict = {}
         # 设置策略的参数
         if setting:
@@ -69,8 +67,10 @@ class CtaTemplate(object):
             for key in self.paramList:
                 if key in setting:
                     d[key] = setting[key]
+        self._setting = setting
         self.posDict = {}
         self.eveningDict = {}
+        self.accountDict = {}
         
     # ----------------------------------------------------------------------
     def onInit(self):
