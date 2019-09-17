@@ -398,10 +398,12 @@ class OrderTemplate(CtaTemplate):
     ENABLE_STATUS_NOTICE = False
     STATUS_NOTIFY_PERIOD = 3600
     STATUS_NOTIFY_SHIFT = 0
+    CUSTOM_ATTRS = set()
 
 
     def __init__(self, ctaEngine, setting):
         super(OrderTemplate, self).__init__(ctaEngine, setting)
+        self._setting = setting
         self._ORDERTYPE_LONG = {ctaBase.CTAORDER_BUY, ctaBase.CTAORDER_COVER}
         self._ORDERTYPE_SHORT = {ctaBase.CTAORDER_SELL, ctaBase.CTAORDER_SHORT}
         self._orderPacks = {}
@@ -437,6 +439,29 @@ class OrderTemplate(CtaTemplate):
 
         self._symbol_price_limit = {}
         self.initPriceLimitRanges()
+
+        self._recovery_attrs = {
+            "_setting",
+            "_orderPacks",
+            "_stopOrders",
+            "_autoExitInfo",
+            "_trades",
+            "_currentTime",
+            "_tickInstance",
+            "_barInstance",
+            "_fakeOrderCount",
+            "_infoPool",
+            "_notifyPool",
+            "_ComposoryClosePool",
+            "_symbol_price_limit"
+        }
+        self.set_recorvery(*setting.keys())
+        self.set_recorvery(*self._setting.get("recovery_attrs", []))
+        self.set_recorvery(*self.CUSTOM_ATTRS)
+         
+    def set_recorvery(self, *attrs):
+        for attr in attrs:
+            self._recovery_attrs.add()
     
     def initPriceLimitRanges(self):
         compiler = re.compile("|".join(self._PRICE_LIMIT_RANGE))
