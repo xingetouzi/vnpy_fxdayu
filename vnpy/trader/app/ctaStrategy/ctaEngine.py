@@ -601,7 +601,7 @@ class CtaEngine(object):
 
         except KeyError as e:
             # self.writeCtaLog(u'载入策略出错：%s' %e)
-            self.writeLog(u'载入策略出错：%s' % traceback.format_exc(), logging.error)
+            self.writeLog(u'载入策略出错：%s' % traceback.format_exc(), logging.ERROR)
             return
 
         # 获取策略类
@@ -754,6 +754,7 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadSetting(self):
         """读取策略配置"""
+        print("settingfilePath", self.settingfilePath)
         with open(self.settingfilePath) as f:
             l = json.load(f)
 

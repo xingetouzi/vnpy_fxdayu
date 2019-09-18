@@ -461,7 +461,7 @@ class OrderTemplate(CtaTemplate):
          
     def set_recorvery(self, *attrs):
         for attr in attrs:
-            self._recovery_attrs.add()
+            self._recovery_attrs.add(attr)
     
     def initPriceLimitRanges(self):
         compiler = re.compile("|".join(self._PRICE_LIMIT_RANGE))
