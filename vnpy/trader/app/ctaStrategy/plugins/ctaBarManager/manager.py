@@ -419,7 +419,7 @@ class BarManager(object):
     
     def __init__(self, engine, mode=None, size=None):
         self._engine = proxy(engine)
-        self._mode = mode or self.MODE.ON_TICK
+        self._mode = mode or self.MODE.ON_BAR
         self._logger = LoggerMixin()
         self._size = size
         self.init()

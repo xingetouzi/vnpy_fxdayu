@@ -118,7 +118,8 @@ class CtaEngineWithPlugins(CtaEngine, LoggerMixin):
                 func(event)
 
     def processBarEvent(self, event):
-        print(event,"------------")
+        print("processBarEvent", event)
+        self._plugin["BarManagerPlugin"].postBarEvent(event)
         for plugin, func, _ in self._preBarEventHandlers:
             if plugin.is_enabled():
                 func(event)

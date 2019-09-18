@@ -91,8 +91,7 @@ class SimGateway(VtGateway):
         bar.symbol = subscribeReq.symbol
         bar.exchange = "SIM"
         bar.vtSymbol = f"{bar.symbol}:SIM"
-        bar.datetime = datetime.now() - timedelta(minutes = 1)  - timedelta(hours=1, minutes=30)
-        # bar.datetime = datetime.now() - timedelta(minutes = 1)
+        bar.datetime = datetime.now() - timedelta(minutes = 1)
         self.subscribe_symbol.update({bar.symbol: bar})
 
     def initContract(self):
@@ -161,7 +160,6 @@ class SimGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         pass
     def queryInfo(self):
-        print("queryInfo")
         self.processAccount()
         self.processPos()
         self.processOrder()
@@ -368,8 +366,7 @@ class SimGateway(VtGateway):
                     self.positions[order.symbol]["long_vol"] = long_vol
 
     def getBar(self):
-        # now = datetime.now()
-        now = datetime.now() - timedelta(hours=1)
+        now = datetime.now()
         for symbol, last_bar in self.subscribe_symbol.items():
             query_symbol = f"{symbol}88:CTP"
             res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime, "$lte": now}}))
