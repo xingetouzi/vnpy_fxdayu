@@ -754,7 +754,6 @@ class CtaEngine(object):
     #----------------------------------------------------------------------
     def loadSetting(self):
         """读取策略配置"""
-        print("settingfilePath", self.settingfilePath)
         with open(self.settingfilePath) as f:
             l = json.load(f)
 

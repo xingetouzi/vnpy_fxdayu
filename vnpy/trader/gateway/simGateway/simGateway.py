@@ -11,6 +11,8 @@ from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES, VN_SEPARATOR, PRODUCT_FU
 import re
 import pymongo
 from vnpy.trader.vtGlobal import globalSetting
+import os
+
 
 ########################################################################
 class SimGateway(VtGateway):
@@ -35,27 +37,38 @@ class SimGateway(VtGateway):
         self.filePath = getJsonPath(self.fileName, __file__)
         self.dbClient = None
         self.dbName = ""
+        self.instance_db = ""
+        self.dominants_col = ""
         self.strategyId = ""
 
         self.pendingOrder = {}
         self.positions = {}
         self.accountDict = {}
         self.contractMap = {}
+        self.all_dominants = []
 
     #----------------------------------------------------------------------
     def connect(self):
         """连接"""
-        try:
-            f = open(self.filePath, 'r', encoding="utf-8")
-        except IOError:
-            self.writeLog("LOADING SETTING ERROR")
-            return
-        setting = json.load(f)
-        self.dbClient = pymongo.MongoClient(setting.get('mongoDbURI', ""))
-        self.dbName = setting.get('mongoDbName', "")
-        self.strategyId = setting.get('strategyId', "")
-        capital = setting.get('capital', 10000000)
-        freq = setting.get('setQryFreq', 59)
+        # try:
+        #     f = open(self.filePath, 'r', encoding="utf-8")
+        # except IOError:
+        #     self.writeLog("LOADING SETTING ERROR")
+        #     return
+        # setting = json.load(f)
+        # self.dbClient = pymongo.MongoClient(setting.get('mongoDbURI', ""))
+        # self.dbName = setting.get('mongoDbName', "")
+        # self.strategyId = setting.get('strategyId', "")
+        # capital = setting.get('capital', 10000000)
+        # freq = setting.get('setQryFreq', 59)
+        self.dbClient = pymongo.MongoClient(os.environ.get('MONGODB_URI', "localhost"))
+        self.instance_db = os.environ.get("MONGODB_INSTANCE_DB", "HENGQIN")
+        self.dbName = os.environ.get('MONGODB_BAR_DB', "VnTrader_1Min_Db_contest")
+        self.dominants_col = os.environ.get("MONGODB_DOMINANTS_COL", "dominants")
+        self.strategyId = os.environ.get("STRATEGY_ID", "")
+        self.all_dominants = os.environ.get("DOMINANTS", "RB").split(",")
+        capital = int(os.environ.get("INIT_CAPITAL", 10000000))
+        freq = int(os.environ.get('QRY_FREQ', 59))
 
         self.initContract()
         self.initAccount(capital)
@@ -78,15 +91,18 @@ class SimGateway(VtGateway):
         bar.symbol = subscribeReq.symbol
         bar.exchange = "SIM"
         bar.vtSymbol = f"{bar.symbol}:SIM"
-        bar.datetime = datetime.now() - timedelta(minutes = 1)
+        bar.datetime = datetime.now() - timedelta(minutes = 1)  - timedelta(hours=1, minutes=30)
+        # bar.datetime = datetime.now() - timedelta(minutes = 1)
         self.subscribe_symbol.update({bar.symbol: bar})
 
     def initContract(self):
-        res = self.dbClient["HENGQIN"]["contract"].find({})
-        for info in res:
+        for dominant in self.dbClient[self.dbName][self.dominants_col].find():
+            info = self.dbClient[self.instance_db]["contract"].find_one({"product": dominant["symbol"]}, sort=[("symbol", -1)])
+            
+            info["symbol"] = dominant["contract"]
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
-            contract.symbol = str.upper(info["symbol"])
+            contract.symbol = str.upper(info["product"])
             contract.exchange = info["exchange"]
             contract.vtSymbol = VN_SEPARATOR.join([contract.symbol, contract.gatewayName])          
             contract.name = contract.symbol
@@ -96,7 +112,8 @@ class SimGateway(VtGateway):
             contract.size = info["contract_multiple"]
             info.pop("_id", None)
             self.onContract(contract)
-            self.contractMap.update({info["symbol"]:info})
+            self.contractMap.update({info["product"]: info})
+
 
     def initPosition(self, vtSymbol):
         symbol, gw = vtSymbol.split(VN_SEPARATOR)
@@ -104,13 +121,13 @@ class SimGateway(VtGateway):
             self.positions.update({symbol:{"long_price":0, "long_vol":0, "long_frozen":0, "short_price":0, "short_vol":0, "short_frozen":0}})
 
     def initAccount(self, capital):
-        res = self.dbClient["HENGQIN"]["strategy"].find_one({"strategyId": self.strategyId})
+        res = self.dbClient[self.instance_db]["strategy"].find_one({"strategyId": self.strategyId})
         if res:
             self.accountDict = res.get("account", {"available": capital, "frozen": 0})
             self.positions = res.get("positions", {})
         else:
             self.accountDict = {"available": capital, "frozen": 0}
-            self.dbClient["HENGQIN"]["strategy"].insert_one({"strategyId": self.strategyId})
+            self.dbClient[self.instance_db]["strategy"].insert_one({"strategyId": self.strategyId})
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -144,6 +161,7 @@ class SimGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         pass
     def queryInfo(self):
+        print("queryInfo")
         self.processAccount()
         self.processPos()
         self.processOrder()
@@ -199,7 +217,6 @@ class SimGateway(VtGateway):
         yield time
 
     def loadHistoryBar(self, vtSymbol, type_, size=None, since=None):
-        print("load hist type_ size", type_, size)
         if self.dbClient:
             symbol = vtSymbol.split(':')[0]
             maincontract = re.split(r'(\d)', symbol)[0]
@@ -351,11 +368,11 @@ class SimGateway(VtGateway):
                     self.positions[order.symbol]["long_vol"] = long_vol
 
     def getBar(self):
+        # now = datetime.now()
+        now = datetime.now() - timedelta(hours=1)
         for symbol, last_bar in self.subscribe_symbol.items():
-            maincontract = re.split(r'(\d)', symbol)[0]
-            query_symbol = f"{str.upper(maincontract)}88:CTP"
-            # last_bar.datetime = datetime(2019,8,8,14,58)
-            res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime}}))
+            query_symbol = f"{symbol}88:CTP"
+            res = list(self.dbClient[self.dbName][query_symbol].find({"datetime": {"$gt": last_bar.datetime, "$lte": now}}))
             for data in res:
                 bar = VtBarData()
                 bar.open = data["open"]
@@ -464,14 +481,14 @@ class SimGateway(VtGateway):
             if pos["long_vol"]:
                 d = {
                         "market": self.contractMap[symbol]["exchange"],
-                        "symbol": symbol,
+                        "symbol": self.contractMap[symbol]["symbol"],
                         "volume": pos["long_vol"]
                     }
                 data.append(d)
             if pos["short_vol"]:
                 d = {
                         "market": self.contractMap[symbol]["exchange"],
-                        "symbol": symbol,
+                        "symbol": self.contractMap[symbol]["symbol"],
                         "volume": pos["short_vol"] *(-1)
                     }
                 data.append(d)
