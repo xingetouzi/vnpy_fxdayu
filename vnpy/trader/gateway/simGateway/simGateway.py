@@ -46,6 +46,11 @@ class SimGateway(VtGateway):
         self.accountDict = {}
         self.contractMap = {}
         self.all_dominants = []
+        self.account_col = "account"
+        self.orders_col = "orders"
+        self.contract_col = "contract"
+        self.strategy_col = "strategy"
+
 
     #----------------------------------------------------------------------
     def connect(self):
@@ -91,7 +96,8 @@ class SimGateway(VtGateway):
         bar.symbol = subscribeReq.symbol
         bar.exchange = "SIM"
         bar.vtSymbol = f"{bar.symbol}:SIM"
-        bar.datetime = datetime.now() - timedelta(minutes = 1)
+        bar.datetime = datetime.now() - timedelta(minutes = 1) 
+
         self.subscribe_symbol.update({bar.symbol: bar})
 
     def initContract(self):
@@ -120,13 +126,13 @@ class SimGateway(VtGateway):
             self.positions.update({symbol:{"long_price":0, "long_vol":0, "long_frozen":0, "short_price":0, "short_vol":0, "short_frozen":0}})
 
     def initAccount(self, capital):
-        res = self.dbClient[self.instance_db]["strategy"].find_one({"strategyId": self.strategyId})
+        res = self.dbClient[self.instance_db][self.strategy_col].find_one({"strategyId": self.strategyId})
         if res:
             self.accountDict = res.get("account", {"available": capital, "frozen": 0})
             self.positions = res.get("positions", {})
         else:
             self.accountDict = {"available": capital, "frozen": 0}
-            self.dbClient[self.instance_db]["strategy"].insert_one({"strategyId": self.strategyId})
+            self.dbClient[self.instance_db][self.strategy_col].insert_one({"strategyId": self.strategyId})
 
     #----------------------------------------------------------------------
     def sendOrder(self, orderReq):
@@ -388,15 +394,15 @@ class SimGateway(VtGateway):
     def maintain_db(self):
         flt = {"strategyId": self.strategyId}
         content = {"account": self.accountDict, "positions": self.positions}
-        self.dbClient["HENGQIN"]["strategy"].update_one(flt, {"$set": content}, upsert = True)
+        self.dbClient["HENGQIN"][self.strategy_col].update_one(flt, {"$set": content}, upsert = True)
         balance = self.accountDict["available"] + self.accountDict["frozen"]
-        self.dbClient["HENGQIN"]["account"].insert_one({"datetime":datetime.now(), "strategyId":self.strategyId, "balance":balance})
+        self.dbClient["HENGQIN"][self.account_col].insert_one({"datetime":datetime.now(), "strategyId":self.strategyId, "balance":balance})
 
     def store_order(self, order):
         self.onOrder(order)
         od = copy(order.__dict__)
         od.pop("_id",None)
-        self.dbClient["HENGQIN"]["orders"].insert(od)
+        self.dbClient["HENGQIN"][self.orders_col].insert(od)
 
     def processOrder(self):
         for orderid, order in list(self.pendingOrder.items()):
@@ -491,7 +497,7 @@ class SimGateway(VtGateway):
                 data.append(d)
         if data:
             self.tpRef += 1
-            self.send_TP(str(self.tpRef), data)
+            # self.send_TP(str(self.tpRef), data)
         
     ####### HENGQIN MODULES
     def send_TP(self, ref, result):
