@@ -605,15 +605,19 @@ class CtaEngine(object):
             return
 
         # 获取策略类
-        strategyClass = STRATEGY_CLASS.get(className, None)
+        # strategyClass = STRATEGY_CLASS.get(className, None)
         
-        if not strategyClass:
-            STRATEGY_GET_CLASS = self.loadLocalStrategy()
-            strategyClass = STRATEGY_GET_CLASS.get(className, None)
-            if not strategyClass:
-                # self.writeCtaLog(u'找不到策略类：%s' %className)
-                self.writeLog(u'找不到策略类：%s' %className, logging.ERROR)
-                return
+        # if not strategyClass:
+        #     import 
+        #     STRATEGY_GET_CLASS = self.loadLocalStrategy()
+        #     strategyClass = STRATEGY_GET_CLASS.get(className, None)
+        #     if not strategyClass:
+        #         # self.writeCtaLog(u'找不到策略类：%s' %className)
+        #         self.writeLog(u'找不到策略类：%s' %className, logging.ERROR)
+        #         return
+        import importlib
+        module = importlib.import_module(name)
+        strategyClass = getattr(module, className)
 
         # 防止策略重名
         if name in self.strategyDict:

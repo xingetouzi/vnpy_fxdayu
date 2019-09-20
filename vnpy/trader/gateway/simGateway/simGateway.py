@@ -71,7 +71,7 @@ class SimGateway(VtGateway):
         self.dbName = os.environ.get('MONGODB_BAR_DB', "VnTrader_1Min_Db_contest")
         self.dominants_col = os.environ.get("MONGODB_DOMINANTS_COL", "dominants")
         self.strategyId = os.environ.get("STRATEGY_ID", "")
-        self.all_dominants = os.environ.get("DOMINANTS", "RB").split(",")
+        self.all_dominants = os.environ.get("DOMINANTS", "RB,CU,TA,IF,J,JD").split(",")
         capital = int(os.environ.get("INIT_CAPITAL", 10000000))
         freq = int(os.environ.get('QRY_FREQ', 59))
 
