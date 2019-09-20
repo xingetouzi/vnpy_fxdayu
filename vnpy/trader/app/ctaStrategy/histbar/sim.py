@@ -6,7 +6,7 @@ from vnpy.trader.app.ctaStrategy.histbar._base import BarReader, freq_minutes
 from vnpy.trader.app.ctaStrategy.histbar._test import test
 
 class SimBarReader(BarReader):
-    FREQUENCIES = [("1min", 1), ("5min", 5), ("15min", 15)]
+    FREQUENCIES = [("1min", 1)]
 
     # def transform_params(self, multipler, unit, size, start, end):
     #     if size:
