@@ -401,6 +401,7 @@ class SimGateway(VtGateway):
     def store_order(self, order):
         self.onOrder(order)
         od = copy(order.__dict__)
+        od["strategyId"] = self.strategyId
         od.pop("_id",None)
         self.dbClient["HENGQIN"][self.orders_col].insert(od)
 

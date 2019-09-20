@@ -459,23 +459,9 @@ class OrderTemplate(CtaTemplate):
         self.set_recorvery(*self._setting.get("recovery_attrs", []))
         self.set_recorvery(*self.CUSTOM_ATTRS)
         
-         
     def set_recorvery(self, *attrs):
         for attr in attrs:
             self._recovery_attrs.add(attr)
-    
-    # def dump_recovery(self):
-    #     attrs = {key: getattr(self, key) for key in self._recovery_attrs}
-    #     recovery.dump(self._recovery_db, attrs)
-
-    # def load_recovery(self):
-    #     attrs = recovery.load(self._recovery_db)
-    #     print("--------------------", "recovery", "--------------------")
-    #     print(attrs)
-    #     print("--------------------", "recovery", "--------------------")
-    #     for key, value in attrs.items():
-    #         setattr(self, key, value)
-        
 
     def initPriceLimitRanges(self):
         compiler = re.compile("|".join(self._PRICE_LIMIT_RANGE))
