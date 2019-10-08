@@ -641,7 +641,7 @@ class OkexfRestApi(RestClient):
             self.putOrderQueue(data, self.ORDER_INSTANCE)
 
     def onQueryMonoOrderFailed(self, data, request):
-        if request.response.status_code == 404:
+        if request.response.status_code == 404 or (request.response.status_code == 200 and not data):
             self.putOrderQueue({
                 "client_oid": request.extra,
                 "message": "Order not exists"
