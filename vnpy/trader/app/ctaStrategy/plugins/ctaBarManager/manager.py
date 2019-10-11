@@ -417,12 +417,18 @@ class BarManager(object):
         ON_TICK = "tick"
         ON_BAR = "bar"
     
-    def __init__(self, engine, mode=None, size=None):
+    def __init__(self, engine, mode=None, size=None, check_result=None):
         self._engine = proxy(engine)
         self._mode = mode or self.MODE.ON_TICK
         self._logger = LoggerMixin()
         self._size = size
         self.init()
+        if isinstance(check_result, bool):
+            self._bar_check_result = check_result
+        else:
+            import os
+            variable = os.environ.get("BAR_CHECK_RESULT", "")
+            self._bar_check_result = False if variable == "false" else True
 
     def init(self):
         self._managers = {}
@@ -506,9 +512,9 @@ class BarManager(object):
             symbol_, gateway_name = symbol.split(VN_SEPARATOR)
             bar_reader = self._engine.getBarReader(gateway_name)
             if freq != "1m":
-                bars, end_dt = bar_reader.historyActive(symbol_, freq, size=size) 
+                bars, end_dt = bar_reader.historyActive(symbol_, freq, size=size, check_result=self._bar_check_result) 
                 return bars, end_dt + timedelta(minutes=1)
-            bars = bar_reader.history(symbol_, freq, size=size)
+            bars = bar_reader.history(symbol_, freq, size=size, check_result=self._bar_check_result)
             unit_s = freq2seconds(freq)
             if not bars:
                 return bars, None
