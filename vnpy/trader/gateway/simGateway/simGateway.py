@@ -292,6 +292,7 @@ class SimGateway(VtGateway):
         if order:
             order.price_avg = price
             order.status = STATUS_ALLTRADED
+            order.tradedVolume = order.totalVolume
             order.deliverTime = datetime.now()
             self.store_order(order)
 
