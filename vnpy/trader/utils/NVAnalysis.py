@@ -147,7 +147,7 @@ def calculateDailyStatistics(df):
     profitDays = len(df[df['netPnl'] > 0])
     lossDays = len(df[df['netPnl'] < 0])
 
-    capital = df['balance'].iloc[0] + df['netPnl'].iloc[0]
+    capital = df['balance'].iloc[0] - df['netPnl'].iloc[0]
     endBalance = df['balance'].iloc[-1]
     maxDrawdown = df['drawdown'].min()
     maxDdPercent = df['ddPercent'].min()
