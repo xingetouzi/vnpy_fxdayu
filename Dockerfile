@@ -5,14 +5,14 @@ WORKDIR /opt/vnpy_fxdayu
 RUN apt-get update
 RUN apt-get install -y wget git bash build-essential libgl1-mesa-glx
 
+RUN conda install -y python-snappy pyqt=5 pycurl=7.43.0.2
+
 COPY install.sh ./
 
 # ./install.sh --quiet --deps-only
 RUN chmod +x install.sh && bash ./install.sh -q -n -d 
 
 COPY requirements.txt ./
-
-RUN conda install -y python-snappy pyqt=5
 
 RUN pip install --no-cache -r requirements.txt
 
