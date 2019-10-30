@@ -100,6 +100,9 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
                 if end_dt - timedelta(minutes=1) >= self._gen_since["1m"]:
                     self._hist_bars[freq] = (bars, end_dt)
                     self.debug("%s的%s历史K线已可以和1minK线拼接，进行缓存，之后不再请求%s的历史数据", self._symbol, freq, freq)
+                if  self.is_backtesting():
+                    self._hist_bars[freq] = (bars, end_dt)
+                    self._ready.add(freq)
             else:
                 # fetch hist bar from cache.
                 bars, end_dt = self._hist_bars[freq]
@@ -117,7 +120,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
             self.update_hist_bars(freq, bars, end_dt)
 
     def is_ready(self, freq):
-        return freq in self._ready
+        return freq in self._ready 
 
     def close_hist_bars(self, freq):
         if freq in self._ready: # closed
@@ -358,6 +361,7 @@ class SymbolBarManager(LoggerMixin, BarUtilsMixin):
                         bars_to_push[freq] = self._push_bars[freq] #NOTE: push merged bar.
             if bar_finished and self.is_ready(freq):
                 bars_to_push[freq] = bar_finished
+
         self.push_bars_dct(bars_to_push)
 
     def get_array_manager(self, freq):
@@ -474,7 +478,8 @@ class BarManager(object):
             delta = int(unit_s * size * 1.5)
         else:
             delta = unit_s * size * 9
-        start = dtstart - timedelta(seconds=delta)
+        # start = dtstart - timedelta(seconds=delta)
+        start = self._engine.strategyStartDate
         end = dtstart + timedelta(days=2, seconds=unit_s) # fetch one unit time more forward, plus two day to skip weekends.
         cache = self._caches[symbol]
         bars_1min = cache.fetch(start, end)
@@ -507,7 +512,8 @@ class BarManager(object):
         # FIXME: unify the frequancy representation.
         # FIXME: unify interface in backtesting and realtrading.
         if self.is_backtesting():
-            return self._load_history_bar_backtesting(symbol, freq, size)
+            result = self._load_history_bar_backtesting(symbol, freq, size)
+            return result
         else:
             symbol_, gateway_name = symbol.split(VN_SEPARATOR)
             bar_reader = self._engine.getBarReader(gateway_name)

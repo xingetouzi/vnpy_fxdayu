@@ -18,6 +18,7 @@ from vnpy.rpc import RpcClient, RpcServer, RemoteException
 import logging
 import random
 from functools import lru_cache
+import vnpy.utils.datautils.backtestingData as backtestingData
 
 # 如果安装了seaborn则设置为白色风格
 try:
@@ -72,8 +73,8 @@ class BacktestingEngine(object):
         self.capital = 1000000  # 回测时的起始本金（默认100万）
 
         self.dbClient = None  # 数据库客户端
-        self.dbURI = ''  # 回测数据库地址
-        self.bardbName = ''  # bar数据库名
+        self.dbURI = 'localhost'  # 回测数据库地址
+        self.bardbName = 'VnTrader_1Min_Db'  # bar数据库名
         self.tickdbName = ''  # tick数据库名
         self.dbCursor = None  # 数据库指针
         self.hdsClient = None  # 历史数据服务器客户端
@@ -88,6 +89,7 @@ class BacktestingEngine(object):
         self.logActive = False  # 回测日志开关
         self.path = os.path.join(os.getcwd(), "Backtest_Log")  # 回测日志自定义路径
         self.logPath = ""
+        self.showFigure = True
         self.strategy_setting = {}  # 缓存策略配置
 
         self.dataStartDate = None  # 回测数据开始日期，datetime对象
@@ -112,6 +114,58 @@ class BacktestingEngine(object):
 
         # 日线回测结果计算用
         self.dailyResultDict = defaultdict(OrderedDict)
+        
+        # 处理缓存数据
+        self.historyDataHandler = None
+        self._hdhEnabled = False
+        self._updateRule = "auto"
+
+    def setHistoryUpdateRule(self, rule):
+        self._updateRule = rule
+
+    def initHistoryDataHandler(self):
+        import pymongo
+        db = pymongo.MongoClient(self.dbURI)[self.bardbName]
+        source = backtestingData.MongoDBDataSource(db)
+        cache = backtestingData.DailyHDFCache(self.cachePath)
+        self.historyDataHandler = backtestingData.HistoryDataHandler(
+            source,
+            cache,
+            self._updateRule
+        )
+
+    def prepareData(self, symbolList):
+        if not self.historyDataHandler:
+            self.initHistoryDataHandler()
+        for symbol in symbolList:
+            self.historyDataHandler.prepareData(
+                symbol, 
+                self.strategyStartDate, 
+                self.dataEndDate
+            )
+    
+    def _loadHistoryDataNew(self, symbolList, startDate, endDate, dataMode=None):
+        data = self.historyDataHandler.loadData(symbolList, startDate, endDate)
+        if len(data):
+            data["date"] = data["datetime"].apply(self.dt2date)
+            data["time"] = data["datetime"].apply(self.dt2time)
+            return [self.genBar(record) for record in data.to_dict("record")]
+        else:
+            return []
+
+    @staticmethod
+    def dt2date(dt):
+        return dt.strftime("%Y%m%d")
+    
+    @staticmethod
+    def dt2time(dt):
+        return dt.strftime("%H:%M:%S")
+    
+    @staticmethod
+    def genBar(record):
+        bar = VtBarData()
+        bar.__dict__.update(record)
+        return bar
 
     # ------------------------------------------------
     # 通用功能
@@ -139,6 +193,14 @@ class BacktestingEngine(object):
     # ------------------------------------------------
     # 参数设置相关
     # ------------------------------------------------
+
+    def setDataRange(self, tradeStart, tradeEnd, historyStart):
+        self.dataStartDate = tradeStart
+        self.dataEndDate = tradeEnd
+        self.strategyStartDate = historyStart
+        self.startDate = tradeStart.strftime(constant.DATETIME)
+        self.endDate = tradeEnd.strftime(constant.DATETIME)
+        self._hdhEnabled = True
 
     # ----------------------------------------------------------------------
     def setBacktestResultType(self, _type):
@@ -198,6 +260,10 @@ class BacktestingEngine(object):
             self.path = path
         self.logActive = active
 
+    def setFigure(self, active = True):
+        """设置是否显示绩效图"""
+        self.showFigure = active
+
     # -------------------------------------------------
     def setCachePath(self, path):
         self.cachePath = path
@@ -225,8 +291,13 @@ class BacktestingEngine(object):
         self.hdsClient = RpcClient(reqAddress, subAddress)
         self.hdsClient.start()
 
-    # ----------------------------------------------------------------------
     def loadHistoryData(self, symbolList, startDate, endDate=None, dataMode=None):
+        if self._hdhEnabled:
+            return self._loadHistoryDataNew(symbolList, startDate, endDate, dataMode)
+        else:
+            return self._loadHistoryData(symbolList, startDate, endDate, dataMode)
+    # ----------------------------------------------------------------------
+    def _loadHistoryData(self, symbolList, startDate, endDate=None, dataMode=None):
         """载入历史数据:数据范围[start:end)"""
         if not endDate:
             endDate = datetime.strptime(self.END_OF_THE_WORLD, constant.DATETIME)
@@ -332,8 +403,14 @@ class BacktestingEngine(object):
             self.output(u'WARNING: 该时间段:[%s,%s) 数据量为0!' % (start, end))
             return []
 
-    # ----------------------------------------------------------------------
     def runBacktesting(self):
+        if self._hdhEnabled:
+            self.prepareData(self.strategy.symbolList)
+
+        return self._runBacktesting()
+
+    # ----------------------------------------------------------------------
+    def _runBacktesting(self):
         """运行回测"""
 
         dataLimit = 1000000
@@ -1082,6 +1159,19 @@ class BacktestingEngine(object):
         d['tradeTimeList'] = tradeTimeList
         d['resultList'] = resultList
 
+        self.strategy_setting.update(d)
+        self.strategy_setting.pop("timeList",None)
+        self.strategy_setting.pop("pnlList",None)
+        self.strategy_setting.pop("capitalList",None)
+        self.strategy_setting.pop("drawdownList",None)
+        self.strategy_setting.pop("posList",None)
+        self.strategy_setting.pop("tradeTimeList",None)
+        self.strategy_setting.pop("resultList",None)
+        filename = os.path.join(self.logPath, "BacktestingResult.json")
+        with open(filename, 'w') as f:
+            json.dump(self.strategy_setting, f, indent=4)
+        f.close()
+
         return d
 
     # ----------------------------------------------------------------------
@@ -1130,7 +1220,8 @@ class BacktestingEngine(object):
             plt.savefig(filename)
             self.output(u'策略回测统计图已保存')
 
-        plt.show()
+        if self.showFigure:
+            plt.show()
 
     # ----------------------------------------------------------------------
     def clearBacktestingResult(self):
@@ -1587,13 +1678,14 @@ class BacktestingEngine(object):
             filename = os.path.join(self.logPath, "BacktestingResult.json")
             with open(filename, 'w') as f:
                 json.dump(self.strategy_setting, f, indent=4)
-            self.output(u'BacktestingResult saved')
+            f.close()
 
             filename = os.path.join(self.logPath, u"每日净值.csv")
             df.to_csv(filename, sep=',')
             self.output(u'每日净值已保存')
 
-        plt.show()
+        if self.showFigure:
+            plt.show()
 
 
 ########################################################################

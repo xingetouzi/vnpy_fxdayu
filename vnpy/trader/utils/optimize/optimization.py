@@ -33,8 +33,16 @@ def runStrategy(engineClass, strategyClass, engineSetting, globalSetting, strate
         if hasattr(engine, key):
             setattr(engine, key, value)
 
-    engine.setStartDate(engineSetting["startDate"], engineSetting.get("initHours", 0))
-    engine.setEndDate(engineSetting["endDate"])
+    if "timeRange" in engineSetting:
+        tr = engineSetting["timeRange"]
+        engine.setDataRange(
+            tr["tradeStart"],
+            tr["tradeEnd"],
+            tr["historyStart"]
+        )
+    else:
+        engine.setStartDate(engineSetting["startDate"], engineSetting.get("initHours", 0))
+        engine.setEndDate(engineSetting["endDate"])
 
     engine.initStrategy(strategyClass, {**globalSetting, **strategySetting})
     engine.runBacktesting()

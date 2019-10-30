@@ -87,7 +87,7 @@ def combineNV(nvDf_dict, weightMethod="equal", weight=None, normalized=True):
     # 净值归一化
     for name in nvDf_dict.keys():
         df = nvDf_dict[name]
-        capital = df['balance'].iloc[0] + df['netPnl'].iloc[0]
+        capital = df['balance'].iloc[0] - df['netPnl'].iloc[0]
         df["netPnl"] = df["netPnl"] / capital
         df["slippage"] = df["slippage"] / capital
         df["commission"] = df["commission"] / capital
@@ -147,7 +147,7 @@ def calculateDailyStatistics(df):
     profitDays = len(df[df['netPnl'] > 0])
     lossDays = len(df[df['netPnl'] < 0])
 
-    capital = df['balance'].iloc[0] + df['netPnl'].iloc[0]
+    capital = df['balance'].iloc[0] - df['netPnl'].iloc[0]
     endBalance = df['balance'].iloc[-1]
     maxDrawdown = df['drawdown'].min()
     maxDdPercent = df['ddPercent'].min()
