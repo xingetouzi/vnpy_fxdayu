@@ -292,6 +292,7 @@ class OkexGateway(VtGateway):
 
             end = datetime.strptime(rotate_start, "%Y-%m-%dT%H:%M:%SZ")
             df = pd.concat([df, data])
+            time.sleep(1)
 
         df["datetime"] = df["time"].map(lambda x: datetime.strptime(x, ISO_DATETIME_FORMAT).replace(tzinfo=timezone(timedelta())))
         df = df[["datetime", "open", "high", "low", "close", "volume"]]

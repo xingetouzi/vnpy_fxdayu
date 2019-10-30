@@ -770,7 +770,11 @@ class OkexfRestApi(RestClient):
         url = f'{REST_HOST}/api/futures/v3/instruments/{instrument_id}/candles'
 
         r = requests.get(url, headers={"contentType": "application/x-www-form-urlencoded"}, params = req, timeout=10)
-        return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
+        data = r.json()
+        if isinstance(data, list):
+            return pd.DataFrame(r.json(), columns=["time", "open", "high", "low", "close", "volume", f"{symbol[:3]}_volume"])
+        else:
+            raise ValueError(f"HistoryBar [{REST_HOST} {symbol} {req}] response: {r.status_code} {data}")
 
     ORDER_INSTANCE = 0
     ORDER_CANCEL = 1
