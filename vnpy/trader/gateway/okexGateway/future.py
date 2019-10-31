@@ -175,7 +175,9 @@ class OkexfRestApi(RestClient):
         order.price = orderReq.price
         order.totalVolume = orderReq.volume
         order.status = constant.STATUS_SUBMITTED
-        
+        order.orderDatetime = datetime.now()
+        order.orderTime = order.orderDatetime.strftime('%Y%m%d %H:%M:%S')
+
         self.orderDict[orderID] = order
         self.unfinished_orders[orderID] = order
 
@@ -206,7 +208,6 @@ class OkexfRestApi(RestClient):
     #----------------------------------------------------------------------
     def queryContract(self):
         """限速规则：20次/2s"""
-        print("query /api/futures/v3/instruments")
         self.addRequest('GET', '/api/futures/v3/instruments', 
                         callback=self.onQueryContract)
         
@@ -642,12 +643,25 @@ class OkexfRestApi(RestClient):
 
     def onQueryMonoOrderFailed(self, data, request):
         if request.response.status_code == 404 or (request.response.status_code == 200 and not data):
-            self.putOrderQueue({
-                "client_oid": request.extra,
-                "message": "Order not exists"
-            }, self.ORDER_REJECT)
             oid = request.extra
             self.gateway.writeLog(f'Query order failed: {oid} | result: {data}', logging.ERROR)
+            order = self.orderDict.get(str(oid), None)
+            if order:
+                if order.status == constant.STATUS_SUBMITTED:
+                    now = datetime.now()
+                    if now - order.orderDatetime > timedelta(seconds=30):
+                        self.gateway.writeLog(f"Order not exist: cliend_oid={oid}, status={order.status} orderTime={order.orderDatetime}, currentTime={now}")
+                        self.putOrderQueue({
+                            "client_oid": oid,
+                            "message": "Order not exists"
+                        }, self.ORDER_REJECT)
+                    else:
+                        self.gateway.writeLog(f"Order not timeout: cliend_oid={oid}, status={order.status}, orderTime={order.orderDatetime}, currentTime={now}")
+                else:
+                    self.gateway.writeLog(f"Order status confirmed: cliend_oid={oid}, status={order.status}")
+            else:
+                self.gateway.writeLog(f"Order not subbmitted: cliend_oid = {oid}")
+
             self.unLockRequests()
         else:
             self.lockRequests(data, request)
