@@ -417,6 +417,8 @@ class OkexfRestApi(RestClient):
         "trade_increment":"1","alias":"quarter"}]"""
         # matureDate = set()
         for data in d:
+            if data["quote_currency"] == "USDT":
+                continue
             contract = VtContractData()
             contract.gatewayName = self.gatewayName
             
